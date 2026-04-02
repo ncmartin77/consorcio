@@ -71,6 +71,18 @@
           </a>
         </li>
         <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'estado_cuenta' %}active{% endif %}"
+             href="{{ url_for('estado_cuenta') }}">
+            <i class="bi bi-journal-text"></i> Estado de Cuenta
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'apertura' %}active{% endif %}"
+             href="{{ url_for('apertura') }}">
+            <i class="bi bi-play-circle"></i> Apertura
+          </a>
+        </li>
+        <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'config' %}active{% endif %}"
              href="{{ url_for('config') }}">
             <i class="bi bi-gear"></i> Configuración

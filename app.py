@@ -548,6 +548,44 @@ def delete_cotizacion(pres_id, pedido_id):
 
 
 # ---------------------------------------------------------------------------
+# ESTADO DE CUENTA
+# ---------------------------------------------------------------------------
+
+@app.route("/estado-cuenta")
+def estado_cuenta():
+    historial = db.get_historial_unidades()
+    unidades = db.get_unidades()
+    return render_template("estado_cuenta.html", historial=historial, unidades=unidades)
+
+
+# ---------------------------------------------------------------------------
+# APERTURA / SALDOS INICIALES
+# ---------------------------------------------------------------------------
+
+@app.route("/apertura", methods=["GET", "POST"])
+def apertura():
+    if request.method == "POST":
+        saldo_inicial = request.form.get("saldo_inicial_caja", "0").replace(",", ".")
+        try:
+            saldo_inicial = float(saldo_inicial)
+        except ValueError:
+            saldo_inicial = 0.0
+        deudas = {}
+        for key, val in request.form.items():
+            if key.startswith("deuda_"):
+                numero = key[6:]
+                try:
+                    deudas[numero] = float(val.replace(",", ".")) if val.strip() else 0.0
+                except ValueError:
+                    deudas[numero] = 0.0
+        db.save_apertura(saldo_inicial, deudas)
+        flash("Saldos iniciales guardados.", "success")
+        return redirect(url_for("apertura"))
+    saldo_inicial, unidades = db.get_apertura()
+    return render_template("apertura.html", saldo_inicial=saldo_inicial, unidades=unidades)
+
+
+# ---------------------------------------------------------------------------
 # RESET (pruebas)
 # ---------------------------------------------------------------------------
 

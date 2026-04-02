@@ -910,7 +910,9 @@ def delete_presupuesto(pres_id):
 
 
 def get_saldo_caja():
-    """Saldo acumulado total (banco): todas las entradas - todas las salidas."""
+    """Saldo acumulado total (banco): saldo_inicial + entradas - salidas."""
+    cfg = get_config()
+    saldo_inicial = float(cfg.get("saldo_inicial_caja", 0) or 0)
     wb = _get_wb()
     ws = _ensure_sheet(wb, SHEET_CAJA, ["fecha", "descripcion", "tipo", "categoria", "importe"])
     entradas = salidas = 0.0
@@ -922,7 +924,8 @@ def get_saldo_caja():
             entradas += importe
         elif row[2] == "SALIDA":
             salidas += importe
-    return round(entradas - salidas, 2), round(entradas, 2), round(salidas, 2)
+    saldo = round(saldo_inicial + entradas - salidas, 2)
+    return saldo, round(entradas, 2), round(salidas, 2)
 
 
 def get_movimientos_periodo(periodo: str):
@@ -972,6 +975,71 @@ def ensure_fondo_reserva_gasto(periodo: str):
     if any(g["tipo"] == "FONDO_RESERVA" for g in gastos):
         return  # Ya existe para este período
     save_gasto(periodo, "Fondo de Reserva", monto, "FONDO_RESERVA")
+
+
+def get_historial_unidades():
+    """Retorna historial de liquidaciones de todas las unidades, agrupado por unidad."""
+    wb = _get_wb()
+    historial = {}  # {numero: [filas]}
+    for sheet_name in sorted(wb.sheetnames):
+        if not sheet_name.startswith(LIQPREFIX):
+            continue
+        ws = wb[sheet_name]
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not row[0] or not row[1]:
+                continue
+            numero = str(row[1])
+            fecha_p = row[14] if len(row) > 14 else None
+            if hasattr(fecha_p, "strftime"):
+                fecha_p = fecha_p.strftime("%Y-%m-%d")
+            entry = {
+                "periodo":        str(row[0]),
+                "descripcion":    row[2] or "",
+                "propietario":    row[3] or "",
+                "inquilino":      row[4] or "",
+                "expensas":       float(row[6]) if row[6] else 0.0,
+                "deuda_anterior": float(row[7]) if row[7] else 0.0,
+                "interes":        float(row[8]) if row[8] else 0.0,
+                "total_a_pagar":  float(row[9]) if row[9] else 0.0,
+                "monto_pagado":   float(row[11]) if len(row) > 11 and row[11] else 0.0,
+                "tipo_pago":      row[12] if len(row) > 12 and row[12] else "PENDIENTE",
+                "saldo_pendiente":float(row[13]) if len(row) > 13 and row[13] else 0.0,
+                "fecha_pago":     fecha_p or "",
+            }
+            historial.setdefault(numero, []).append(entry)
+    # Ordenar cada unidad por período
+    for num in historial:
+        historial[num].sort(key=lambda x: x["periodo"])
+    return historial
+
+
+def get_apertura():
+    """Retorna saldo inicial de caja y deudas iniciales por unidad."""
+    cfg = get_config()
+    saldo_inicial = float(cfg.get("saldo_inicial_caja", 0) or 0)
+    unidades = get_unidades()
+    return saldo_inicial, unidades
+
+
+def save_apertura(saldo_inicial: float, deudas: dict):
+    """Guarda saldo inicial de caja y deuda_inicial por unidad."""
+    # Guardar saldo inicial en config
+    cfg_data = {"saldo_inicial_caja": str(saldo_inicial)}
+    save_config(cfg_data)
+    # Guardar deuda_inicial en cada unidad
+    wb = _get_wb()
+    ws = wb[SHEET_UNIDADES]
+    header = [c.value for c in ws[1]]
+    if "deuda_inicial" not in header:
+        header.append("deuda_inicial")
+        ws.cell(row=1, column=len(header)).value = "deuda_inicial"
+    col_deuda = header.index("deuda_inicial") + 1
+    col_num = header.index("numero") + 1
+    for row in ws.iter_rows(min_row=2):
+        num = str(row[col_num - 1].value)
+        if num in deudas:
+            row[col_deuda - 1].value = deudas[num]
+    _save_wb(wb)
 
 
 def reset_datos_operativos():
