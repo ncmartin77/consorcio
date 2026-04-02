@@ -7,12 +7,16 @@
   <div class="d-flex gap-2 align-items-center flex-wrap">
     <input type="month" class="form-control form-control-sm" id="periodoSelector"
            value="{{ periodo }}">
+    {% if liq %}
+      <span class="badge bg-secondary"><i class="bi bi-lock-fill"></i> Liquidación cerrada</span>
+    {% else %}
     <form method="POST" action="{{ url_for('generar_liquidacion', periodo=periodo) }}">
       <button type="submit" class="btn btn-success btn-sm"
-              onclick="return confirm('¿Generar/actualizar liquidación para {{ periodo }}?\nEsto recalculará todos los valores no pagados.')">
+              onclick="return confirm('¿Generar la liquidación para {{ periodo }}? Una vez generada no podrá modificarse.')">
         <i class="bi bi-arrow-clockwise"></i> Generar
       </button>
     </form>
+    {% endif %}
     {% if liq %}
     <a href="{{ url_for('descargar_pdf', periodo=periodo) }}" class="btn btn-danger btn-sm">
       <i class="bi bi-file-earmark-pdf"></i> Resumen Edificio PDF

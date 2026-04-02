@@ -416,11 +416,24 @@ def _next_periodo(periodo: str):
     return f"{y}-{m+1:02d}"
 
 
+def liquidacion_existe(periodo: str) -> bool:
+    """Retorna True si ya existe una liquidación generada para este período."""
+    year = int(periodo[:4])
+    wb = _get_wb()
+    ws = _ensure_liq_sheet(wb, year)
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if str(row[0]) == periodo:
+            return True
+    return False
+
+
 def generar_liquidacion(periodo: str):
     """
-    Genera/regenera las filas de liquidación para el periodo.
-    Preserva los pagos ya registrados (TOTAL/PARCIAL) al recalcular.
+    Genera las filas de liquidación para el periodo.
+    Una vez generada, no se puede regenerar (es inmutable).
     """
+    if liquidacion_existe(periodo):
+        return None  # Ya existe, no se regenera
     # Liquidación a mes vencido: los gastos son del mes ANTERIOR
     mes_gastos = _prev_periodo(periodo)
     ensure_fondo_reserva_gasto(mes_gastos)
@@ -759,7 +772,24 @@ def pagar_factura(fid: int, fecha_pago: str):
     return False
 
 
+def factura_en_liquidacion(fid) -> bool:
+    """Retorna True si la factura ya fue incluida en una liquidación generada."""
+    for f in get_facturas():
+        if str(f["id"]) != str(fid):
+            continue
+        if f.get("estado") != "PAGADA":
+            return False
+        fecha_pago = f.get("fecha_pago") or ""
+        if len(fecha_pago) >= 7:
+            periodo_gasto = fecha_pago[:7]
+            periodo_liq = _next_periodo(periodo_gasto)
+            return liquidacion_existe(periodo_liq)
+    return False
+
+
 def delete_factura(fid):
+    if factura_en_liquidacion(fid):
+        return False  # Bloqueada, ya está en una liquidación
     wb = _get_wb()
     ws = _ensure_sheet(wb, SHEET_FACTURAS, _FAC_HEADER)
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
@@ -767,6 +797,7 @@ def delete_factura(fid):
             ws.delete_rows(i)
             break
     _save_wb(wb)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -1043,10 +1074,10 @@ def save_apertura(saldo_inicial: float, deudas: dict):
 
 
 def reset_datos_operativos():
-    """Borra liquidaciones, gastos mensuales y caja diaria. Preserva unidades y proveedores."""
+    """Borra liquidaciones, gastos, caja y facturas. Preserva unidades y proveedores."""
     wb = _get_wb()
-    for sheet in [SHEET_GASTOS, SHEET_CAJA]:
-        ws = wb[sheet]
+    for sheet in [SHEET_GASTOS, SHEET_CAJA, SHEET_FACTURAS]:
+        ws = _ensure_sheet(wb, sheet, [])
         for r in range(ws.max_row, 1, -1):
             ws.delete_rows(r)
     for name in [n for n in wb.sheetnames if n.startswith(LIQPREFIX)]:

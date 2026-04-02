@@ -130,15 +130,16 @@ def delete_unidad(numero):
 # ---------------------------------------------------------------------------
 
 def _recalcular_liq_si_posible(periodo):
-    """Cuando se modifica un gasto del mes P, recalcula la liquidación del mes P+1."""
+    """Cuando se guarda un gasto del mes P, genera la liquidación de P+1 si aún no existe."""
     periodo_liq = db._next_periodo(periodo)
-    liq = db.get_liquidacion(periodo_liq)
-    pagados = [r for r in liq if r.get("tipo_pago") in ("TOTAL", "PARCIAL")]
-    if pagados:
-        flash("Gasto guardado. Hay pagos registrados en la liquidación — recalculá manualmente con Generar.", "warning")
+    if db.liquidacion_existe(periodo_liq):
+        flash(f"Gasto guardado. La liquidación de {periodo_liq} ya está cerrada — la diferencia se refleja el mes siguiente.", "info")
     else:
-        db.generar_liquidacion(periodo_liq)
-        flash("Gasto guardado. Liquidación de " + periodo_liq + " actualizada.", "success")
+        resultado = db.generar_liquidacion(periodo_liq)
+        if resultado is not None:
+            flash(f"Gasto guardado. Liquidación de {periodo_liq} generada.", "success")
+        else:
+            flash("Gasto guardado.", "success")
 
 
 @app.route("/gastos")
@@ -149,7 +150,10 @@ def gastos(periodo=None):
     db.ensure_fondo_reserva_gasto(periodo)  # Agregar automáticamente si no existe
     gastos_list = db.get_gastos(periodo)
     total = db.get_total_gastos(periodo)
-    return render_template("gastos.html", gastos=gastos_list, periodo=periodo, total=total)
+    prox_periodo = db._next_periodo(periodo)
+    liq_prox_cerrada = db.liquidacion_existe(prox_periodo)
+    return render_template("gastos.html", gastos=gastos_list, periodo=periodo, total=total,
+                           prox_periodo=prox_periodo, liq_prox_cerrada=liq_prox_cerrada)
 
 
 @app.route("/gastos/save", methods=["POST"])
@@ -271,8 +275,11 @@ def liquidacion(periodo=None):
 
 @app.route("/liquidacion/generar/<periodo>", methods=["POST"])
 def generar_liquidacion(periodo):
-    db.generar_liquidacion(periodo)
-    flash(f"Liquidación generada para {periodo}.", "success")
+    if db.liquidacion_existe(periodo):
+        flash(f"La liquidación de {periodo} ya fue generada y no puede modificarse. Las diferencias se cargan en el mes siguiente.", "warning")
+    else:
+        db.generar_liquidacion(periodo)
+        flash(f"Liquidación generada para {periodo}.", "success")
     return redirect(url_for("liquidacion", periodo=periodo))
 
 
@@ -453,8 +460,11 @@ def pagar_factura(fid):
 
 @app.route("/facturas/delete/<int:fid>", methods=["POST"])
 def delete_factura(fid):
-    db.delete_factura(fid)
-    flash("Factura eliminada.", "success")
+    ok = db.delete_factura(fid)
+    if ok:
+        flash("Factura eliminada.", "success")
+    else:
+        flash("No se puede eliminar: la factura ya fue incluida en una liquidación cerrada.", "danger")
     return redirect(url_for("facturas"))
 
 
