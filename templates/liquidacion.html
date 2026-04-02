@@ -1,0 +1,336 @@
+{% extends "base.html" %}
+{% block title %}Liquidación{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-receipt"></i> Liquidación Mensual</h4>
+  <div class="d-flex gap-2 align-items-center flex-wrap">
+    <input type="month" class="form-control form-control-sm" id="periodoSelector"
+           value="{{ periodo }}">
+    <form method="POST" action="{{ url_for('generar_liquidacion', periodo=periodo) }}">
+      <button type="submit" class="btn btn-success btn-sm"
+              onclick="return confirm('¿Generar/actualizar liquidación para {{ periodo }}?\nEsto recalculará todos los valores no pagados.')">
+        <i class="bi bi-arrow-clockwise"></i> Generar
+      </button>
+    </form>
+    {% if liq %}
+    <a href="{{ url_for('descargar_pdf', periodo=periodo) }}" class="btn btn-danger btn-sm">
+      <i class="bi bi-file-earmark-pdf"></i> Resumen Edificio PDF
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ===== PANEL CAJA ===== -->
+<div class="row g-2 mb-3">
+  <div class="col-md-2">
+    <div class="card border-success text-center h-100">
+      <div class="card-body py-2 px-1">
+        <div class="small text-success fw-bold">ENTRADAS</div>
+        <div class="fw-bold text-success">$ {{ "%.2f"|format(entradas_caja)|replace(".",",") }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-2">
+    <div class="card border-danger text-center h-100">
+      <div class="card-body py-2 px-1">
+        <div class="small text-danger fw-bold">SALIDAS</div>
+        <div class="fw-bold text-danger">$ {{ "%.2f"|format(salidas_caja)|replace(".",",") }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-2">
+    <div class="card border-primary text-center h-100">
+      <div class="card-body py-2 px-1">
+        <div class="small text-primary fw-bold">SALDO EN CAJA</div>
+        <div class="fw-bold {% if saldo_caja >= 0 %}text-primary{% else %}text-danger{% endif %}">
+          $ {{ "%.2f"|format(saldo_caja)|replace(".",",") }}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-2">
+    <div class="card border-info text-center h-100">
+      <div class="card-body py-2 px-1">
+        <div class="small text-info fw-bold">FONDO RESERVA</div>
+        <div class="fw-bold text-info">$ {{ "%.2f"|format(fondo_reserva)|replace(".",",") }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-2">
+    <div class="card border-warning text-center h-100">
+      <div class="card-body py-2 px-1">
+        <div class="small text-warning fw-bold">TOTAL COBRADO</div>
+        <div class="fw-bold text-warning">$ {{ "%.2f"|format(total_cobrado)|replace(".",",") }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-2">
+    <div class="card border-secondary text-center h-100">
+      <div class="card-body py-2 px-1">
+        <div class="small text-secondary fw-bold">PENDIENTES</div>
+        <div class="fw-bold text-secondary fs-5">{{ pendientes }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if not liq %}
+<div class="alert alert-info">
+  <i class="bi bi-info-circle"></i>
+  No hay liquidación generada para <strong>{{ periodo }}</strong>.
+  Primero cargá los <a href="{{ url_for('gastos', periodo=periodo) }}">gastos del mes</a>,
+  luego presioná <strong>Generar</strong>.
+</div>
+{% else %}
+
+<div class="card shadow-sm mb-4">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-striped table-hover mb-0 small">
+        <thead class="table-primary">
+          <tr>
+            <th>UF</th>
+            <th>Descripción</th>
+            <th>Prop./Inquilino</th>
+            <th class="text-center">% U.F.</th>
+            <th class="text-end">Expensas</th>
+            <th class="text-end">Deuda Ant.</th>
+            <th class="text-end">Interés</th>
+            <th class="text-end">TOTAL</th>
+            <th class="text-end">Abonado</th>
+            <th class="text-end">Saldo</th>
+            <th class="text-center">Estado</th>
+            <th class="text-center">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in liq %}
+          {% set tipo = r.get('tipo_pago', 'PENDIENTE') %}
+          <tr class="{% if tipo == 'TOTAL' %}table-success{% elif tipo == 'PARCIAL' %}table-warning{% elif r.deuda_anterior > 0 %}table-danger{% endif %}">
+            <td><strong>{{ r.unidad }}</strong></td>
+            <td>{{ r.descripcion }}</td>
+            <td>{{ r.inquilino or r.propietario }}</td>
+            <td class="text-center">{{ "%.3f"|format(r.pct_aplicado) }}%</td>
+            <td class="text-end">$ {{ "%.2f"|format(r.expensas)|replace(".",",") }}</td>
+            <td class="text-end {% if r.deuda_anterior > 0 %}text-danger fw-semibold{% endif %}">
+              {% if r.deuda_anterior > 0 %}$ {{ "%.2f"|format(r.deuda_anterior)|replace(".",",") }}{% else %}—{% endif %}
+            </td>
+            <td class="text-end {% if r.interes > 0 %}text-warning{% endif %}">
+              {% if r.interes > 0 %}$ {{ "%.2f"|format(r.interes)|replace(".",",") }}{% else %}—{% endif %}
+            </td>
+            <td class="text-end fw-bold">$ {{ "%.2f"|format(r.total_a_pagar)|replace(".",",") }}</td>
+            <td class="text-end {% if tipo != 'PENDIENTE' %}text-success fw-semibold{% endif %}">
+              {% if r.monto_pagado > 0 %}$ {{ "%.2f"|format(r.monto_pagado)|replace(".",",") }}{% else %}—{% endif %}
+            </td>
+            <td class="text-end {% if r.saldo_pendiente > 0 %}text-danger fw-semibold{% endif %}">
+              {% if tipo == 'TOTAL' %}—
+              {% elif r.saldo_pendiente > 0 %}$ {{ "%.2f"|format(r.saldo_pendiente)|replace(".",",") }}
+              {% else %}$ {{ "%.2f"|format(r.total_a_pagar)|replace(".",",") }}{% endif %}
+            </td>
+            <td class="text-center">
+              {% if tipo == 'TOTAL' %}
+                <span class="badge bg-success">Pagado</span>
+              {% elif tipo == 'PARCIAL' %}
+                <span class="badge bg-warning text-dark">Parcial</span>
+              {% else %}
+                <span class="badge bg-danger">Pendiente</span>
+              {% endif %}
+            </td>
+            <td class="text-center text-nowrap">
+              {% if tipo == 'PENDIENTE' %}
+              <button class="btn btn-sm btn-success"
+                      onclick='abrirModalPago({{ r|tojson }}, false)'
+                      title="Registrar pago">
+                <i class="bi bi-cash"></i>
+              </button>
+              {% elif tipo == 'PARCIAL' %}
+              <button class="btn btn-sm btn-warning"
+                      onclick='abrirModalPago({{ r|tojson }}, true)'
+                      title="Agregar pago adicional">
+                <i class="bi bi-cash-stack"></i>
+              </button>
+              <a href="{{ url_for('descargar_recibo', periodo=periodo, unidad=r.unidad) }}"
+                 class="btn btn-sm btn-outline-primary" title="Descargar recibo">
+                <i class="bi bi-receipt"></i>
+              </a>
+              {% elif tipo == 'TOTAL' %}
+              <a href="{{ url_for('descargar_recibo', periodo=periodo, unidad=r.unidad) }}"
+                 class="btn btn-sm btn-outline-primary" title="Descargar recibo">
+                <i class="bi bi-receipt"></i>
+              </a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-bold">
+          <tr>
+            <td colspan="3">TOTALES</td>
+            <td class="text-center">100%</td>
+            <td class="text-end">$ {{ "%.2f"|format(total_gastos)|replace(".",",") }}</td>
+            <td class="text-end">$ {{ "%.2f"|format(total_deuda)|replace(".",",") }}</td>
+            <td></td>
+            <td class="text-end text-danger">$ {{ "%.2f"|format(total_a_pagar)|replace(".",",") }}</td>
+            <td class="text-end text-success">$ {{ "%.2f"|format(total_cobrado)|replace(".",",") }}</td>
+            <td colspan="3"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Detalle de gastos -->
+<div class="col-md-6">
+  <div class="card shadow-sm">
+    <div class="card-header bg-secondary text-white">
+      <i class="bi bi-list-ul"></i> Gastos del mes — {{ periodo }}
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0">
+        <thead class="table-light">
+          <tr><th>Concepto</th><th class="text-end">Importe</th><th>Tipo</th></tr>
+        </thead>
+        <tbody>
+          {% for g in gastos %}
+          <tr>
+            <td>{{ g.concepto }}</td>
+            <td class="text-end">$ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td>
+            <td class="text-muted small">{{ g.tipo }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="text-muted text-center">Sin gastos cargados.</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-bold">
+          <tr>
+            <td>TOTAL</td>
+            <td class="text-end text-danger">$ {{ "%.2f"|format(total_gastos)|replace(".",",") }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endif %}
+
+<!-- ===== MODAL PAGO ===== -->
+<div class="modal fade" id="modalPago" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <form method="POST" id="formPago">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title"><i class="bi bi-cash"></i> Registrar Pago</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <span class="fw-bold" id="mp_unidad"></span>
+            <span class="text-muted small ms-1" id="mp_ocupante"></span>
+          </div>
+          <div class="mb-3 small">
+            <div class="d-flex justify-content-between text-muted mb-1">
+              <span>Total a pagar:</span>
+              <strong id="mp_total" class="text-danger"></strong>
+            </div>
+            <div id="mp_ya_pagado_row" class="d-flex justify-content-between text-muted mb-1" style="display:none">
+              <span>Ya abonado:</span>
+              <strong id="mp_ya_pagado" class="text-success"></strong>
+            </div>
+            <div id="mp_saldo_row" class="d-flex justify-content-between text-muted mb-1" style="display:none">
+              <span>Saldo pendiente:</span>
+              <strong id="mp_saldo" class="text-warning"></strong>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold" id="mp_label_monto">Monto Abonado *</label>
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              <input type="number" class="form-control" name="monto_pagado" id="mp_monto"
+                     step="0.01" min="0.01" required>
+            </div>
+            <div class="d-flex gap-2 mt-1">
+              <button type="button" class="btn btn-sm btn-outline-success w-100"
+                      onclick="usarMontoTotal()">Pago total</button>
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label fw-semibold">Fecha de Pago *</label>
+            <input type="date" class="form-control" name="fecha_pago" id="mp_fecha" required>
+          </div>
+          <div id="mp_aviso_parcial" class="alert alert-warning py-1 small mb-0" style="display:none">
+            <i class="bi bi-exclamation-triangle"></i>
+            El monto es menor al saldo → se registrará como <strong>pago parcial</strong>.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-check-circle"></i> Confirmar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('periodoSelector').addEventListener('change', function() {
+  window.location.href = '{{ url_for("liquidacion") }}/' + this.value;
+});
+
+let _saldoActual = 0;
+
+function fmt(v) {
+  return '$ ' + parseFloat(v).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function abrirModalPago(r, esParcial) {
+  const saldo = r.saldo_pendiente > 0 ? r.saldo_pendiente : r.total_a_pagar;
+  _saldoActual = saldo;
+
+  document.getElementById('mp_unidad').textContent = 'UF ' + r.unidad;
+  document.getElementById('mp_ocupante').textContent = r.inquilino || r.propietario || '';
+  document.getElementById('mp_total').textContent = fmt(r.total_a_pagar);
+
+  const yaPagadoRow = document.getElementById('mp_ya_pagado_row');
+  const saldoRow = document.getElementById('mp_saldo_row');
+
+  if (esParcial) {
+    document.getElementById('mp_label_monto').textContent = 'Monto a agregar *';
+    document.getElementById('mp_ya_pagado').textContent = fmt(r.monto_pagado);
+    yaPagadoRow.style.display = 'flex';
+    document.getElementById('mp_saldo').textContent = fmt(saldo);
+    saldoRow.style.display = 'flex';
+  } else {
+    document.getElementById('mp_label_monto').textContent = 'Monto Abonado *';
+    yaPagadoRow.style.display = 'none';
+    saldoRow.style.display = 'none';
+  }
+
+  const input = document.getElementById('mp_monto');
+  input.value = saldo.toFixed(2);
+  input.max = saldo;
+  document.getElementById('mp_fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('mp_aviso_parcial').style.display = 'none';
+  document.getElementById('formPago').action = '/liquidacion/pagar/{{ periodo }}/' + r.unidad;
+  new bootstrap.Modal(document.getElementById('modalPago')).show();
+}
+
+function usarMontoTotal() {
+  document.getElementById('mp_monto').value = _saldoActual.toFixed(2);
+  document.getElementById('mp_aviso_parcial').style.display = 'none';
+}
+
+document.getElementById('mp_monto').addEventListener('input', function() {
+  const v = parseFloat(this.value) || 0;
+  document.getElementById('mp_aviso_parcial').style.display =
+    (v > 0 && v < _saldoActual) ? 'block' : 'none';
+});
+</script>
+{% endblock %}

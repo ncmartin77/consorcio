@@ -1,0 +1,255 @@
+body {
+  background-color: #f8f9fa;
+  font-size: 0.92rem;
+}
+
+.navbar-brand {
+  font-size: 1.1rem;
+  letter-spacing: 0.3px;
+}
+
+.card {
+  border-radius: 8px;
+}
+
+.table th {
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.table td {
+  vertical-align: middle;
+}
+
+.badge {
+  font-size: 0.75rem;
+}
+
+.btn-sm {
+  font-size: 0.78rem;
+}
+
+/* Highlight rows on hover */
+.table-hover tbody tr:hover {
+  background-color: rgba(13, 110, 253, 0.06) !important;
+}
+
+/* Cards de resumen */
+.card .card-body .fw-bold.fs-5 {
+  font-size: 1.1rem !important;
+}
+
+/* Footer totales */
+tfoot td {
+  font-size: 0.9rem;
+}
+
+/* Modal */
+.modal-header {
+  border-radius: 8px 8px 0 0;
+}
+
+/* ============================================================
+   PLANO DEL EDIFICIO
+   ============================================================ */
+
+.edificio-container {
+  max-width: 860px;
+  margin: 0 auto;
+  user-select: none;
+}
+
+.techo {
+  position: relative;
+  text-align: center;
+  margin-bottom: 0;
+  height: 48px;
+}
+.techo-triangle {
+  width: 0;
+  height: 0;
+  border-left: 430px solid transparent;
+  border-right: 430px solid transparent;
+  border-bottom: 48px solid #1a3a5c;
+  margin: 0 auto;
+}
+.techo-label {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: white;
+  font-weight: bold;
+  font-size: 0.85rem;
+  letter-spacing: 2px;
+}
+
+.piso-row {
+  display: flex;
+  align-items: stretch;
+  margin-bottom: 4px;
+  background: #f0f4f8;
+  border: 1px solid #c8d6e5;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.piso-label {
+  min-width: 70px;
+  background: #1a3a5c;
+  color: white;
+  font-weight: bold;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.unidades-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  flex: 1;
+}
+
+.unidad-box {
+  width: 80px;
+  min-height: 72px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: transform 0.12s, box-shadow 0.12s;
+  padding: 6px 4px;
+  position: relative;
+}
+
+.unidad-box:hover {
+  transform: scale(1.08);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  z-index: 10;
+}
+
+.unidad-pagada {
+  background: #d4edda;
+  border-color: #28a745;
+  color: #155724;
+}
+.unidad-pendiente {
+  background: #f8d7da;
+  border-color: #dc3545;
+  color: #721c24;
+}
+.unidad-sin-liq {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+  color: #475569;
+}
+.unidad-inactiva {
+  background: #f1f1f1;
+  border-color: #ccc;
+  color: #999;
+  opacity: 0.6;
+}
+
+.unidad-numero {
+  font-weight: bold;
+  font-size: 0.95rem;
+  text-align: center;
+  line-height: 1.2;
+}
+.unidad-estado-icon {
+  font-size: 1.1rem;
+  font-weight: bold;
+  margin-top: 2px;
+}
+.unidad-monto {
+  font-size: 0.62rem;
+  text-align: center;
+  margin-top: 2px;
+  font-weight: 600;
+  color: #dc3545;
+}
+
+.edificio-base {
+  height: 12px;
+  background: #1a3a5c;
+  border-radius: 0 0 6px 6px;
+  margin-top: 0;
+}
+
+/* Leyenda */
+.badge-leyenda {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border: 1.5px solid;
+}
+.badge-leyenda.pagado { background:#d4edda; border-color:#28a745; color:#155724; }
+.badge-leyenda.pendiente { background:#f8d7da; border-color:#dc3545; color:#721c24; }
+.badge-leyenda.sin-liq { background:#e2e8f0; border-color:#94a3b8; color:#475569; }
+.badge-leyenda.inactiva { background:#f1f1f1; border-color:#ccc; color:#999; }
+
+/* Tooltip flotante */
+.tooltip-edificio {
+  position: absolute;
+  z-index: 9999;
+  background: white;
+  border: 1.5px solid #1a3a5c;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+  width: 260px;
+  pointer-events: none;
+  font-size: 0.82rem;
+}
+.tooltip-header {
+  background: #1a3a5c;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px 6px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.tt-numero {
+  font-weight: bold;
+  font-size: 1rem;
+}
+.tt-descripcion {
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+.tt-estado-badge {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+.badge-pagado { background: #28a745; color: white; }
+.badge-pendiente { background: #dc3545; color: white; }
+.badge-neutral { background: #6c757d; color: white; }
+.tooltip-body {
+  padding: 10px 12px;
+}
+.tt-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 3px;
+  gap: 8px;
+}
+.tt-row span { color: #666; }
+.tooltip-body table td { padding: 1px 4px; }

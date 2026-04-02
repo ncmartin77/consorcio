@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Proveedores{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-people"></i> Proveedores</h4>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalProv">
+    <i class="bi bi-plus-circle"></i> Nuevo Proveedor
+  </button>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-striped table-hover mb-0">
+        <thead class="table-primary">
+          <tr>
+            <th>Nombre</th>
+            <th>CUIT</th>
+            <th>Categoría</th>
+            <th>Teléfono</th>
+            <th>Email</th>
+            <th>Dirección</th>
+            <th>Notas</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in proveedores %}
+          <tr>
+            <td><strong>{{ p.nombre }}</strong></td>
+            <td class="text-muted">{{ p.cuit }}</td>
+            <td>{% if p.categoria %}<span class="badge bg-secondary">{{ p.categoria }}</span>{% endif %}</td>
+            <td>{{ p.telefono }}</td>
+            <td><a href="mailto:{{ p.email }}">{{ p.email }}</a></td>
+            <td class="text-muted small">{{ p.direccion }}</td>
+            <td class="text-muted small">{{ p.notas }}</td>
+            <td class="text-nowrap">
+              <button class="btn btn-sm btn-outline-secondary me-1"
+                      onclick='editarProv({{ p|tojson }})'>
+                <i class="bi bi-pencil"></i>
+              </button>
+              <form method="POST" action="{{ url_for('delete_proveedor', pid=p.id) }}"
+                    class="d-inline"
+                    onsubmit="return confirm('¿Eliminar proveedor {{ p.nombre }}?')">
+                <button class="btn btn-sm btn-outline-danger">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="8" class="text-center text-muted py-4">
+              No hay proveedores cargados.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Proveedor -->
+<div class="modal fade" id="modalProv" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('save_proveedor') }}">
+        <input type="hidden" name="id" id="prov_id">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="modalProvTitulo">
+            <i class="bi bi-plus-circle"></i> Nuevo Proveedor
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Nombre *</label>
+              <input type="text" class="form-control" id="prov_nombre" name="nombre" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">CUIT</label>
+              <input type="text" class="form-control" id="prov_cuit" name="cuit"
+                     placeholder="20-12345678-9">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Categoría</label>
+              <input type="text" class="form-control" id="prov_categoria" name="categoria"
+                     placeholder="Ej: Limpieza, Electricidad">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Teléfono</label>
+              <input type="text" class="form-control" id="prov_telefono" name="telefono">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Email</label>
+              <input type="email" class="form-control" id="prov_email" name="email">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Dirección</label>
+              <input type="text" class="form-control" id="prov_direccion" name="direccion">
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">Notas</label>
+              <textarea class="form-control" id="prov_notas" name="notas" rows="2"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save"></i> Guardar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+function editarProv(p) {
+  document.getElementById('modalProvTitulo').innerHTML =
+    '<i class="bi bi-pencil"></i> Editar Proveedor';
+  document.getElementById('prov_id').value = p.id;
+  document.getElementById('prov_nombre').value = p.nombre || '';
+  document.getElementById('prov_cuit').value = p.cuit || '';
+  document.getElementById('prov_categoria').value = p.categoria || '';
+  document.getElementById('prov_telefono').value = p.telefono || '';
+  document.getElementById('prov_email').value = p.email || '';
+  document.getElementById('prov_direccion').value = p.direccion || '';
+  document.getElementById('prov_notas').value = p.notas || '';
+  new bootstrap.Modal(document.getElementById('modalProv')).show();
+}
+document.getElementById('modalProv').addEventListener('hidden.bs.modal', function() {
+  document.getElementById('modalProvTitulo').innerHTML =
+    '<i class="bi bi-plus-circle"></i> Nuevo Proveedor';
+  this.querySelectorAll('input,textarea').forEach(el => el.value = '');
+  document.getElementById('prov_id').value = '';
+});
+</script>
+{% endblock %}

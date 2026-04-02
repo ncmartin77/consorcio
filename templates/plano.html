@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}Plano del Edificio{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-building"></i> Plano del Edificio</h4>
+  <div class="d-flex gap-2 align-items-center">
+    <input type="month" class="form-control form-control-sm" id="periodoSelector"
+           value="{{ periodo }}">
+    <span class="text-muted small">Período: <strong>{{ periodo }}</strong></span>
+  </div>
+</div>
+
+<!-- Fondo de Reserva -->
+<div class="alert alert-success d-flex align-items-center gap-3 py-2 mb-3">
+  <i class="bi bi-piggy-bank-fill fs-4"></i>
+  <div>
+    <strong>Fondo de Reserva disponible:</strong>
+    <span class="fs-5 ms-2">$ {{ "%.2f"|format(fondo)|replace(".",",") }}</span>
+    <a href="{{ url_for('config') }}" class="ms-3 small text-muted">
+      <i class="bi bi-pencil"></i> Actualizar
+    </a>
+  </div>
+</div>
+
+<!-- Leyenda -->
+<div class="d-flex gap-3 mb-3 align-items-center flex-wrap">
+  <span class="badge-leyenda pagado"><i class="bi bi-check-circle-fill"></i> Pagado</span>
+  <span class="badge-leyenda pendiente"><i class="bi bi-clock-fill"></i> Pendiente</span>
+  <span class="badge-leyenda sin-liq"><i class="bi bi-dash-circle"></i> Sin liquidación</span>
+  <span class="badge-leyenda inactiva"><i class="bi bi-x-circle"></i> Inactiva</span>
+</div>
+
+{% if not unidades %}
+<div class="alert alert-info">
+  No hay unidades cargadas. <a href="{{ url_for('unidades') }}">Agregá unidades primero.</a>
+</div>
+{% else %}
+
+<div class="edificio-container">
+  <!-- Techo -->
+  <div class="techo">
+    <div class="techo-triangle"></div>
+    <div class="techo-label"><i class="bi bi-building"></i> EDIFICIO</div>
+  </div>
+
+  <!-- Pisos (ordenados de mayor a menor desde Python) -->
+  {% for piso_nombre, piso_unidades in pisos %}
+  <div class="piso-row">
+    <div class="piso-label">{{ piso_nombre }}</div>
+    <div class="unidades-row">
+      {% for u in piso_unidades %}
+      {% if not u.activo %}
+        {% set estado_class = 'unidad-inactiva' %}
+        {% set estado_txt = 'Inactiva' %}
+        {% set estado_icon = '×' %}
+      {% elif u.tipo_pago == 'TOTAL' %}
+        {% set estado_class = 'unidad-pagada' %}
+        {% set estado_txt = 'Pagado' %}
+        {% set estado_icon = '✓' %}
+      {% elif u.tipo_pago == 'PARCIAL' %}
+        {% set estado_class = 'unidad-parcial' %}
+        {% set estado_txt = 'Parcial' %}
+        {% set estado_icon = '½' %}
+      {% elif u.tiene_liquidacion %}
+        {% set estado_class = 'unidad-pendiente' %}
+        {% set estado_txt = 'Pendiente' %}
+        {% set estado_icon = '!' %}
+      {% else %}
+        {% set estado_class = 'unidad-sin-liq' %}
+        {% set estado_txt = 'Sin liquidación' %}
+        {% set estado_icon = '—' %}
+      {% endif %}
+
+      <div class="unidad-box {{ estado_class }}"
+           data-numero="{{ u.numero }}"
+           data-descripcion="{{ u.descripcion }}"
+           data-propietario="{{ u.propietario }}"
+           data-inquilino="{{ u.inquilino }}"
+           data-piso="{{ u.piso }}"
+           data-pct="{{ '%.2f'|format(u.pct|float) }}"
+           data-expensas="{{ '%.2f'|format(u.expensas|float) }}"
+           data-deuda="{{ '%.2f'|format(u.deuda_anterior|float) }}"
+           data-interes="{{ '%.2f'|format(u.interes|float) }}"
+           data-total="{{ '%.2f'|format(u.total_a_pagar|float) }}"
+           data-monto="{{ '%.2f'|format(u.monto_pagado|float) }}"
+           data-saldo="{{ '%.2f'|format(u.saldo_pendiente|float) }}"
+           data-tipopago="{{ u.tipo_pago }}"
+           data-estado="{{ estado_txt }}"
+           data-tieneliq="{{ 'si' if u.tiene_liquidacion else 'no' }}">
+        <div class="unidad-numero">{{ u.numero }}</div>
+        <div class="unidad-estado-icon">{{ estado_icon }}</div>
+        {% if u.tipo_pago == 'PENDIENTE' and u.tiene_liquidacion %}
+        <div class="unidad-monto">$ {{ '{:,.0f}'.format(u.total_a_pagar) }}</div>
+        {% elif u.tipo_pago == 'PARCIAL' %}
+        <div class="unidad-monto text-warning">$ {{ '{:,.0f}'.format(u.saldo_pendiente) }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  <!-- Base del edificio -->
+  <div class="edificio-base"></div>
+</div>
+
+<!-- Tooltip flotante -->
+<div id="tooltip-unidad" class="tooltip-edificio" style="display:none;">
+  <div class="tooltip-header">
+    <span id="tt-numero" class="tt-numero"></span>
+    <span id="tt-descripcion" class="tt-descripcion"></span>
+    <span id="tt-estado-badge" class="tt-estado-badge"></span>
+  </div>
+  <div class="tooltip-body">
+    <div class="tt-row"><span>Propietario:</span> <strong id="tt-propietario"></strong></div>
+    <div class="tt-row" id="tt-inquilino-row"><span>Inquilino:</span> <strong id="tt-inquilino"></strong></div>
+    <div class="tt-row"><span>% U.F.:</span> <strong id="tt-pct"></strong>%</div>
+    <hr class="my-1">
+    <div class="tt-row" id="tt-liq-section">
+      <table class="w-100 small">
+        <tr><td>Expensas:</td><td class="text-end"><strong id="tt-expensas"></strong></td></tr>
+        <tr id="tt-deuda-row"><td>Deuda ant.:</td><td class="text-end text-danger"><strong id="tt-deuda"></strong></td></tr>
+        <tr id="tt-interes-row"><td>Interés mora:</td><td class="text-end text-warning"><strong id="tt-interes"></strong></td></tr>
+        <tr class="fw-bold"><td>TOTAL:</td><td class="text-end text-danger"><strong id="tt-total"></strong></td></tr>
+      </table>
+    </div>
+    <div id="tt-sin-liq" class="text-muted small text-center py-1" style="display:none;">
+      Sin liquidación generada para este período.
+    </div>
+  </div>
+</div>
+
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('periodoSelector').addEventListener('change', function() {
+  window.location.href = '{{ url_for("plano") }}/' + this.value;
+});
+
+const tooltip = document.getElementById('tooltip-unidad');
+const boxes = document.querySelectorAll('.unidad-box');
+
+function fmt(val) {
+  return '$ ' + parseFloat(val).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+boxes.forEach(box => {
+  box.addEventListener('mouseenter', function(e) {
+    const d = this.dataset;
+    document.getElementById('tt-numero').textContent = d.numero;
+    document.getElementById('tt-descripcion').textContent = d.descripcion ? ' — ' + d.descripcion : '';
+    document.getElementById('tt-propietario').textContent = d.propietario || '—';
+    document.getElementById('tt-inquilino').textContent = d.inquilino || '—';
+    document.getElementById('tt-inquilino-row').style.display = d.inquilino ? '' : 'none';
+    document.getElementById('tt-pct').textContent = d.pct;
+
+    const estadoBadge = document.getElementById('tt-estado-badge');
+    estadoBadge.textContent = d.estado;
+    estadoBadge.className = 'tt-estado-badge';
+    if (d.estado === 'Pagado') estadoBadge.classList.add('badge-pagado');
+    else if (d.estado === 'Pendiente') estadoBadge.classList.add('badge-pendiente');
+    else estadoBadge.classList.add('badge-neutral');
+
+    if (d.tieneliq === 'si') {
+      document.getElementById('tt-liq-section').style.display = '';
+      document.getElementById('tt-sin-liq').style.display = 'none';
+      document.getElementById('tt-expensas').textContent = fmt(d.expensas);
+      document.getElementById('tt-total').textContent = fmt(d.total);
+      const deuda = parseFloat(d.deuda);
+      document.getElementById('tt-deuda-row').style.display = deuda > 0 ? '' : 'none';
+      document.getElementById('tt-deuda').textContent = fmt(d.deuda);
+      const interes = parseFloat(d.interes);
+      document.getElementById('tt-interes-row').style.display = interes > 0 ? '' : 'none';
+      document.getElementById('tt-interes').textContent = fmt(d.interes);
+    } else {
+      document.getElementById('tt-liq-section').style.display = 'none';
+      document.getElementById('tt-sin-liq').style.display = '';
+    }
+
+    tooltip.style.display = 'block';
+    posicionarTooltip(e);
+  });
+
+  box.addEventListener('mousemove', posicionarTooltip);
+
+  box.addEventListener('mouseleave', function() {
+    tooltip.style.display = 'none';
+  });
+});
+
+function posicionarTooltip(e) {
+  const ttW = tooltip.offsetWidth || 260;
+  const ttH = tooltip.offsetHeight || 200;
+  let x = e.clientX + window.scrollX + 15;
+  let y = e.clientY + window.scrollY - 10;
+  if (x + ttW > window.innerWidth + window.scrollX - 20) {
+    x = e.clientX + window.scrollX - ttW - 15;
+  }
+  if (y + ttH > window.innerHeight + window.scrollY - 20) {
+    y = e.clientY + window.scrollY - ttH - 10;
+  }
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+}
+</script>
+{% endblock %}

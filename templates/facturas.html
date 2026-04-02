@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}Facturas{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-receipt-cutoff"></i> Facturas de Proveedores</h4>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalFac">
+    <i class="bi bi-plus-circle"></i> Nueva Factura
+  </button>
+</div>
+
+<!-- Filtros y resumen -->
+<div class="row g-2 mb-3">
+  <div class="col-auto">
+    <div class="btn-group btn-group-sm" role="group">
+      <a href="{{ url_for('facturas') }}"
+         class="btn {% if not estado_filtro %}btn-primary{% else %}btn-outline-primary{% endif %}">
+        Todas
+      </a>
+      <a href="{{ url_for('facturas', estado='PENDIENTE') }}"
+         class="btn {% if estado_filtro == 'PENDIENTE' %}btn-danger{% else %}btn-outline-danger{% endif %}">
+        Pendientes
+      </a>
+      <a href="{{ url_for('facturas', estado='PAGADA') }}"
+         class="btn {% if estado_filtro == 'PAGADA' %}btn-success{% else %}btn-outline-success{% endif %}">
+        Pagadas
+      </a>
+    </div>
+  </div>
+  {% if total_pendiente > 0 %}
+  <div class="col-auto ms-auto">
+    <div class="alert alert-warning py-1 px-3 mb-0 small">
+      <i class="bi bi-exclamation-triangle"></i>
+      Total pendiente de pago:
+      <strong>$ {{ "%.2f"|format(total_pendiente)|replace(".",",") }}</strong>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-striped table-hover mb-0 small">
+        <thead class="table-primary">
+          <tr>
+            <th>Fecha</th>
+            <th>N° Factura</th>
+            <th>Proveedor</th>
+            <th>Descripción</th>
+            <th>Categoría</th>
+            <th class="text-end">Importe</th>
+            <th class="text-center">Estado</th>
+            <th>Fecha Pago</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in facturas %}
+          <tr class="{% if f.estado == 'PAGADA' %}table-success{% elif f.estado == 'PENDIENTE' %}table-danger{% endif %}">
+            <td>{{ f.fecha }}</td>
+            <td class="text-muted">{{ f.numero_factura }}</td>
+            <td><strong>{{ f.proveedor_nombre }}</strong></td>
+            <td>{{ f.descripcion }}</td>
+            <td>{% if f.categoria %}<span class="badge bg-secondary">{{ f.categoria }}</span>{% endif %}</td>
+            <td class="text-end fw-semibold">$ {{ "%.2f"|format(f.importe)|replace(".",",") }}</td>
+            <td class="text-center">
+              {% if f.estado == 'PAGADA' %}
+                <span class="badge bg-success">Pagada</span>
+              {% else %}
+                <span class="badge bg-danger">Pendiente</span>
+              {% endif %}
+            </td>
+            <td class="text-muted">{{ f.fecha_pago or '' }}</td>
+            <td class="text-nowrap">
+              {% if f.estado == 'PENDIENTE' %}
+              <button class="btn btn-sm btn-success me-1"
+                      onclick="pagarFactura({{ f.id }}, '{{ f.proveedor_nombre }}', {{ f.importe }})"
+                      title="Marcar como pagada">
+                <i class="bi bi-check-circle"></i> Pagar
+              </button>
+              {% endif %}
+              <form method="POST"
+                    action="{{ url_for('delete_factura', fid=f.id) }}"
+                    class="d-inline"
+                    onsubmit="return confirm('¿Eliminar esta factura?')">
+                <button class="btn btn-sm btn-outline-danger">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="9" class="text-center text-muted py-4">
+              No hay facturas {% if estado_filtro %}{{ estado_filtro.lower() }}s{% endif %}.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Nueva Factura -->
+<div class="modal fade" id="modalFac" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('save_factura') }}">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title">
+            <i class="bi bi-plus-circle"></i> Nueva Factura
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Fecha *</label>
+              <input type="date" class="form-control" name="fecha" id="fac_fecha" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">N° Factura</label>
+              <input type="text" class="form-control" name="numero_factura"
+                     placeholder="Ej: 0001-00012345">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Proveedor</label>
+              <select class="form-select" name="proveedor_id" id="fac_proveedor">
+                <option value="">-- Sin proveedor registrado --</option>
+                {% for p in proveedores %}
+                <option value="{{ p.id }}">{{ p.nombre }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">Descripción *</label>
+              <input type="text" class="form-control" name="descripcion"
+                     placeholder="Ej: Servicio de limpieza enero" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Importe *</label>
+              <div class="input-group">
+                <span class="input-group-text">$</span>
+                <input type="number" class="form-control" name="importe"
+                       step="0.01" min="0" required>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Categoría</label>
+              <input type="text" class="form-control" name="categoria"
+                     placeholder="Ej: Limpieza, Mantenimiento">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save"></i> Guardar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Pagar Factura -->
+<div class="modal fade" id="modalPagar" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <form method="POST" id="formPagar">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title"><i class="bi bi-check-circle"></i> Registrar Pago</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-2">Proveedor: <strong id="pagar_prov"></strong></p>
+          <p class="mb-3">Importe: <strong id="pagar_importe" class="text-danger"></strong></p>
+          <label class="form-label fw-semibold">Fecha de Pago *</label>
+          <input type="date" class="form-control" name="fecha_pago" id="pagar_fecha" required>
+          <small class="text-muted">Se registrará automáticamente como salida en Caja Diaria.</small>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-check-circle"></i> Confirmar Pago
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+// Fecha por defecto: hoy
+document.getElementById('fac_fecha').value = new Date().toISOString().split('T')[0];
+document.getElementById('pagar_fecha').value = new Date().toISOString().split('T')[0];
+
+function pagarFactura(fid, proveedor, importe) {
+  document.getElementById('pagar_prov').textContent = proveedor;
+  document.getElementById('pagar_importe').textContent =
+    '$ ' + importe.toLocaleString('es-AR', {minimumFractionDigits: 2});
+  document.getElementById('formPagar').action = '/facturas/pagar/' + fid;
+  new bootstrap.Modal(document.getElementById('modalPagar')).show();
+}
+</script>
+{% endblock %}

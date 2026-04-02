@@ -1,0 +1,19 @@
+# Entorno virtual
+venv/
+
+# Base de datos (datos personales)
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log

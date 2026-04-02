@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}Gastos Mensuales{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-list-check"></i> Gastos Mensuales</h4>
+  <div class="d-flex gap-2 align-items-center">
+    <form method="GET" action="{{ url_for('gastos') }}" class="d-flex gap-2">
+      <input type="month" class="form-control form-control-sm"
+             name="p" value="{{ periodo }}"
+             onchange="this.form.submit()">
+    </form>
+    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalGasto">
+      <i class="bi bi-plus-circle"></i> Agregar
+    </button>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-body p-0">
+        <table class="table table-striped table-hover mb-0">
+          <thead class="table-primary">
+            <tr>
+              <th>Concepto</th>
+              <th class="text-end">Importe</th>
+              <th class="text-center">Tipo</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for g in gastos %}
+            <tr>
+              <td>{{ g.concepto }}</td>
+              <td class="text-end fw-semibold">$ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td>
+              <td class="text-center">
+                {% if g.tipo == 'FIJO' %}
+                  <span class="badge bg-primary">Fijo</span>
+                {% elif g.tipo == 'VARIABLE' %}
+                  <span class="badge bg-warning text-dark">Variable</span>
+                {% elif g.tipo == 'FONDO_RESERVA' %}
+                  <span class="badge bg-info">Fondo Reserva</span>
+                {% else %}
+                  <span class="badge bg-secondary">{{ g.tipo }}</span>
+                {% endif %}
+              </td>
+              <td>
+                <button class="btn btn-sm btn-outline-secondary me-1"
+                        onclick='editarGasto({{ g|tojson }})'>
+                  <i class="bi bi-pencil"></i>
+                </button>
+                <form method="POST"
+                      action="{{ url_for('delete_gasto', row_num=g.row, periodo=periodo) }}"
+                      class="d-inline"
+                      onsubmit="return confirm('¿Eliminar este gasto?')">
+                  <button class="btn btn-sm btn-outline-danger">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="4" class="text-center text-muted py-4">
+                No hay gastos cargados para {{ periodo }}.
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          {% if gastos %}
+          <tfoot class="table-light fw-bold">
+            <tr>
+              <td>TOTAL</td>
+              <td class="text-end text-danger fs-5">
+                $ {{ "%.2f"|format(total)|replace(".",",") }}
+              </td>
+              <td colspan="2"></td>
+            </tr>
+          </tfoot>
+          {% endif %}
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card shadow-sm border-success">
+      <div class="card-header bg-success text-white">
+        <i class="bi bi-calculator"></i> Resumen
+      </div>
+      <div class="card-body">
+        <p class="mb-1">Período: <strong>{{ periodo }}</strong></p>
+        <p class="mb-1">Gastos cargados: <strong>{{ gastos|length }}</strong></p>
+        <hr>
+        <p class="fs-5 fw-bold text-danger mb-3">
+          Total: $ {{ "%.2f"|format(total)|replace(".",",") }}
+        </p>
+        <form method="POST" action="{{ url_for('generar_liquidacion', periodo=periodo) }}">
+          <button type="submit" class="btn btn-success w-100"
+                  onclick="return confirm('¿Generar/actualizar la liquidación para {{ periodo }}? Esto recalculará todos los valores.')">
+            <i class="bi bi-receipt"></i> Generar Liquidación
+          </button>
+        </form>
+        <p class="text-muted small mt-2">
+          Esto distribuye los gastos entre todas las unidades activas según sus porcentajes.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Gasto -->
+<div class="modal fade" id="modalGasto" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('save_gasto') }}">
+        <input type="hidden" name="periodo" value="{{ periodo }}">
+        <input type="hidden" name="row_num" id="gasto_row_num">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="modalGastoTitulo">
+            <i class="bi bi-plus-circle"></i> Agregar Gasto
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Concepto *</label>
+            <input type="text" class="form-control" id="gasto_concepto" name="concepto"
+                   placeholder="Ej: Empresa de limpieza" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Importe *</label>
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              <input type="number" class="form-control" id="gasto_importe" name="importe"
+                     step="0.01" min="0" required>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Tipo</label>
+            <select class="form-select" id="gasto_tipo" name="tipo">
+              <option value="FIJO">Fijo</option>
+              <option value="VARIABLE">Variable</option>
+              <option value="FONDO_RESERVA">Fondo de Reserva</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save"></i> Guardar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+// Redirigir con mes seleccionado
+document.querySelector('input[name="p"]').addEventListener('change', function() {
+  window.location.href = '{{ url_for("gastos") }}/' + this.value;
+});
+
+function editarGasto(g) {
+  document.getElementById('modalGastoTitulo').innerHTML =
+    '<i class="bi bi-pencil"></i> Editar Gasto';
+  document.getElementById('gasto_row_num').value = g.row;
+  document.getElementById('gasto_concepto').value = g.concepto;
+  document.getElementById('gasto_importe').value = g.importe;
+  document.getElementById('gasto_tipo').value = g.tipo;
+  new bootstrap.Modal(document.getElementById('modalGasto')).show();
+}
+
+document.getElementById('modalGasto').addEventListener('hidden.bs.modal', function() {
+  document.getElementById('modalGastoTitulo').innerHTML =
+    '<i class="bi bi-plus-circle"></i> Agregar Gasto';
+  document.getElementById('gasto_row_num').value = '';
+  document.getElementById('gasto_concepto').value = '';
+  document.getElementById('gasto_importe').value = '';
+  document.getElementById('gasto_tipo').value = 'FIJO';
+});
+</script>
+{% endblock %}

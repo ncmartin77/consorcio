@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Configuración{% endblock %}
+{% block content %}
+<div class="row">
+  <div class="col-lg-7">
+    <div class="card shadow-sm mb-4">
+      <div class="card-header bg-primary text-white">
+        <i class="bi bi-gear-fill"></i> Datos del Edificio y Administración
+      </div>
+      <div class="card-body">
+        <form method="POST">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label fw-semibold">Nombre del Edificio</label>
+              <input type="text" class="form-control" name="edificio_nombre"
+                     value="{{ cfg.get('edificio_nombre','') }}" required>
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">Dirección</label>
+              <input type="text" class="form-control" name="edificio_direccion"
+                     value="{{ cfg.get('edificio_direccion','') }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Alias CBU</label>
+              <input type="text" class="form-control" name="alias_cbu"
+                     value="{{ cfg.get('alias_cbu','') }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Titular de la Cuenta</label>
+              <input type="text" class="form-control" name="titular_cuenta"
+                     value="{{ cfg.get('titular_cuenta','') }}">
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">Administrador</label>
+              <input type="text" class="form-control" name="administrador"
+                     value="{{ cfg.get('administrador','') }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Teléfono</label>
+              <input type="text" class="form-control" name="telefono"
+                     value="{{ cfg.get('telefono','') }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">WhatsApp</label>
+              <input type="text" class="form-control" name="whatsapp"
+                     value="{{ cfg.get('whatsapp','') }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Email</label>
+              <input type="email" class="form-control" name="email"
+                     value="{{ cfg.get('email','') }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Tasa de Mora (%)</label>
+              <input type="number" class="form-control" name="tasa_mora" step="0.1" min="0"
+                     value="{{ cfg.get('tasa_mora','7') }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Día de Vencimiento</label>
+              <input type="number" class="form-control" name="dia_vencimiento" min="1" max="31"
+                     value="{{ cfg.get('dia_vencimiento','15') }}">
+            </div>
+            <div class="col-12">
+              <hr>
+              <h6 class="text-success"><i class="bi bi-piggy-bank"></i> Fondo de Reserva</h6>
+            </div>
+            <div class="col-md-5">
+              <label class="form-label fw-semibold">Aporte mensual al Fondo de Reserva $</label>
+              <div class="input-group">
+                <span class="input-group-text">$</span>
+                <input type="number" class="form-control" name="fondo_reserva_mensual"
+                       step="0.01" min="0"
+                       value="{{ cfg.get('fondo_reserva_mensual','0') }}">
+              </div>
+              <small class="text-muted">Se agrega automáticamente como gasto cada mes. El acumulado se calcula sumando todos los aportes.</small>
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-primary">
+                <i class="bi bi-save"></i> Guardar Configuración
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-header bg-secondary text-white">
+        <i class="bi bi-percent"></i> Categorías de Porcentaje
+      </div>
+      <div class="card-body">
+        <p class="text-muted small">
+          Definí las categorías de % para distribuir los gastos por unidad.
+          Por ejemplo: <strong>GENERAL</strong>, <strong>ASCENSOR</strong>, <strong>COCHERA</strong>.
+        </p>
+        {% if categorias %}
+        <table class="table table-sm table-bordered">
+          <thead class="table-light">
+            <tr><th>Nombre</th><th>Descripción</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for cat in categorias %}
+            <tr>
+              <td><strong>{{ cat.nombre }}</strong></td>
+              <td class="text-muted">{{ cat.descripcion }}</td>
+              <td>
+                <form method="POST" action="{{ url_for('delete_categoria', nombre=cat.nombre) }}"
+                      onsubmit="return confirm('¿Eliminar categoría {{ cat.nombre }}?')">
+                  <button class="btn btn-sm btn-outline-danger">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted">No hay categorías definidas todavía.</p>
+        {% endif %}
+
+        <hr>
+        <h6>Agregar Categoría</h6>
+        <form method="POST" action="{{ url_for('add_categoria') }}" class="row g-2">
+          <div class="col-5">
+            <input type="text" class="form-control form-control-sm" name="nombre"
+                   placeholder="Ej: GENERAL" required>
+          </div>
+          <div class="col-5">
+            <input type="text" class="form-control form-control-sm" name="descripcion"
+                   placeholder="Descripción (opcional)">
+          </div>
+          <div class="col-2">
+            <button type="submit" class="btn btn-sm btn-success w-100">
+              <i class="bi bi-plus"></i>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Zona de reseteo -->
+<div class="row mt-3">
+  <div class="col-lg-12">
+    <div class="card border-danger shadow-sm">
+      <div class="card-header bg-danger text-white">
+        <i class="bi bi-exclamation-triangle-fill"></i> Zona de Pruebas — Reseteo de Datos
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          Borra <strong>liquidaciones, gastos mensuales y caja diaria</strong>.
+          Las unidades funcionales y proveedores <strong>no se tocan</strong>.
+        </p>
+        <form method="POST" action="{{ url_for('reset_datos') }}"
+              onsubmit="return confirm('¿Seguro? Se borrarán TODAS las liquidaciones, gastos y movimientos de caja. Las unidades y proveedores quedan intactos.')">
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash3-fill"></i> Borrar liquidaciones, gastos y caja
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
