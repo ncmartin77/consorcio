@@ -249,7 +249,8 @@ def liquidacion(periodo=None):
     total_deuda = sum(r["deuda_anterior"] for r in liq)
     pendientes = sum(1 for r in liq if r.get("tipo_pago", "PENDIENTE") not in ("TOTAL",))
     total_cobrado = sum(r.get("monto_pagado", 0) for r in liq)
-    saldo_caja, entradas, salidas = db.get_saldo_caja()
+    saldo_caja, _, _ = db.get_saldo_caja()  # balance acumulado total
+    entradas, salidas = db.get_movimientos_periodo(periodo)  # solo este mes
     fondo = db.get_fondo_reserva()
     return render_template("liquidacion.html",
                            liq=liq,

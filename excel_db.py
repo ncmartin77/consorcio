@@ -901,7 +901,7 @@ def delete_presupuesto(pres_id):
 
 
 def get_saldo_caja():
-    """Saldo actual = total entradas - total salidas en CAJA_DIARIA."""
+    """Saldo acumulado total (banco): todas las entradas - todas las salidas."""
     wb = _get_wb()
     ws = _ensure_sheet(wb, SHEET_CAJA, ["fecha", "descripcion", "tipo", "categoria", "importe"])
     entradas = salidas = 0.0
@@ -914,6 +914,29 @@ def get_saldo_caja():
         elif row[2] == "SALIDA":
             salidas += importe
     return round(entradas - salidas, 2), round(entradas, 2), round(salidas, 2)
+
+
+def get_movimientos_periodo(periodo: str):
+    """Entradas y salidas filtradas solo por el período 'YYYY-MM'."""
+    wb = _get_wb()
+    ws = _ensure_sheet(wb, SHEET_CAJA, ["fecha", "descripcion", "tipo", "categoria", "importe"])
+    entradas = salidas = 0.0
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not row[0]:
+            continue
+        fecha = row[0]
+        if hasattr(fecha, "strftime"):
+            fecha_str = fecha.strftime("%Y-%m")
+        else:
+            fecha_str = str(fecha)[:7]
+        if fecha_str != periodo:
+            continue
+        importe = float(row[4]) if row[4] else 0.0
+        if row[2] == "ENTRADA":
+            entradas += importe
+        elif row[2] == "SALIDA":
+            salidas += importe
+    return round(entradas, 2), round(salidas, 2)
 
 
 def get_fondo_reserva():
