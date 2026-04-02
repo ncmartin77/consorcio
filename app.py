@@ -130,14 +130,15 @@ def delete_unidad(numero):
 # ---------------------------------------------------------------------------
 
 def _recalcular_liq_si_posible(periodo):
-    """Genera o recalcula la liquidación del período, salvo que haya pagos registrados."""
-    liq = db.get_liquidacion(periodo)
+    """Cuando se modifica un gasto del mes P, recalcula la liquidación del mes P+1."""
+    periodo_liq = db._next_periodo(periodo)
+    liq = db.get_liquidacion(periodo_liq)
     pagados = [r for r in liq if r.get("tipo_pago") in ("TOTAL", "PARCIAL")]
     if pagados:
-        flash("Gasto guardado. Hay pagos registrados — recalculá manualmente con el botón Generar.", "warning")
+        flash("Gasto guardado. Hay pagos registrados en la liquidación — recalculá manualmente con Generar.", "warning")
     else:
-        db.generar_liquidacion(periodo)
-        flash("Gasto guardado. Liquidación actualizada.", "success")
+        db.generar_liquidacion(periodo_liq)
+        flash("Gasto guardado. Liquidación de " + periodo_liq + " actualizada.", "success")
 
 
 @app.route("/gastos")
@@ -243,8 +244,9 @@ def liquidacion(periodo=None):
     if not periodo:
         periodo = _periodo_actual()
     liq = db.get_liquidacion(periodo)
-    gastos = db.get_gastos(periodo)
-    total_gastos = db.get_total_gastos(periodo)
+    mes_gastos = db._prev_periodo(periodo)  # gastos del mes anterior
+    gastos = db.get_gastos(mes_gastos)
+    total_gastos = db.get_total_gastos(mes_gastos)
     total_a_pagar = sum(r["total_a_pagar"] for r in liq)
     total_deuda = sum(r["deuda_anterior"] for r in liq)
     pendientes = sum(1 for r in liq if r.get("tipo_pago", "PENDIENTE") not in ("TOTAL",))
@@ -301,7 +303,7 @@ def descargar_pdf(periodo):
     if not liq:
         flash("No hay liquidación generada para este período.", "warning")
         return redirect(url_for("liquidacion", periodo=periodo))
-    gastos = db.get_gastos(periodo)
+    gastos = db.get_gastos(db._prev_periodo(periodo))
     cfg = db.get_config()
     saldo_caja, _, _ = db.get_saldo_caja()
     fondo = db.get_fondo_reserva()

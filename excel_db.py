@@ -409,16 +409,25 @@ def _prev_periodo(periodo: str):
     return f"{y}-{m-1:02d}"
 
 
+def _next_periodo(periodo: str):
+    y, m = int(periodo[:4]), int(periodo[5:7])
+    if m == 12:
+        return f"{y+1}-01"
+    return f"{y}-{m+1:02d}"
+
+
 def generar_liquidacion(periodo: str):
     """
     Genera/regenera las filas de liquidación para el periodo.
     Preserva los pagos ya registrados (TOTAL/PARCIAL) al recalcular.
     """
-    ensure_fondo_reserva_gasto(periodo)
+    # Liquidación a mes vencido: los gastos son del mes ANTERIOR
+    mes_gastos = _prev_periodo(periodo)
+    ensure_fondo_reserva_gasto(mes_gastos)
     cfg = get_config()
     tasa_mora = float(cfg.get("tasa_mora", 7)) / 100
     unidades = get_unidades(solo_activas=True)
-    gastos = get_gastos(periodo)
+    gastos = get_gastos(mes_gastos)
     total_gastos = sum(g["importe"] for g in gastos)
     categorias = [c["nombre"] for c in get_categorias()]
 
