@@ -376,8 +376,6 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
     caja_data = [
         ["ESTADO FINANCIERO"],
         ["Saldo en Caja", _fmt(saldo_caja)],
-        ["Fondo de Reserva (*)", _fmt(fondo_reserva)],
-        ["(*) pendiente de cobro", ""],
     ]
     ct = Table(caja_data, colWidths=[3.8*cm, 3.4*cm])  # = 7.2 cm
     ct.setStyle(TableStyle([
@@ -386,11 +384,8 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,-1), 8),
         ("FONTNAME", (0,1), (-1,1), "Helvetica-Bold"),
         ("BACKGROUND", (0,1), (-1,1), colors.HexColor("#d4edda")),
-        ("ROWBACKGROUNDS", (0,2), (-1,2), [colors.HexColor("#f0fff0")]),
-        ("SPAN", (0,3), (1,3)), ("FONTSIZE", (0,3), (1,3), 6),
-        ("TEXTCOLOR", (0,3), (1,3), colors.grey),
-        ("ALIGN", (1,1), (1,2), "RIGHT"),
-        ("GRID", (0,0), (-1,2), 0.3, colors.grey),
+        ("ALIGN", (1,1), (1,1), "RIGHT"),
+        ("GRID", (0,0), (-1,-1), 0.3, colors.grey),
         ("TOPPADDING", (0,0), (-1,-1), 4), ("BOTTOMPADDING", (0,0), (-1,-1), 4),
         ("LEFTPADDING", (0,0), (-1,-1), 6),
     ]))
