@@ -440,11 +440,12 @@ def liquidacion_existe(periodo: str) -> bool:
 
 def generar_liquidacion(periodo: str):
     """
-    Genera las filas de liquidación para el periodo.
-    Una vez generada, no se puede regenerar (es inmutable).
+    Genera o recalcula las filas de liquidación para el periodo.
+    - Si está CERRADA: inmutable, retorna None.
+    - Si está ABIERTA o no existe: genera/recalcula (preservando pagos ya registrados).
     """
-    if liquidacion_existe(periodo):
-        return None  # Ya existe, no se regenera
+    if liq_esta_cerrada(periodo):
+        return None  # Cerrada, no se modifica
     # Liquidación a mes vencido: los gastos son del mes ANTERIOR
     mes_gastos = _prev_periodo(periodo)
     ensure_fondo_reserva_gasto(mes_gastos)

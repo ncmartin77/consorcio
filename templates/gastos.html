@@ -101,19 +101,25 @@
           Total: $ {{ "%.2f"|format(total)|replace(".",",") }}
         </p>
         {% if liq_prox_cerrada %}
-        <div class="alert alert-secondary py-2 small mb-0">
+        <div class="alert alert-danger py-2 small mb-0">
           <i class="bi bi-lock-fill"></i>
-          La liquidación de <strong>{{ prox_periodo }}</strong> ya está cerrada.
+          La liquidación de <strong>{{ prox_periodo }}</strong> está <strong>CERRADA</strong>.
+          Los cambios se reflejarán en el mes siguiente.
         </div>
         {% else %}
         <form method="POST" action="{{ url_for('generar_liquidacion', periodo=prox_periodo) }}">
-          <button type="submit" class="btn btn-success w-100"
-                  onclick="return confirm('¿Generar la liquidación de {{ prox_periodo }} con los gastos de {{ periodo }}? Una vez generada no podrá modificarse.')">
-            <i class="bi bi-receipt"></i> Generar Liquidación {{ prox_periodo }}
+          <button type="submit" class="btn btn-success w-100">
+            <i class="bi bi-receipt"></i>
+            {% if liq_prox_existe %}Recalcular{% else %}Generar{% endif %}
+            Liquidación {{ prox_periodo }}
           </button>
         </form>
         <p class="text-muted small mt-2">
+          {% if liq_prox_existe %}
+          La liquidación de <strong>{{ prox_periodo }}</strong> ya existe y se recalculará con los gastos actuales de <strong>{{ periodo }}</strong>.
+          {% else %}
           Distribuye los gastos de <strong>{{ periodo }}</strong> entre todas las unidades para la liquidación de <strong>{{ prox_periodo }}</strong>.
+          {% endif %}
         </p>
         {% endif %}
       </div>

@@ -148,16 +148,15 @@ def delete_unidad(numero):
 # ---------------------------------------------------------------------------
 
 def _recalcular_liq_si_posible(periodo):
-    """Cuando se guarda un gasto del mes P, genera la liquidación de P+1 si aún no existe."""
+    """Cuando se guarda un gasto del mes P, recalcula la liquidación de P+1.
+    - Si está CERRADA: no modifica nada (inmutable).
+    - Si está ABIERTA o no existe: regenera preservando pagos ya registrados.
+    """
     periodo_liq = db._next_periodo(periodo)
-    if db.liquidacion_existe(periodo_liq):
-        flash(f"Gasto guardado. La liquidación de {periodo_liq} ya está cerrada — la diferencia se refleja el mes siguiente.", "info")
+    if db.liq_esta_cerrada(periodo_liq):
+        flash(f"La liquidación de {periodo_liq} está cerrada — el gasto se reflejará en el mes siguiente.", "info")
     else:
-        resultado = db.generar_liquidacion(periodo_liq)
-        if resultado is not None:
-            flash(f"Gasto guardado. Liquidación de {periodo_liq} generada.", "success")
-        else:
-            flash("Gasto guardado.", "success")
+        db.generar_liquidacion(periodo_liq)
 
 
 @app.route("/gastos")
@@ -169,9 +168,11 @@ def gastos(periodo=None):
     gastos_list = db.get_gastos(periodo)
     total = db.get_total_gastos(periodo)
     prox_periodo = db._next_periodo(periodo)
-    liq_prox_cerrada = db.liquidacion_existe(prox_periodo)
+    liq_prox_cerrada = db.liq_esta_cerrada(prox_periodo)
+    liq_prox_existe = db.liquidacion_existe(prox_periodo)
     return render_template("gastos.html", gastos=gastos_list, periodo=periodo, total=total,
-                           prox_periodo=prox_periodo, liq_prox_cerrada=liq_prox_cerrada)
+                           prox_periodo=prox_periodo, liq_prox_cerrada=liq_prox_cerrada,
+                           liq_prox_existe=liq_prox_existe)
 
 
 @app.route("/gastos/save", methods=["POST"])
@@ -301,11 +302,11 @@ def liquidacion(periodo=None):
 
 @app.route("/liquidacion/generar/<periodo>", methods=["POST"])
 def generar_liquidacion(periodo):
-    if db.liquidacion_existe(periodo):
-        flash(f"La liquidación de {periodo} ya fue generada y no puede modificarse. Las diferencias se cargan en el mes siguiente.", "warning")
+    if db.liq_esta_cerrada(periodo):
+        flash(f"La liquidación de {periodo} está CERRADA y no puede modificarse.", "warning")
     else:
         db.generar_liquidacion(periodo)
-        flash(f"Liquidación generada para {periodo}.", "success")
+        flash(f"Liquidación generada/actualizada para {periodo}.", "success")
     return redirect(url_for("liquidacion", periodo=periodo))
 
 
