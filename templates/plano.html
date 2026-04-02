@@ -15,7 +15,7 @@
 <div class="alert alert-success d-flex align-items-center gap-3 py-2 mb-3">
   <i class="bi bi-piggy-bank-fill fs-4"></i>
   <div>
-    <strong>Fondo de Reserva disponible:</strong>
+    <strong>Fondo de Reserva acumulado (pendiente de cobro):</strong>
     <span class="fs-5 ms-2">$ {{ "%.2f"|format(fondo)|replace(".",",") }}</span>
     <a href="{{ url_for('config') }}" class="ms-3 small text-muted">
       <i class="bi bi-pencil"></i> Actualizar

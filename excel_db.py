@@ -262,6 +262,10 @@ def save_gasto(periodo: str, concepto: str, importe: float, tipo: str, row_num: 
     wb = _get_wb()
     ws = wb[SHEET_GASTOS]
     if row_num:
+        # No permitir editar el fondo de reserva ya asentado
+        existing_tipo = ws.cell(row=row_num, column=4).value
+        if existing_tipo == "FONDO_RESERVA":
+            return
         ws.cell(row=row_num, column=1).value = periodo
         ws.cell(row=row_num, column=2).value = concepto
         ws.cell(row=row_num, column=3).value = importe
@@ -274,6 +278,10 @@ def save_gasto(periodo: str, concepto: str, importe: float, tipo: str, row_num: 
 def delete_gasto(row_num: int):
     wb = _get_wb()
     ws = wb[SHEET_GASTOS]
+    # No permitir borrar el fondo de reserva ya asentado
+    existing_tipo = ws.cell(row=row_num, column=4).value
+    if existing_tipo == "FONDO_RESERVA":
+        return
     ws.delete_rows(row_num)
     _save_wb(wb)
 
