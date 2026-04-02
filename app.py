@@ -14,8 +14,21 @@ app = Flask(__name__)
 app.secret_key = "edificio-brasil-secret-2024"
 
 
+def _fecha_hoy():
+    """Returns today's date, using simulated date from config if set."""
+    cfg = db.get_config()
+    fs = cfg.get("fecha_simulada", "").strip()
+    if fs:
+        try:
+            from datetime import datetime as _dt
+            return _dt.strptime(fs, "%Y-%m-%d").date()
+        except ValueError:
+            pass
+    return date.today()
+
+
 def _periodo_actual():
-    today = date.today()
+    today = _fecha_hoy()
     return f"{today.year}-{today.month:02d}"
 
 
@@ -47,6 +60,11 @@ def config():
             "tasa_mora": request.form.get("tasa_mora", "7"),
             "dia_vencimiento": request.form.get("dia_vencimiento", "15"),
             "fondo_reserva_mensual": request.form.get("fondo_reserva_mensual", "0"),
+            "fecha_simulada": request.form.get("fecha_simulada", ""),
+            "dias_cobro": request.form.get("dias_cobro", ""),
+            "horario_cobro": request.form.get("horario_cobro", ""),
+            "direccion_cobro": request.form.get("direccion_cobro", ""),
+            "texto_anuncio": request.form.get("texto_anuncio", ""),
         }
         db.save_config(data)
         flash("Configuración guardada.", "success")
@@ -258,6 +276,8 @@ def liquidacion(periodo=None):
     saldo_caja, _, _ = db.get_saldo_caja()  # balance acumulado total
     entradas, salidas = db.get_movimientos_periodo(periodo)  # solo este mes
     fondo = db.get_fondo_reserva()
+    liq_cerrada = db.liq_esta_cerrada(periodo)
+    liq_generada = db.liquidacion_existe(periodo)
     return render_template("liquidacion.html",
                            liq=liq,
                            gastos=gastos,
@@ -270,7 +290,9 @@ def liquidacion(periodo=None):
                            saldo_caja=saldo_caja,
                            entradas_caja=entradas,
                            salidas_caja=salidas,
-                           fondo_reserva=fondo)
+                           fondo_reserva=fondo,
+                           liq_cerrada=liq_cerrada,
+                           liq_generada=liq_generada)
 
 
 @app.route("/liquidacion/generar/<periodo>", methods=["POST"])
@@ -283,10 +305,22 @@ def generar_liquidacion(periodo):
     return redirect(url_for("liquidacion", periodo=periodo))
 
 
+@app.route("/liquidacion/cerrar/<periodo>", methods=["POST"])
+def cerrar_liquidacion(periodo):
+    if not db.liquidacion_existe(periodo):
+        flash("No hay liquidación generada para cerrar.", "warning")
+    elif db.liq_esta_cerrada(periodo):
+        flash(f"La liquidación de {periodo} ya está cerrada.", "info")
+    else:
+        db.set_liq_estado(periodo, "CERRADA")
+        flash(f"Liquidación de {periodo} cerrada. Ya no se pueden registrar pagos.", "success")
+    return redirect(url_for("liquidacion", periodo=periodo))
+
+
 @app.route("/liquidacion/pagar/<periodo>/<unidad>", methods=["POST"])
 def marcar_pagado(periodo, unidad):
     monto_str = request.form.get("monto_pagado", "0").strip().replace(",", ".")
-    fecha_pago = request.form.get("fecha_pago") or date.today().strftime("%Y-%m-%d")
+    fecha_pago = request.form.get("fecha_pago") or _fecha_hoy().strftime("%Y-%m-%d")
     try:
         monto = float(monto_str)
     except ValueError:
@@ -294,7 +328,9 @@ def marcar_pagado(periodo, unidad):
     resultado = db.marcar_pagado(periodo, unidad, monto, fecha_pago)
     if resultado:
         tipo = resultado["tipo"]
-        if tipo == "PENDIENTE":
+        if tipo == "CERRADA":
+            flash(f"No se puede registrar el pago: la liquidación de {periodo} está cerrada.", "danger")
+        elif tipo == "PENDIENTE":
             flash(f"Pago de UF {unidad} revertido.", "warning")
         elif tipo == "PARCIAL":
             flash(f"UF {unidad}: pago parcial de ${monto:,.2f}. Saldo pendiente: ${resultado['saldo']:,.2f}.", "warning")
@@ -325,19 +361,22 @@ def descargar_pdf(periodo):
 
 @app.route("/liquidacion/recibo/<periodo>/<unidad>")
 def descargar_recibo(periodo, unidad):
-    """Recibo de pago individual por unidad."""
+    """Resumen de expensas individual por unidad."""
     liq = db.get_liquidacion(periodo)
     row = next((r for r in liq if str(r["unidad"]) == str(unidad)), None)
     if not row or row.get("tipo_pago", "PENDIENTE") == "PENDIENTE":
         flash("No hay pago registrado para esta unidad.", "warning")
         return redirect(url_for("liquidacion", periodo=periodo))
     cfg = db.get_config()
-    pdf_bytes = generar_recibo_pago(row, cfg, periodo)
+    mes_gastos = db._prev_periodo(periodo)
+    gastos = db.get_gastos(mes_gastos)
+    facturas_extras = db.get_facturas_extraordinarias_periodo(mes_gastos)
+    pdf_bytes = generar_recibo_pago(row, cfg, periodo, gastos, facturas_extras)
     return send_file(
         io.BytesIO(pdf_bytes),
         mimetype="application/pdf",
         as_attachment=True,
-        download_name=f"recibo_{unidad}_{periodo}.pdf"
+        download_name=f"resumen_expensas_{unidad}_{periodo}.pdf"
     )
 
 
@@ -436,6 +475,7 @@ def save_factura():
         "fecha_pago": None,
         "categoria": request.form.get("categoria", "").strip(),
         "numero_factura": request.form.get("numero_factura", "").strip(),
+        "extraordinario": 1 if request.form.get("extraordinario") else 0,
     }
     if not data["descripcion"] or not data["fecha"]:
         flash("Fecha y descripción son obligatorias.", "danger")

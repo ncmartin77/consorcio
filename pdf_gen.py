@@ -33,6 +33,30 @@ def _mes_nombre(periodo: str):
         return periodo
 
 
+def _mes_nombre_largo(periodo: str):
+    """Returns 'MARZO 2026' format."""
+    meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+             "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
+    try:
+        m = int(periodo[5:7])
+        y = periodo[:4]
+        return f"{meses[m-1]} {y}"
+    except Exception:
+        return periodo
+
+
+def _mes_abrev(periodo: str):
+    """Returns 'MAR/26' format."""
+    meses = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN",
+             "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"]
+    try:
+        m = int(periodo[5:7])
+        y = periodo[:4]
+        return f"{meses[m-1]}/{y[-2:]}"
+    except Exception:
+        return periodo
+
+
 def generar_pdf_liquidacion(liquidacion_rows: list, gastos: list, config: dict, periodo: str) -> bytes:
     """
     Genera un PDF con una página por unidad funcional.
@@ -401,110 +425,279 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
     return buffer.getvalue()
 
 
-def generar_recibo_pago(row: dict, config: dict, periodo: str) -> bytes:
-    """Recibo de pago para una unidad: A5 apaisado (o mitad de A4)."""
+def generar_recibo_pago(row: dict, config: dict, periodo: str,
+                        gastos: list = None, facturas_extras: list = None) -> bytes:
+    """
+    Resumen de expensas por unidad funcional.
+    Formato basado en referencias/3-2.pdf.
+    """
+    if gastos is None:
+        gastos = []
+    if facturas_extras is None:
+        facturas_extras = []
+
     buffer = io.BytesIO()
-    from reportlab.lib.pagesizes import A5
-    W, H = A5
-    doc = SimpleDocTemplate(buffer, pagesize=(W, H),
-                            rightMargin=1*cm, leftMargin=1*cm,
-                            topMargin=1*cm, bottomMargin=1*cm)
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                            rightMargin=1.5*cm, leftMargin=1.5*cm,
+                            topMargin=1.5*cm, bottomMargin=1.5*cm)
 
     c_azul = colors.HexColor("#1a3a5c")
-    c_verde = colors.HexColor("#155724")
+    c_gris = colors.HexColor("#4a4a4a")
     c_rojo = colors.HexColor("#c00000")
+    c_negro = colors.black
 
     def st(name, **kw):
-        return ParagraphStyle(name, **{"fontName": "Helvetica", "fontSize": 9, **kw})
+        defaults = {"fontName": "Helvetica", "fontSize": 9, "textColor": c_negro}
+        defaults.update(kw)
+        return ParagraphStyle(name, **defaults)
 
     edificio = config.get("edificio_nombre", "EDIFICIO")
-    mes_nombre = _mes_nombre(periodo).upper()
-    ocupante = row.get("inquilino") or row.get("propietario") or "—"
-    tipo_pago = row.get("tipo_pago", "TOTAL")
-    monto = row.get("monto_pagado", row["total_a_pagar"])
-    saldo = row.get("saldo_pendiente", 0)
-    fecha_p = row.get("fecha_pago") or date.today().strftime("%Y-%m-%d")
-    # Formatear fecha
-    try:
-        from datetime import datetime as _dt
-        fd = _dt.strptime(str(fecha_p), "%Y-%m-%d")
-        fecha_fmt = fd.strftime("%d/%m/%Y")
-    except Exception:
-        fecha_fmt = str(fecha_p)
+    admin = config.get("administrador", "")
+    telefono = config.get("telefono", "")
+    dias_cobro = config.get("dias_cobro", "")
+    horario_cobro = config.get("horario_cobro", "")
+    direccion_cobro = config.get("direccion_cobro", "")
+    texto_anuncio = config.get("texto_anuncio", "")
+
+    unidad_num = row.get("unidad", "")
+    descripcion = row.get("descripcion", "")
+    pct = row.get("pct_aplicado", 0.0)
+    expensas = row.get("expensas", 0.0)
+    deuda_anterior = row.get("deuda_anterior", 0.0)
+    interes = row.get("interes", 0.0)
+    total_a_pagar = row.get("total_a_pagar", 0.0)
+    tipo_pago = row.get("tipo_pago", "PENDIENTE")
+    monto_pagado = row.get("monto_pagado", 0.0)
+
+    mes_liq = _mes_nombre_largo(periodo)          # "MARZO 2026"
+    mes_gastos_abrev = _mes_abrev(_prev_periodo_helper(periodo))   # "FEB/26"
+    mes_gastos_largo = _mes_nombre_largo(_prev_periodo_helper(periodo))  # "FEBRERO 2026"
 
     story = []
-    story.append(Paragraph(edificio.upper(),
-                            st("t", fontSize=12, fontName="Helvetica-Bold",
-                               alignment=TA_CENTER, textColor=c_azul)))
-    story.append(Paragraph(f"RECIBO DE PAGO — {mes_nombre}",
-                            st("s", fontSize=9, fontName="Helvetica-Bold",
-                               alignment=TA_CENTER, textColor=c_azul, spaceAfter=4)))
-    story.append(HRFlowable(width="100%", thickness=1.5, color=c_azul))
-    story.append(Spacer(1, 0.25*cm))
 
-    detalle = [
-        ["Unidad:", f"{row['unidad']} — {row['descripcion']}",
-         "Fecha pago:", fecha_fmt],
-        ["Prop./Inquilino:", ocupante, "Período:", mes_nombre],
-    ]
-    dt = Table(detalle, colWidths=[2.5*cm, 5.5*cm, 2.5*cm, 3*cm])
-    dt.setStyle(TableStyle([
-        ("FONTSIZE", (0,0), (-1,-1), 8),
-        ("FONTNAME", (0,0), (0,-1), "Helvetica-Bold"),
-        ("FONTNAME", (2,0), (2,-1), "Helvetica-Bold"),
-        ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3),
-    ]))
-    story.append(dt)
-    story.append(Spacer(1, 0.3*cm))
-
-    # Importes
-    imp_data = [
-        ["Expensas del mes", "Deuda anterior", "Total a pagar", "MONTO ABONADO", "SALDO RESTANTE"],
-        [_fmt(row["expensas"]),
-         _fmt(row["deuda_anterior"]) if row["deuda_anterior"] else "—",
-         _fmt(row["total_a_pagar"]),
-         _fmt(monto),
-         _fmt(saldo) if saldo > 0 else "—"],
-    ]
-    it = Table(imp_data, colWidths=[2.8*cm]*5)
-    it.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), c_azul), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,-1), 8),
-        ("FONTNAME", (3,1), (3,1), "Helvetica-Bold"), ("FONTSIZE", (3,1), (3,1), 10),
-        ("TEXTCOLOR", (3,1), (3,1), c_verde),
-        ("TEXTCOLOR", (4,1), (4,1), c_rojo if saldo > 0 else c_verde),
-        ("FONTNAME", (4,1), (4,1), "Helvetica-Bold"),
-        ("BACKGROUND", (3,1), (3,1), colors.HexColor("#d4edda")),
-        ("BACKGROUND", (4,1), (4,1), colors.HexColor("#fff3cd") if saldo > 0 else colors.HexColor("#d4edda")),
-        ("ROWBACKGROUNDS", (0,1), (2,1), [colors.HexColor("#e8f0fe")]),
-        ("ALIGN", (0,0), (-1,-1), "CENTER"), ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("GRID", (0,0), (-1,-1), 0.4, colors.grey),
-        ("TOPPADDING", (0,0), (-1,-1), 5), ("BOTTOMPADDING", (0,0), (-1,-1), 5),
-    ]))
-    story.append(it)
-    story.append(Spacer(1, 0.25*cm))
-
-    # Badge tipo pago
-    color_badge = c_verde if tipo_pago == "TOTAL" else colors.HexColor("#856404")
+    # ---- TÍTULO ----
     story.append(Paragraph(
-        f"Pago: <b>{tipo_pago}</b>",
-        st("tp", fontSize=10, fontName="Helvetica-Bold",
-           alignment=TA_CENTER, textColor=color_badge)))
+        f"RESUMEN DE EXPENSAS — {edificio.upper()}",
+        st("titulo", fontSize=13, fontName="Helvetica-Bold",
+           alignment=TA_CENTER, textColor=c_azul, spaceAfter=4)))
 
-    # Datos de contacto
-    story.append(Spacer(1, 0.25*cm))
-    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.grey))
-    partes = []
-    admin = config.get("administrador")
-    tel = config.get("telefono")
-    email = config.get("email")
-    if admin: partes.append(f"Admin: {admin}")
-    if tel: partes.append(f"Tel: {tel}")
-    if email: partes.append(f"Email: {email}")
-    if partes:
-        story.append(Paragraph("  |  ".join(partes),
-                                st("ct", fontSize=7, alignment=TA_CENTER,
-                                   textColor=colors.grey, spaceAfter=0)))
+    # ---- CABECERA: EXPENSAS MES | UFN°X / DESC | PCT% ----
+    header_data = [
+        [f"EXPENSAS {mes_liq}", f"UFN°{unidad_num} / {descripcion}", f"{pct:.3f}%"],
+    ]
+    col_w_header = [6*cm, 8*cm, 4*cm]
+    header_t = Table(header_data, colWidths=col_w_header)
+    header_t.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,-1), c_azul),
+        ("TEXTCOLOR", (0,0), (-1,-1), colors.white),
+        ("FONTNAME", (0,0), (-1,-1), "Helvetica-Bold"),
+        ("FONTSIZE", (0,0), (-1,-1), 10),
+        ("ALIGN", (0,0), (0,-1), "LEFT"),
+        ("ALIGN", (1,0), (1,-1), "CENTER"),
+        ("ALIGN", (2,0), (2,-1), "RIGHT"),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("TOPPADDING", (0,0), (-1,-1), 6),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+        ("LEFTPADDING", (0,0), (0,-1), 8),
+        ("RIGHTPADDING", (2,0), (2,-1), 8),
+    ]))
+    story.append(header_t)
+    story.append(Spacer(1, 0.4*cm))
+
+    # ---- DETALLE DE GASTOS COMUNES ----
+    story.append(Paragraph(
+        f"DETALLE DE GASTOS DE {mes_gastos_largo}",
+        st("det_title", fontSize=9, fontName="Helvetica-Bold",
+           alignment=TA_CENTER, textColor=c_azul, spaceAfter=4)))
+
+    gasto_header = [
+        [Paragraph("<b>CONCEPTO</b>", st("gh", fontSize=8, textColor=colors.white)),
+         Paragraph("<b>PERÍODO</b>", st("gh2", fontSize=8, textColor=colors.white, alignment=TA_CENTER)),
+         Paragraph("<b>IMPORTE POR UF</b>", st("gh3", fontSize=8, textColor=colors.white, alignment=TA_RIGHT)),
+         Paragraph("<b>IMPORTE TOTAL</b>", st("gh4", fontSize=8, textColor=colors.white, alignment=TA_RIGHT))],
+    ]
+    gasto_rows = []
+    total_importe_uf = 0.0
+    total_importe_total = 0.0
+
+    # Filter out extraordinary facturas from regular gastos display
+    ids_extra = set()
+    for fe in facturas_extras:
+        # extraordinary facturas don't appear in regular gastos section
+        pass
+
+    for g in gastos:
+        importe_uf = round(g["importe"] * pct / 100, 2)
+        total_importe_uf += importe_uf
+        total_importe_total += g["importe"]
+        gasto_rows.append([
+            Paragraph(g["concepto"], st("gc", fontSize=8)),
+            Paragraph(mes_gastos_abrev, st("gc2", fontSize=8, alignment=TA_CENTER)),
+            Paragraph(_fmt(importe_uf), st("gc3", fontSize=8, alignment=TA_RIGHT)),
+            Paragraph(_fmt(g["importe"]), st("gc4", fontSize=8, alignment=TA_RIGHT)),
+        ])
+
+    # Subtotal row
+    subtotal_row = [
+        Paragraph("<b>GASTOS COMUNES</b>", st("gs", fontSize=8, fontName="Helvetica-Bold")),
+        Paragraph("", st("gs2")),
+        Paragraph(f"<b>{_fmt(total_importe_uf)}</b>", st("gs3", fontSize=8, fontName="Helvetica-Bold", alignment=TA_RIGHT)),
+        Paragraph(f"<b>{_fmt(total_importe_total)}</b>", st("gs4", fontSize=8, fontName="Helvetica-Bold", alignment=TA_RIGHT)),
+    ]
+
+    col_w_det = [8*cm, 2.5*cm, 3*cm, 3*cm]  # = 16.5 cm
+    det_data = gasto_header + gasto_rows + [subtotal_row]
+    n_det = len(det_data)
+
+    det_t = Table(det_data, colWidths=col_w_det)
+    det_style = [
+        ("BACKGROUND", (0,0), (-1,0), c_azul),
+        ("ROWBACKGROUNDS", (0,1), (-1,n_det-2), [colors.white, colors.HexColor("#f5f5f5")]),
+        ("BACKGROUND", (0,n_det-1), (-1,n_det-1), colors.HexColor("#dce8f8")),
+        ("GRID", (0,0), (-1,-1), 0.3, colors.HexColor("#cccccc")),
+        ("TOPPADDING", (0,0), (-1,-1), 3),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+        ("LEFTPADDING", (0,0), (0,-1), 5),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+    ]
+    det_t.setStyle(TableStyle(det_style))
+    story.append(det_t)
+    story.append(Spacer(1, 0.4*cm))
+
+    # ---- RESUMEN / TOTALES ----
+    resumen_data = [
+        ["Total del período", _fmt(expensas)],
+    ]
+    if deuda_anterior > 0:
+        resumen_data.append([f"SALDO DEUDOR {mes_gastos_abrev}", _fmt(deuda_anterior)])
+        resumen_data.append(["Mora", _fmt(interes)])
+    else:
+        resumen_data.append([f"SALDO DEUDOR {mes_gastos_abrev}", "—"])
+        resumen_data.append(["Mora", "—"])
+    resumen_data.append(["TOTAL A PAGAR", _fmt(total_a_pagar)])
+
+    # Estado de pago
+    if tipo_pago == "TOTAL":
+        resumen_data.append(["ABONADO", _fmt(monto_pagado)])
+        resumen_data.append(["SALDO", "—"])
+    elif tipo_pago == "PARCIAL":
+        resumen_data.append(["ABONADO", _fmt(monto_pagado)])
+        saldo_pend = round(total_a_pagar - monto_pagado, 2)
+        resumen_data.append(["SALDO PENDIENTE", _fmt(saldo_pend)])
+
+    res_t = Table(resumen_data, colWidths=[8*cm, 5*cm])
+    n_res = len(resumen_data)
+    res_style = [
+        ("FONTSIZE", (0,0), (-1,-1), 9),
+        ("GRID", (0,0), (-1,-1), 0.3, colors.HexColor("#cccccc")),
+        ("TOPPADDING", (0,0), (-1,-1), 4),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+        ("LEFTPADDING", (0,0), (0,-1), 6),
+        ("ALIGN", (1,0), (1,-1), "RIGHT"),
+        ("RIGHTPADDING", (1,0), (1,-1), 6),
+        ("ROWBACKGROUNDS", (0,0), (-1,-2), [colors.white, colors.HexColor("#f5f5f5")]),
+        # TOTAL A PAGAR row (index 3) in bold and highlighted
+        ("FONTNAME", (0,3), (-1,3), "Helvetica-Bold"),
+        ("FONTSIZE", (0,3), (-1,3), 10),
+        ("BACKGROUND", (0,3), (-1,3), colors.HexColor("#fff3cd")),
+        ("TEXTCOLOR", (1,3), (1,3), c_rojo),
+    ]
+    res_t.setStyle(TableStyle(res_style))
+    story.append(res_t)
+    story.append(Spacer(1, 0.4*cm))
+
+    # ---- DETALLE DE GASTOS VARIOS (extraordinary) ----
+    if facturas_extras:
+        story.append(Paragraph(
+            "DETALLE DE GASTOS VARIOS",
+            st("ev_title", fontSize=9, fontName="Helvetica-Bold",
+               alignment=TA_CENTER, textColor=c_azul, spaceAfter=4)))
+
+        ev_header = [
+            [Paragraph("<b>CONCEPTO</b>", st("eh", fontSize=8, textColor=colors.white)),
+             Paragraph("<b>PERÍODO</b>", st("eh2", fontSize=8, textColor=colors.white, alignment=TA_CENTER)),
+             Paragraph("<b>IMPORTE POR UF</b>", st("eh3", fontSize=8, textColor=colors.white, alignment=TA_RIGHT)),
+             Paragraph("<b>IMPORTE TOTAL</b>", st("eh4", fontSize=8, textColor=colors.white, alignment=TA_RIGHT))],
+        ]
+        ev_rows = []
+        for fe in facturas_extras:
+            importe_fe = float(fe.get("importe") or 0)
+            importe_uf_fe = round(importe_fe * pct / 100, 2)
+            concepto = fe.get("descripcion") or fe.get("proveedor_nombre") or "Gasto extraordinario"
+            ev_rows.append([
+                Paragraph(concepto + " (*)", st("ec", fontSize=8)),
+                Paragraph(mes_gastos_abrev, st("ec2", fontSize=8, alignment=TA_CENTER)),
+                Paragraph(_fmt(importe_uf_fe), st("ec3", fontSize=8, alignment=TA_RIGHT)),
+                Paragraph(_fmt(importe_fe), st("ec4", fontSize=8, alignment=TA_RIGHT)),
+            ])
+
+        ev_data = ev_header + ev_rows
+        ev_t = Table(ev_data, colWidths=col_w_det)
+        ev_t.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), c_gris),
+            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f5f5f5")]),
+            ("GRID", (0,0), (-1,-1), 0.3, colors.HexColor("#cccccc")),
+            ("TOPPADDING", (0,0), (-1,-1), 3),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+            ("LEFTPADDING", (0,0), (0,-1), 5),
+            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ]))
+        story.append(ev_t)
+        story.append(Paragraph(
+            "(*) Gastos no incluidos en liquidaciones anteriores",
+            st("nota", fontSize=7, textColor=colors.grey, spaceAfter=4)))
+        story.append(Spacer(1, 0.3*cm))
+
+    # ---- ANUNCIO ----
+    if texto_anuncio:
+        story.append(HRFlowable(width="100%", thickness=0.5, color=colors.grey))
+        story.append(Spacer(1, 0.15*cm))
+        for linea in texto_anuncio.split("\n"):
+            if linea.strip():
+                story.append(Paragraph(
+                    linea.strip().upper(),
+                    st("anuncio", fontSize=8, fontName="Helvetica-Bold",
+                       alignment=TA_CENTER, textColor=c_azul)))
+        story.append(Spacer(1, 0.15*cm))
+
+    # ---- FOOTER ----
+    story.append(HRFlowable(width="100%", thickness=1, color=c_azul))
+    story.append(Spacer(1, 0.15*cm))
+
+    footer_parts = []
+    if dias_cobro:
+        footer_parts.append(f"<b>DÍAS DE COBRO:</b> {dias_cobro}")
+    if horario_cobro:
+        footer_parts.append(f"<b>HORARIO:</b> {horario_cobro}")
+    if direccion_cobro:
+        footer_parts.append(f"<b>DIRECCIÓN:</b> {direccion_cobro}")
+
+    admin_parts = []
+    if admin:
+        admin_parts.append(f"<b>ADMINISTRACIÓN:</b> {admin}")
+    if telefono:
+        admin_parts.append(f"<b>CEL.</b> {telefono}")
+
+    footer_left = "  /  ".join(footer_parts) if footer_parts else ""
+    footer_right = "  |  ".join(admin_parts) if admin_parts else ""
+
+    if footer_left or footer_right:
+        combined = []
+        if footer_left:
+            combined.append(footer_left)
+        if footer_right:
+            combined.append(footer_right)
+        story.append(Paragraph(
+            "  |  ".join(combined),
+            st("footer", fontSize=7, alignment=TA_CENTER, textColor=c_gris)))
 
     doc.build(story)
     return buffer.getvalue()
+
+
+def _prev_periodo_helper(periodo: str) -> str:
+    """Helper to compute previous period without importing excel_db."""
+    y, m = int(periodo[:4]), int(periodo[5:7])
+    if m == 1:
+        return f"{y-1}-12"
+    return f"{y}-{m-1:02d}"

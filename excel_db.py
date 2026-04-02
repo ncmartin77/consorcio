@@ -21,6 +21,8 @@ SHEET_FACTURAS = "FACTURAS"
 SHEET_PEDIDOS = "PEDIDOS_PRESUPUESTO"
 SHEET_PRESUPUESTOS = "PRESUPUESTOS"
 LIQPREFIX = "LIQUIDACIONES_"
+SHEET_LIQ_ESTADOS = "LIQUIDACIONES_ESTADO"
+_LIQ_EST_HEADER = ["periodo", "estado"]
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +59,11 @@ def _init_db():
     ws.append(["tasa_mora", "7"])
     ws.append(["dia_vencimiento", "15"])
     ws.append(["fondo_reserva_mensual", "0"])
+    ws.append(["fecha_simulada", ""])
+    ws.append(["dias_cobro", ""])
+    ws.append(["horario_cobro", ""])
+    ws.append(["direccion_cobro", ""])
+    ws.append(["texto_anuncio", ""])
 
     # CATEGORIAS_PCT
     ws = wb.create_sheet(SHEET_CATEGORIAS)
@@ -81,7 +88,11 @@ def _init_db():
     # FACTURAS
     ws = wb.create_sheet(SHEET_FACTURAS)
     ws.append(["id", "fecha", "proveedor_id", "proveedor_nombre", "descripcion",
-               "importe", "estado", "fecha_pago", "categoria", "numero_factura"])
+               "importe", "estado", "fecha_pago", "categoria", "numero_factura", "extraordinario"])
+
+    # LIQUIDACIONES_ESTADO
+    ws = wb.create_sheet(SHEET_LIQ_ESTADOS)
+    ws.append(_LIQ_EST_HEADER)
 
     # PEDIDOS_PRESUPUESTO
     ws = wb.create_sheet(SHEET_PEDIDOS)
@@ -530,6 +541,7 @@ def generar_liquidacion(periodo: str):
         ])
 
     _save_wb(wb)
+    set_liq_estado(periodo, "ABIERTA")
     return get_liquidacion(periodo)
 
 
@@ -540,6 +552,8 @@ def marcar_pagado(periodo: str, unidad: str, monto_pagado: float, fecha_pago: st
     - monto_pagado >= total_a_pagar → pago total
     - 0 < monto_pagado < total_a_pagar → pago parcial
     """
+    if liq_esta_cerrada(periodo):
+        return {"tipo": "CERRADA", "saldo": 0}
     if not fecha_pago:
         fecha_pago = date.today().strftime("%Y-%m-%d")
     year = int(periodo[:4])
@@ -602,12 +616,43 @@ def get_años_con_liquidacion():
     wb = _get_wb()
     años = []
     for name in wb.sheetnames:
-        if name.startswith(LIQPREFIX):
+        if name.startswith(LIQPREFIX) and name != SHEET_LIQ_ESTADOS:
             try:
                 años.append(int(name[len(LIQPREFIX):]))
             except ValueError:
                 pass
     return sorted(años)
+
+
+# ---------------------------------------------------------------------------
+# ESTADO DE LIQUIDACIÓN (ABIERTA / CERRADA)
+# ---------------------------------------------------------------------------
+
+def get_liq_estado(periodo: str) -> str:
+    """Returns 'ABIERTA', 'CERRADA', or '' if not generated."""
+    wb = _get_wb()
+    ws = _ensure_sheet(wb, SHEET_LIQ_ESTADOS, _LIQ_EST_HEADER)
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if row[0] and str(row[0]) == periodo:
+            return row[1] or "ABIERTA"
+    return ""
+
+
+def set_liq_estado(periodo: str, estado: str):
+    """Creates or updates the state of a liquidation period."""
+    wb = _get_wb()
+    ws = _ensure_sheet(wb, SHEET_LIQ_ESTADOS, _LIQ_EST_HEADER)
+    for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        if row[0] and str(row[0]) == periodo:
+            ws.cell(row=i, column=2).value = estado
+            _save_wb(wb)
+            return
+    ws.append([periodo, estado])
+    _save_wb(wb)
+
+
+def liq_esta_cerrada(periodo: str) -> bool:
+    return get_liq_estado(periodo) == "CERRADA"
 
 
 def _ensure_sheet(wb, name, header):
@@ -686,7 +731,7 @@ def delete_proveedor(pid):
 # ---------------------------------------------------------------------------
 
 _FAC_HEADER = ["id", "fecha", "proveedor_id", "proveedor_nombre", "descripcion",
-               "importe", "estado", "fecha_pago", "categoria", "numero_factura"]
+               "importe", "estado", "fecha_pago", "categoria", "numero_factura", "extraordinario"]
 
 def get_facturas(estado=None):
     wb = _get_wb()
@@ -785,6 +830,18 @@ def factura_en_liquidacion(fid) -> bool:
             periodo_liq = _next_periodo(periodo_gasto)
             return liquidacion_existe(periodo_liq)
     return False
+
+
+def get_facturas_extraordinarias_periodo(periodo: str):
+    """Returns extraordinary facturas paid in the given period."""
+    result = []
+    for f in get_facturas(estado="PAGADA"):
+        if not f.get("extraordinario"):
+            continue
+        fecha_pago = str(f.get("fecha_pago") or "")
+        if fecha_pago[:7] == periodo:
+            result.append(f)
+    return result
 
 
 def delete_factura(fid):
@@ -1080,8 +1137,13 @@ def reset_datos_operativos():
         ws = _ensure_sheet(wb, sheet, [])
         for r in range(ws.max_row, 1, -1):
             ws.delete_rows(r)
-    for name in [n for n in wb.sheetnames if n.startswith(LIQPREFIX)]:
+    # Borrar hojas de liquidaciones (excluyendo la hoja de estados)
+    for name in [n for n in wb.sheetnames if n.startswith(LIQPREFIX) and n != SHEET_LIQ_ESTADOS]:
         del wb[name]
+    # Limpiar hoja de estados
+    ws_est = _ensure_sheet(wb, SHEET_LIQ_ESTADOS, _LIQ_EST_HEADER)
+    for r in range(ws_est.max_row, 1, -1):
+        ws_est.delete_rows(r)
     _save_wb(wb)
 
 

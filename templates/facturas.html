@@ -61,7 +61,7 @@
             <td>{{ f.fecha }}</td>
             <td class="text-muted">{{ f.numero_factura }}</td>
             <td><strong>{{ f.proveedor_nombre }}</strong></td>
-            <td>{{ f.descripcion }}</td>
+            <td>{{ f.descripcion }}{% if f.get('extraordinario') %} <span class="badge bg-warning text-dark ms-1" title="Gasto extraordinario"><i class="bi bi-exclamation-circle"></i></span>{% endif %}</td>
             <td>{% if f.categoria %}<span class="badge bg-secondary">{{ f.categoria }}</span>{% endif %}</td>
             <td class="text-end fw-semibold">$ {{ "%.2f"|format(f.importe)|replace(".",",") }}</td>
             <td class="text-center">
@@ -151,6 +151,18 @@
               <label class="form-label fw-semibold">Categoría</label>
               <input type="text" class="form-control" name="categoria"
                      placeholder="Ej: Limpieza, Mantenimiento">
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="extraordinario" id="fac_extraordinario">
+                <label class="form-check-label fw-semibold" for="fac_extraordinario">
+                  <i class="bi bi-exclamation-circle text-warning"></i>
+                  Gasto extraordinario (no incluido en liquidación anterior)
+                </label>
+                <div class="text-muted small">
+                  Aparecerá como ítem separado en el resumen de expensas.
+                </div>
+              </div>
             </div>
           </div>
         </div>

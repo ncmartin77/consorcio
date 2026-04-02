@@ -7,8 +7,16 @@
   <div class="d-flex gap-2 align-items-center flex-wrap">
     <input type="month" class="form-control form-control-sm" id="periodoSelector"
            value="{{ periodo }}">
-    {% if liq %}
-      <span class="badge bg-secondary"><i class="bi bi-lock-fill"></i> Liquidación cerrada</span>
+    {% if liq_cerrada %}
+      <span class="badge bg-danger fs-6"><i class="bi bi-lock-fill"></i> Liquidación CERRADA</span>
+    {% elif liq_generada %}
+      <span class="badge bg-success"><i class="bi bi-unlock-fill"></i> ABIERTA</span>
+      <form method="POST" action="{{ url_for('cerrar_liquidacion', periodo=periodo) }}"
+            onsubmit="return confirm('¿Cerrar la liquidación de {{ periodo }}? Una vez cerrada no se podrán registrar más pagos.')">
+        <button type="submit" class="btn btn-warning btn-sm">
+          <i class="bi bi-lock-fill"></i> Cerrar Liquidación
+        </button>
+      </form>
     {% else %}
     <form method="POST" action="{{ url_for('generar_liquidacion', periodo=periodo) }}">
       <button type="submit" class="btn btn-success btn-sm"
@@ -143,7 +151,16 @@
               {% endif %}
             </td>
             <td class="text-center text-nowrap">
-              {% if tipo == 'PENDIENTE' %}
+              {% if liq_cerrada %}
+                {% if tipo != 'PENDIENTE' %}
+                <a href="{{ url_for('descargar_recibo', periodo=periodo, unidad=r.unidad) }}"
+                   class="btn btn-sm btn-outline-primary" title="Descargar resumen">
+                  <i class="bi bi-receipt"></i>
+                </a>
+                {% else %}
+                <span class="text-muted small"><i class="bi bi-lock-fill"></i></span>
+                {% endif %}
+              {% elif tipo == 'PENDIENTE' %}
               <button class="btn btn-sm btn-success"
                       onclick='abrirModalPago({{ r|tojson }}, false)'
                       title="Registrar pago">
@@ -156,12 +173,12 @@
                 <i class="bi bi-cash-stack"></i>
               </button>
               <a href="{{ url_for('descargar_recibo', periodo=periodo, unidad=r.unidad) }}"
-                 class="btn btn-sm btn-outline-primary" title="Descargar recibo">
+                 class="btn btn-sm btn-outline-primary" title="Descargar resumen">
                 <i class="bi bi-receipt"></i>
               </a>
               {% elif tipo == 'TOTAL' %}
               <a href="{{ url_for('descargar_recibo', periodo=periodo, unidad=r.unidad) }}"
-                 class="btn btn-sm btn-outline-primary" title="Descargar recibo">
+                 class="btn btn-sm btn-outline-primary" title="Descargar resumen">
                 <i class="bi bi-receipt"></i>
               </a>
               {% endif %}

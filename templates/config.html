@@ -143,6 +143,64 @@
   </div>
 </div>
 
+<!-- Configuración del Resumen de Expensas -->
+<div class="row mt-3">
+  <div class="col-lg-12">
+    <div class="card shadow-sm">
+      <div class="card-header bg-info text-white">
+        <i class="bi bi-receipt"></i> Configuración del Resumen de Expensas (PDF)
+      </div>
+      <div class="card-body">
+        <form method="POST">
+          <!-- Re-enviar los campos principales también para no borrarlos -->
+          <input type="hidden" name="edificio_nombre" value="{{ cfg.get('edificio_nombre','') }}">
+          <input type="hidden" name="edificio_direccion" value="{{ cfg.get('edificio_direccion','') }}">
+          <input type="hidden" name="alias_cbu" value="{{ cfg.get('alias_cbu','') }}">
+          <input type="hidden" name="titular_cuenta" value="{{ cfg.get('titular_cuenta','') }}">
+          <input type="hidden" name="administrador" value="{{ cfg.get('administrador','') }}">
+          <input type="hidden" name="telefono" value="{{ cfg.get('telefono','') }}">
+          <input type="hidden" name="email" value="{{ cfg.get('email','') }}">
+          <input type="hidden" name="whatsapp" value="{{ cfg.get('whatsapp','') }}">
+          <input type="hidden" name="tasa_mora" value="{{ cfg.get('tasa_mora','7') }}">
+          <input type="hidden" name="dia_vencimiento" value="{{ cfg.get('dia_vencimiento','15') }}">
+          <input type="hidden" name="fondo_reserva_mensual" value="{{ cfg.get('fondo_reserva_mensual','0') }}">
+          <input type="hidden" name="fecha_simulada" value="{{ cfg.get('fecha_simulada','') }}">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Días de Cobro</label>
+              <input type="text" class="form-control" name="dias_cobro"
+                     placeholder="Ej: MARTES Y JUEVES"
+                     value="{{ cfg.get('dias_cobro','') }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Horario de Cobro</label>
+              <input type="text" class="form-control" name="horario_cobro"
+                     placeholder="Ej: 10:00 a 12:30 / 16:30 a 18:30"
+                     value="{{ cfg.get('horario_cobro','') }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Dirección de Cobro</label>
+              <input type="text" class="form-control" name="direccion_cobro"
+                     placeholder="Ej: Gualeguaychú Nº 219"
+                     value="{{ cfg.get('direccion_cobro','') }}">
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">Texto de Aviso / Anuncio</label>
+              <textarea class="form-control" name="texto_anuncio" rows="3"
+                        placeholder="Texto que aparecerá en el resumen de expensas (cambios de horario, avisos, etc.)">{{ cfg.get('texto_anuncio','') }}</textarea>
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-info text-white">
+                <i class="bi bi-save"></i> Guardar Configuración Resumen
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Zona de reseteo -->
 <div class="row mt-3">
   <div class="col-lg-12">
@@ -151,16 +209,50 @@
         <i class="bi bi-exclamation-triangle-fill"></i> Zona de Pruebas — Reseteo de Datos
       </div>
       <div class="card-body">
-        <p class="text-muted small mb-3">
-          Borra <strong>liquidaciones, gastos mensuales y caja diaria</strong>.
-          Las unidades funcionales y proveedores <strong>no se tocan</strong>.
-        </p>
-        <form method="POST" action="{{ url_for('reset_datos') }}"
-              onsubmit="return confirm('¿Seguro? Se borrarán TODAS las liquidaciones, gastos y movimientos de caja. Las unidades y proveedores quedan intactos.')">
-          <button type="submit" class="btn btn-danger">
-            <i class="bi bi-trash3-fill"></i> Borrar liquidaciones, gastos y caja
-          </button>
-        </form>
+        <div class="row g-3 align-items-end">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">
+              <i class="bi bi-calendar-event"></i> Fecha Simulada (para pruebas)
+            </label>
+            <form method="POST">
+              <input type="hidden" name="edificio_nombre" value="{{ cfg.get('edificio_nombre','') }}">
+              <input type="hidden" name="edificio_direccion" value="{{ cfg.get('edificio_direccion','') }}">
+              <input type="hidden" name="alias_cbu" value="{{ cfg.get('alias_cbu','') }}">
+              <input type="hidden" name="titular_cuenta" value="{{ cfg.get('titular_cuenta','') }}">
+              <input type="hidden" name="administrador" value="{{ cfg.get('administrador','') }}">
+              <input type="hidden" name="telefono" value="{{ cfg.get('telefono','') }}">
+              <input type="hidden" name="email" value="{{ cfg.get('email','') }}">
+              <input type="hidden" name="whatsapp" value="{{ cfg.get('whatsapp','') }}">
+              <input type="hidden" name="tasa_mora" value="{{ cfg.get('tasa_mora','7') }}">
+              <input type="hidden" name="dia_vencimiento" value="{{ cfg.get('dia_vencimiento','15') }}">
+              <input type="hidden" name="fondo_reserva_mensual" value="{{ cfg.get('fondo_reserva_mensual','0') }}">
+              <input type="hidden" name="dias_cobro" value="{{ cfg.get('dias_cobro','') }}">
+              <input type="hidden" name="horario_cobro" value="{{ cfg.get('horario_cobro','') }}">
+              <input type="hidden" name="direccion_cobro" value="{{ cfg.get('direccion_cobro','') }}">
+              <input type="hidden" name="texto_anuncio" value="{{ cfg.get('texto_anuncio','') }}">
+              <div class="input-group">
+                <input type="date" class="form-control" name="fecha_simulada"
+                       value="{{ cfg.get('fecha_simulada','') }}">
+                <button type="submit" class="btn btn-secondary">
+                  <i class="bi bi-check"></i> Fijar
+                </button>
+              </div>
+              <small class="text-muted">Vacío = fecha real del sistema</small>
+            </form>
+          </div>
+          <div class="col-md-8">
+            <p class="text-muted small mb-2">
+              Borra <strong>liquidaciones, gastos mensuales y caja diaria</strong>.
+              Las unidades funcionales y proveedores <strong>no se tocan</strong>.
+            </p>
+            <form method="POST" action="{{ url_for('reset_datos') }}"
+                  onsubmit="return confirm('¿Seguro? Se borrarán TODAS las liquidaciones, gastos y movimientos de caja. Las unidades y proveedores quedan intactos.')">
+              <button type="submit" class="btn btn-danger">
+                <i class="bi bi-trash3-fill"></i> Borrar liquidaciones, gastos y caja
+              </button>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
   </div>
