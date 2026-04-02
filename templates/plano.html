@@ -29,6 +29,7 @@
   <span class="badge-leyenda pendiente"><i class="bi bi-clock-fill"></i> Pendiente</span>
   <span class="badge-leyenda sin-liq"><i class="bi bi-dash-circle"></i> Sin liquidación</span>
   <span class="badge-leyenda inactiva"><i class="bi bi-x-circle"></i> Inactiva</span>
+  <span class="text-muted small ms-2"><i class="bi bi-hand-index"></i> Hacé clic en una unidad para registrar un pago</span>
 </div>
 
 {% if not unidades %}
@@ -105,6 +106,61 @@
   <div class="edificio-base"></div>
 </div>
 
+<!-- Modal Pago -->
+<div class="modal fade" id="modalPagoPlano" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <form method="POST" id="formPagoPlano">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title"><i class="bi bi-cash"></i> Registrar Pago</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <span class="fw-bold" id="pp_unidad"></span>
+            <span class="text-muted small ms-1" id="pp_ocupante"></span>
+          </div>
+          <div class="small mb-3">
+            <div class="d-flex justify-content-between text-muted mb-1">
+              <span>Total a pagar:</span><strong id="pp_total" class="text-danger"></strong>
+            </div>
+            <div id="pp_ya_pagado_row" class="d-flex justify-content-between text-muted mb-1" style="display:none">
+              <span>Ya abonado:</span><strong id="pp_ya_pagado" class="text-success"></strong>
+            </div>
+            <div id="pp_saldo_row" class="d-flex justify-content-between text-muted mb-1" style="display:none">
+              <span>Saldo pendiente:</span><strong id="pp_saldo" class="text-warning"></strong>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold" id="pp_label_monto">Monto Abonado *</label>
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              <input type="number" class="form-control" name="monto_pagado" id="pp_monto"
+                     step="0.01" min="0.01" required>
+            </div>
+            <div class="d-flex gap-2 mt-1">
+              <button type="button" class="btn btn-sm btn-outline-success w-100"
+                      onclick="pp_usarTotal()">Pago total</button>
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label fw-semibold">Fecha de Pago *</label>
+            <input type="date" class="form-control" name="fecha_pago" id="pp_fecha" required>
+          </div>
+          <div id="pp_aviso_parcial" class="alert alert-warning py-1 small mb-0" style="display:none">
+            <i class="bi bi-exclamation-triangle"></i>
+            Monto menor al saldo → se registrará como <strong>pago parcial</strong>.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success"><i class="bi bi-check-circle"></i> Confirmar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <!-- Tooltip flotante -->
 <div id="tooltip-unidad" class="tooltip-edificio" style="display:none;">
   <div class="tooltip-header">
@@ -147,6 +203,13 @@ function fmt(val) {
   return '$ ' + parseFloat(val).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 
+let _pp_saldo = 0;
+
+function pp_usarTotal() {
+  document.getElementById('pp_monto').value = _pp_saldo.toFixed(2);
+  document.getElementById('pp_aviso_parcial').style.display = 'none';
+}
+
 boxes.forEach(box => {
   box.addEventListener('mouseenter', function(e) {
     const d = this.dataset;
@@ -185,10 +248,48 @@ boxes.forEach(box => {
   });
 
   box.addEventListener('mousemove', posicionarTooltip);
+  box.addEventListener('mouseleave', function() { tooltip.style.display = 'none'; });
 
-  box.addEventListener('mouseleave', function() {
+  // Click → abrir modal de pago (solo si tiene liquidación y no es TOTAL)
+  box.addEventListener('click', function() {
+    const d = this.dataset;
+    if (d.tieneliq !== 'si' || d.tipopago === 'TOTAL' || d.tipopago === 'Inactiva') return;
+
     tooltip.style.display = 'none';
+    const esParcial = d.tipopago === 'PARCIAL';
+    const saldo = esParcial ? parseFloat(d.saldo) : parseFloat(d.total);
+    _pp_saldo = saldo;
+
+    document.getElementById('pp_unidad').textContent = 'UF ' + d.numero + (d.descripcion ? ' — ' + d.descripcion : '');
+    document.getElementById('pp_ocupante').textContent = d.inquilino || d.propietario || '';
+    document.getElementById('pp_total').textContent = fmt(d.total);
+
+    if (esParcial) {
+      document.getElementById('pp_label_monto').textContent = 'Monto a agregar *';
+      document.getElementById('pp_ya_pagado').textContent = fmt(d.monto);
+      document.getElementById('pp_ya_pagado_row').style.display = 'flex';
+      document.getElementById('pp_saldo').textContent = fmt(saldo);
+      document.getElementById('pp_saldo_row').style.display = 'flex';
+    } else {
+      document.getElementById('pp_label_monto').textContent = 'Monto Abonado *';
+      document.getElementById('pp_ya_pagado_row').style.display = 'none';
+      document.getElementById('pp_saldo_row').style.display = 'none';
+    }
+
+    const input = document.getElementById('pp_monto');
+    input.value = saldo.toFixed(2);
+    input.max = saldo;
+    document.getElementById('pp_fecha').value = new Date().toISOString().split('T')[0];
+    document.getElementById('pp_aviso_parcial').style.display = 'none';
+    document.getElementById('formPagoPlano').action = '/liquidacion/pagar/{{ periodo }}/' + d.numero;
+    new bootstrap.Modal(document.getElementById('modalPagoPlano')).show();
   });
+});
+
+document.getElementById('pp_monto').addEventListener('input', function() {
+  const v = parseFloat(this.value) || 0;
+  document.getElementById('pp_aviso_parcial').style.display =
+    (v > 0 && v < _pp_saldo) ? 'block' : 'none';
 });
 
 function posicionarTooltip(e) {
