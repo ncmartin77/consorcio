@@ -38,16 +38,18 @@
   <div class="col-md-2">
     <div class="card border-success text-center h-100">
       <div class="card-body py-2 px-1">
-        <div class="small text-success fw-bold">ENTRADAS</div>
+        <div class="small text-success fw-bold">COBRADO</div>
         <div class="fw-bold text-success">$ {{ "%.2f"|format(entradas_caja)|replace(".",",") }}</div>
+        <div class="text-muted" style="font-size:0.65rem">en {{ periodo }}</div>
       </div>
     </div>
   </div>
   <div class="col-md-2">
     <div class="card border-danger text-center h-100">
       <div class="card-body py-2 px-1">
-        <div class="small text-danger fw-bold">SALIDAS</div>
+        <div class="small text-danger fw-bold">GASTOS PAGADOS</div>
         <div class="fw-bold text-danger">$ {{ "%.2f"|format(salidas_caja)|replace(".",",") }}</div>
+        <div class="text-muted" style="font-size:0.65rem">base de {{ mes_gastos }}</div>
       </div>
     </div>
   </div>
