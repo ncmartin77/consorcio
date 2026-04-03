@@ -321,6 +321,23 @@
             <i class="bi bi-exclamation-triangle"></i>
             El monto es menor al saldo → se registrará como <strong>pago parcial</strong>.
           </div>
+          <hr class="my-2">
+          <div class="mb-2">
+            <label class="form-label fw-semibold text-warning small">
+              <i class="bi bi-tag"></i> Bonificación (opcional)
+            </label>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text">$</span>
+              <input type="number" class="form-control" name="bonificacion" id="mp_bonif"
+                     step="0.01" min="0" placeholder="0.00">
+            </div>
+          </div>
+          <div class="mb-0">
+            <label class="form-label small text-muted">Motivo de la bonificación</label>
+            <input type="text" class="form-control form-control-sm" name="bonif_motivo"
+                   id="mp_bonif_motivo" placeholder="Ej: Error de cálculo mes anterior" maxlength="150">
+            <div class="form-text">Se registrará como SALIDA en Caja Diaria, no afecta la liquidación.</div>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -378,6 +395,8 @@ function abrirModalPago(r, esParcial) {
   input.max = saldo;
   document.getElementById('mp_fecha').value = new Date().toISOString().split('T')[0];
   document.getElementById('mp_aviso_parcial').style.display = 'none';
+  document.getElementById('mp_bonif').value = '';
+  document.getElementById('mp_bonif_motivo').value = '';
   document.getElementById('formPago').action = '/liquidacion/pagar/{{ periodo }}/' + r.unidad;
   new bootstrap.Modal(document.getElementById('modalPago')).show();
 }

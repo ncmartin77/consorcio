@@ -490,6 +490,21 @@ def marcar_pagado(periodo, unidad):
             flash(f"UF {unidad}: pago parcial de ${monto:,.2f}. Saldo pendiente: ${resultado['saldo']:,.2f}.", "warning")
         else:
             flash(f"UF {unidad}: pago total registrado.", "success")
+
+    # Bonificación opcional: SALIDA en Caja Diaria, no afecta la liquidación
+    bonif_str = request.form.get("bonificacion", "0").strip().replace(",", ".")
+    try:
+        bonif = float(bonif_str)
+    except ValueError:
+        bonif = 0.0
+    if bonif > 0 and tipo != "CERRADA":
+        motivo = (request.form.get("bonif_motivo") or "").strip()
+        desc = f"Bonificación UF {unidad} {periodo}"
+        if motivo:
+            desc += f" - {motivo}"
+        db.save_movimiento(fecha_pago, desc[:200], "SALIDA", "BONIFICACION", bonif)
+        flash(f"Bonificación de ${bonif:,.2f} registrada en Caja Diaria.", "info")
+
     return redirect(url_for("liquidacion", periodo=periodo))
 
 

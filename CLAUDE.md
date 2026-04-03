@@ -112,7 +112,9 @@ templates/      ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 
 **Backup:** `GET /backup` streams a ZIP of `data/edificio_brasil.xlsx` as a browser download named `backup_edificio_brasil_YYYYMMDD_HHMM.zip`. Button visible in the navbar on every page.
 
-**Versión del sistema:** stored in `version.txt` (e.g. `0.5-0304`, where the suffix is the release date DDMM). Read at startup via a `@app.context_processor` in `app.py` that injects `app_version` into all templates. Displayed as a badge in the navbar (`base.html`). **Increment the minor number on every push** (e.g. `0.5-0304` → `0.6-0304`). Update `version.txt` before committing.
+**Versión del sistema:** stored in `version.txt` (e.g. `0.6-0304`, where the suffix is the release date DDMM). Read at startup via a `@app.context_processor` in `app.py` that injects `app_version` into all templates. Displayed as a badge in the navbar (`base.html`). **Increment the minor number on every push** (e.g. `0.6-0304` → `0.7-0304`). Update `version.txt` before committing.
+
+**Bonificación en pago de liquidación:** the "Registrar Pago" modal in `liquidacion.html` includes optional fields `bonificacion` (amount) and `bonif_motivo` (reason). If a bonificación > 0 is submitted, the `marcar_pagado` route in `app.py` calls `db.save_movimiento()` with tipo=SALIDA and categoria=BONIFICACION after recording the payment. The bonificación does NOT modify the liquidación row (total_a_pagar, monto_pagado, saldo are unchanged). Only affects Caja Diaria.
 
 **Tareas Pendientes:** a global memo/checklist shown in Gastos Mensuales (always visible, regardless of period). Stored in the `TAREAS` Excel sheet (`id`, `descripcion`). Operations are fully AJAX (no page reload):
 - `POST /tareas/add` → returns `{id, descripcion}` JSON
