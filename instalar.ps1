@@ -245,6 +245,13 @@ function Setup-Windows {
         New-Item -ItemType Directory -Path $dataDir | Out-Null
         Log "Carpeta data/ creada."
     }
+    # Migrar esquema del Excel si ya existe (actualizacion sobre instalacion previa)
+    $migrScript = Join-Path $AppDir "migrar.py"
+    $pythonExe  = Join-Path $venvDir "Scripts\python.exe"
+    if ((Test-Path $migrScript) -and (Test-Path $pythonExe)) {
+        Log "Ejecutando migracion de esquema..."
+        & $pythonExe $migrScript 2>&1 | ForEach-Object { Log ("  " + $_) }
+    }
     [System.IO.File]::WriteAllText($Flag, "windows", [System.Text.Encoding]::ASCII)
     return $true
 }

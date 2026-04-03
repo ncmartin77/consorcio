@@ -8,8 +8,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 instalar.bat            # first time: fully unattended installer (calls instalar.ps1)
 iniciar.bat             # starts Flask on http://localhost:5000
-crear_distribucion.bat  # creates a ZIP for deployment on another machine (calls .ps1)
+actualizar.bat          # update existing install: backup Excel + run migrar.py + pip install
+crear_distribucion.bat  # creates a ZIP for deployment (calls .ps1); excludes data/ and venv/
 ```
+
+**Data migration (`migrar.py`):** idempotent script that adds missing sheets and columns to an existing `edificio_brasil.xlsx` without touching any data. Run it after copying new code files over an existing install. Called automatically by `instalar.ps1` and `actualizar.ps1` if the Excel already exists. Handles: `GASTOS_RECURRENTES`, `LIQUIDACIONES_ESTADO`, `PEDIDOS_PRESUPUESTO`, `PRESUPUESTOS` sheets; `gasto_recurrente` column in PROVEEDORES; `numero_factura`/`categoria`/`extraordinario` in FACTURAS; `piso`/`deuda_inicial` in UNIDADES; new CONFIG keys.
+
+**Update process (existing install with data):**
+1. User clicks Backup button in app → downloads ZIP of Excel to Downloads
+2. Unzip new `consorcio_app_*.zip` over the existing folder (safe: `data/` not in ZIP)
+3. Run `actualizar.bat` → auto-backup of Excel + schema migration + pip update
 
 **Installer logic (`instalar.ps1`):**
 1. Self-elevates to admin via `Start-Process -Verb RunAs`

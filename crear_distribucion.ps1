@@ -23,8 +23,10 @@ if (Test-Path $dest) {
     Write-Host "ZIP anterior eliminado."
 }
 
-# Recolectar archivos/carpetas a incluir (excluir venv, __pycache__, .git, ZIPs)
-$excludeDirs = @("venv", "__pycache__", ".git", ".venv")
+# Recolectar archivos/carpetas a incluir
+# Excluye: venv/, __pycache__/, .git/, data/ (el Excel de produccion
+# nunca viaja en el ZIP — cada instalacion conserva su propia BD)
+$excludeDirs = @("venv", "__pycache__", ".git", ".venv", "data")
 $items = Get-ChildItem -Path $src | Where-Object {
     $_.Name -notin $excludeDirs -and
     $_.Extension -ne ".zip"
@@ -50,11 +52,15 @@ Write-Host "============================================"
 Write-Host " ZIP creado exitosamente!" -ForegroundColor Green
 Write-Host " Archivo: consorcio_app_$date.zip ($sizeMB MB)"
 Write-Host ""
-Write-Host " Para instalar en otro equipo:"
-Write-Host "  1. Copiar el ZIP al otro equipo"
-Write-Host "  2. Descomprimir"
-Write-Host "  3. Ejecutar instalar.bat"
-Write-Host "  4. Ejecutar iniciar.bat"
+Write-Host " Instalacion nueva:"
+Write-Host "  1. Copiar ZIP al otro equipo y descomprimir"
+Write-Host "  2. Ejecutar instalar.bat"
+Write-Host "  3. Ejecutar iniciar.bat"
+Write-Host ""
+Write-Host " Actualizacion (ya tiene datos cargados):"
+Write-Host "  1. Hacer backup desde la app (boton Backup)"
+Write-Host "  2. Descomprimir el ZIP encima de la carpeta actual"
+Write-Host "  3. Ejecutar actualizar.bat (migra el esquema sin tocar datos)"
 Write-Host "============================================"
 Write-Host ""
 Read-Host "Presiona Enter para salir"
