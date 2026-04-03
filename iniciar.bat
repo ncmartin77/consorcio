@@ -27,7 +27,7 @@ goto :eof
 :: ---- WSL Debian ----
 :wsl_launch
 echo Iniciando App Consorcio en http://localhost:5000 (via WSL Debian)...
-for /f "skip=1 delims=" %%L in (%APPDIR%.runtime) do (
+for /f "usebackq skip=1 delims=" %%L in ("%APPDIR%.runtime") do (
     set WSLPATH=%%L
     goto :do_wsl
 )
