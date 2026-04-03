@@ -326,11 +326,11 @@ def save_movimiento():
 
 @app.route("/caja/delete/<int:row_num>/<periodo>", methods=["POST"])
 def delete_movimiento(row_num, periodo):
-    if db.liq_esta_cerrada(periodo):
-        flash(f"La liquidación de {periodo} está cerrada. No se pueden eliminar movimientos.", "danger")
-        return redirect(url_for("caja", periodo=periodo))
-    db.delete_movimiento(row_num)
-    flash("Movimiento eliminado.", "success")
+    ok = db.delete_movimiento(row_num)
+    if ok is False:
+        flash("No se puede eliminar: la liquidación del período correspondiente está cerrada.", "danger")
+    else:
+        flash("Movimiento eliminado.", "success")
     return redirect(url_for("caja", periodo=periodo))
 
 

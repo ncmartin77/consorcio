@@ -355,8 +355,19 @@ def save_movimiento(fecha: str, descripcion: str, tipo: str, categoria: str, imp
 def delete_movimiento(row_num: int):
     wb = _get_wb()
     ws = wb[SHEET_CAJA]
+    # Verificar que el período del movimiento no tenga liquidación CERRADA
+    row_vals = ws.cell(row=row_num, column=1).value  # fecha
+    if row_vals:
+        fecha = row_vals
+        if hasattr(fecha, "strftime"):
+            periodo_mov = fecha.strftime("%Y-%m")
+        else:
+            periodo_mov = str(fecha)[:7]
+        if liq_esta_cerrada(periodo_mov):
+            return False
     ws.delete_rows(row_num)
     _save_wb(wb)
+    return True
 
 
 # ---------------------------------------------------------------------------

@@ -74,7 +74,7 @@
         <tbody>
           {% for m in movimientos %}
           <tr>
-            <td>{{ m.fecha }}</td>
+            <td>{{ m.fecha[8:10] }}/{{ m.fecha[5:7] }}/{{ m.fecha[:4] }}</td>
             <td>{{ m.descripcion }}</td>
             <td class="text-center">
               {% if m.tipo == 'ENTRADA' %}
