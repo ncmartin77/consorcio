@@ -291,7 +291,9 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
 
     edificio = config.get("edificio_nombre", "EDIFICIO")
     mes_nombre = _mes_nombre(periodo).upper()
-    total_gastos = sum(g["importe"] for g in gastos)
+    gastos_fr     = [g for g in gastos if g.get("tipo") == "VARIABLE_FR"]
+    gastos_normal = [g for g in gastos if g.get("tipo") != "VARIABLE_FR"]
+    total_gastos = sum(g["importe"] for g in gastos_normal)
     total_a_cobrar = sum(r["total_a_pagar"] for r in liquidacion_rows)
     total_cobrado = sum(r.get("monto_pagado", 0) for r in liquidacion_rows)
     total_pendiente = sum(r["total_a_pagar"] for r in liquidacion_rows if not r["pagado"] and r.get("tipo_pago") != "PARCIAL") + \
@@ -385,7 +387,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
 
     # Detalle de gastos + caja en dos columnas
     gasto_data = [["Concepto", "Tipo", "Importe"]]
-    for g in gastos:
+    for g in gastos_normal:
         gasto_data.append([g["concepto"], g.get("tipo",""), _fmt(g["importe"])])
     gasto_data.append(["TOTAL GASTOS", "", _fmt(total_gastos)])
 
@@ -428,6 +430,35 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
     ]))
     story.append(combo)
     story.append(Spacer(1, 0.3*cm))
+
+    # Sección Fondo de Reserva (solo si hay gastos VARIABLE_FR)
+    if gastos_fr:
+        c_naranja = colors.HexColor("#856404")
+        story.append(Paragraph("GASTOS CON FONDO DE RESERVA",
+                                st("frh", fontSize=9, fontName="Helvetica-Bold",
+                                   textColor=c_naranja, spaceAfter=4)))
+        fr_data = [["Concepto", "Importe"]]
+        for g in gastos_fr:
+            fr_data.append([g["concepto"], _fmt(g["importe"])])
+        total_fr = sum(g["importe"] for g in gastos_fr)
+        fr_data.append(["TOTAL", _fmt(total_fr)])
+        fr_t = Table(fr_data, colWidths=[13.5*cm, 5.0*cm])
+        nfr = len(fr_data)
+        fr_t.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#856404")),
+            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,-1), 8),
+            ("FONTNAME", (0,nfr-1), (-1,nfr-1), "Helvetica-Bold"),
+            ("BACKGROUND", (0,nfr-1), (-1,nfr-1), colors.HexColor("#fff3cd")),
+            ("ROWBACKGROUNDS", (0,1), (-1,nfr-2), [colors.white, colors.HexColor("#fffbea")]),
+            ("ALIGN", (1,0), (1,-1), "RIGHT"),
+            ("GRID", (0,0), (-1,-1), 0.3, colors.grey),
+            ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+            ("LEFTPADDING", (0,0), (-1,-1), 4),
+        ]))
+        story.append(fr_t)
+        story.append(Spacer(1, 0.3*cm))
+
     story.append(Paragraph(
         f"Generado el {date.today().strftime('%d/%m/%Y')} a las {__import__('datetime').datetime.now().strftime('%H:%M')}",
         st("ts", fontSize=7, fontName="Helvetica", alignment=TA_RIGHT,

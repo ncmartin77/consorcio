@@ -304,7 +304,7 @@ def delete_gasto(row_num: int):
 
 
 def get_total_gastos(periodo: str):
-    return sum(g["importe"] for g in get_gastos(periodo))
+    return sum(g["importe"] for g in get_gastos(periodo) if g.get("tipo") != "VARIABLE_FR")
 
 
 # ---------------------------------------------------------------------------
@@ -480,7 +480,7 @@ def generar_liquidacion(periodo: str):
 
     unidades = get_unidades(solo_activas=True)
     gastos = get_gastos(mes_gastos)
-    total_gastos = sum(g["importe"] for g in gastos)
+    total_gastos = sum(g["importe"] for g in gastos if g.get("tipo") != "VARIABLE_FR")
     categorias = [c["nombre"] for c in get_categorias()]
 
     prev = _prev_periodo(periodo)
@@ -906,7 +906,8 @@ def pagar_factura(fid: int, fecha_pago: str):
                 categoria=f.get("categoria") or "Proveedor",
                 importe=importe,
             )
-            # Registrar como gasto mensual, excepto si ya fue creado al registrar la factura recurrente
+            # Registrar como gasto mensual, excepto si ya fue creado al registrar la factura
+            # recurrente, o si es un gasto de Fondo de Reserva (ya está en GASTOS_MENSUALES como VARIABLE_FR)
             periodo = fecha_dt.strftime("%Y-%m")
             concepto = f.get("descripcion") or proveedor
             recurrentes = get_gastos_recurrentes()
@@ -914,7 +915,8 @@ def pagar_factura(fid: int, fecha_pago: str):
                 gr["concepto"].strip().upper() == concepto.strip().upper()
                 for gr in recurrentes
             )
-            if not es_recurrente:
+            es_fondo_reserva = (f.get("categoria") or "").upper() == "FONDO_RESERVA"
+            if not es_recurrente and not es_fondo_reserva:
                 save_gasto(periodo, concepto[:100], importe, f.get("categoria") or "FIJO")
             return True
     return False

@@ -194,8 +194,11 @@ def gastos(periodo=None):
     if not periodo:
         periodo = _periodo_actual()
     db.ensure_fondo_reserva_gasto(periodo)
-    gastos_list = db.get_gastos(periodo)
-    total = db.get_total_gastos(periodo)
+    todos_gastos = db.get_gastos(periodo)
+    gastos_list = [g for g in todos_gastos if g.get("tipo") != "VARIABLE_FR"]
+    gastos_fr   = [g for g in todos_gastos if g.get("tipo") == "VARIABLE_FR"]
+    total     = sum(g["importe"] for g in gastos_list)
+    total_fr  = sum(g["importe"] for g in gastos_fr)
     prox_periodo = db._next_periodo(periodo)
     liq_prox_cerrada = db.liq_esta_cerrada(prox_periodo)
     liq_prox_existe = db.liquidacion_existe(prox_periodo)
@@ -223,7 +226,8 @@ def gastos(periodo=None):
                                    "ultima_anterior": anteriores[0] if anteriores else None})
 
     proveedores = db.get_proveedores()
-    return render_template("gastos.html", gastos=gastos_list, periodo=periodo, total=total,
+    return render_template("gastos.html", gastos=gastos_list, gastos_fr=gastos_fr,
+                           periodo=periodo, total=total, total_fr=total_fr,
                            prox_periodo=prox_periodo, liq_prox_cerrada=liq_prox_cerrada,
                            liq_prox_existe=liq_prox_existe,
                            liq_actual_existe=liq_actual_existe,
@@ -251,11 +255,10 @@ def save_gasto():
         return redirect(url_for("gastos", periodo=periodo))
 
     if usar_fondo_reserva and tipo == "VARIABLE":
-        # Registrar como salida en Caja Diaria con categoría FONDO_RESERVA.
-        # No aparece en Gastos Mensuales → no afecta la liquidación.
-        fecha_hoy = _fecha_hoy().strftime("%Y-%m-%d")
-        db.save_movimiento(fecha_hoy, concepto, "SALIDA", "FONDO_RESERVA", importe)
-        flash(f"Fondo de Reserva registrado en Caja Diaria: ${importe:,.2f}", "success")
+        # Guardar como VARIABLE_FR: aparece en Gastos Mensuales (subsección Fondo de Reserva)
+        # pero NO afecta el total de gastos ni la liquidación.
+        # El movimiento en Caja Diaria se genera al pagar la factura (categoría FONDO_RESERVA).
+        db.save_gasto(periodo, concepto, importe, "VARIABLE_FR", int(row_num) if row_num else None)
         return redirect(url_for("gastos", periodo=periodo))
 
     db.save_gasto(periodo, concepto, importe, tipo, int(row_num) if row_num else None)
