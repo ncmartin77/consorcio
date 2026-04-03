@@ -53,6 +53,12 @@
                         onclick='editarGasto({{ g|tojson }})'>
                   <i class="bi bi-pencil"></i>
                 </button>
+                {% if g.tipo == 'VARIABLE' %}
+                <button class="btn btn-sm btn-outline-primary me-1"
+                        onclick='abrirFacturaVariable({{ g|tojson }})'>
+                  <i class="bi bi-receipt"></i>
+                </button>
+                {% endif %}
                 <form method="POST"
                       action="{{ url_for('delete_gasto', row_num=g.row, periodo=periodo) }}"
                       class="d-inline"
@@ -236,6 +242,63 @@
   </div>
 </div>
 
+<!-- Modal Emitir Factura para Gasto Variable -->
+<div class="modal fade" id="modalFacturaVariable" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('save_factura') }}">
+        <div class="modal-header bg-warning text-dark">
+          <h5 class="modal-title">
+            <i class="bi bi-receipt"></i> Emitir Factura — <span id="fv_titulo"></span>
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="descripcion" id="fv_descripcion">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Proveedor</label>
+            <select class="form-select" name="proveedor_id" id="fv_proveedor">
+              <option value="">-- Sin proveedor registrado --</option>
+              {% for p in proveedores %}
+              <option value="{{ p.id }}">{{ p.nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Importe *</label>
+              <div class="input-group">
+                <span class="input-group-text">$</span>
+                <input type="number" class="form-control" name="importe" id="fv_importe"
+                       step="0.01" min="0" required>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Fecha *</label>
+              <input type="date" class="form-control" name="fecha" id="fv_fecha" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">N° Factura</label>
+              <input type="text" class="form-control" name="numero_factura" id="fv_nro"
+                     placeholder="Ej: 0001-00012345">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Categoría</label>
+              <input type="text" class="form-control" name="categoria" id="fv_categoria">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-warning">
+            <i class="bi bi-save"></i> Guardar Factura
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Emitir Factura Recurrente -->
 <div class="modal fade" id="modalEmitirRecurrente" tabindex="-1">
   <div class="modal-dialog">
@@ -327,6 +390,17 @@ document.getElementById('modalGasto').addEventListener('hidden.bs.modal', functi
   document.getElementById('gasto_importe').value = '';
   document.getElementById('gasto_tipo').value = 'FIJO';
 });
+
+function abrirFacturaVariable(g) {
+  document.getElementById('fv_titulo').textContent = g.concepto;
+  document.getElementById('fv_descripcion').value  = g.concepto;
+  document.getElementById('fv_importe').value      = g.importe;
+  document.getElementById('fv_fecha').value        = new Date().toISOString().split('T')[0];
+  document.getElementById('fv_proveedor').value    = '';
+  document.getElementById('fv_nro').value          = '';
+  document.getElementById('fv_categoria').value    = '';
+  new bootstrap.Modal(document.getElementById('modalFacturaVariable')).show();
+}
 
 function abrirEmitirFactura(gr) {
   const ult = gr.ultima_anterior;

@@ -764,6 +764,26 @@ def apertura():
 
 
 # ---------------------------------------------------------------------------
+# BACKUP
+# ---------------------------------------------------------------------------
+
+@app.route("/backup")
+def backup():
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(db.DB_PATH, "edificio_brasil.xlsx")
+    buf.seek(0)
+    fecha = _fecha_hoy().strftime("%Y%m%d_%H%M")
+    return send_file(
+        buf,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=f"backup_edificio_brasil_{fecha}.zip"
+    )
+
+
+# ---------------------------------------------------------------------------
 # RESET (pruebas)
 # ---------------------------------------------------------------------------
 
