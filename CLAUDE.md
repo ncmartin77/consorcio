@@ -112,6 +112,10 @@ templates/      ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 
 **Backup:** `GET /backup` streams a ZIP of `data/edificio_brasil.xlsx` as a browser download named `backup_edificio_brasil_YYYYMMDD_HHMM.zip`. Button visible in the navbar on every page.
 
+**Caja Diaria — fecha display:** dates are stored internally as `YYYY-MM-DD` but displayed to the user as `DD/MM/YYYY` in `caja.html`.
+
+**Caja Diaria — delete block:** `delete_movimiento()` in `excel_db.py` reads the movement's actual `fecha` from the Excel row, derives its period (`YYYY-MM`), and checks `liq_esta_cerrada()` for that period before deleting. Returns `False` if blocked (CERRADA), `True` on success. The route in `app.py` checks the return value and flashes an error if blocked. This prevents deletion even if the URL period parameter is manipulated.
+
 ## Templates and filters
 
 `app.py` registers a Jinja filter `mes_largo` (e.g., `"2026-04" | mes_largo` → `"Abril 2026"`). Use it in any template that displays a period to the user.
