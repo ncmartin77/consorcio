@@ -624,6 +624,17 @@ def marcar_pagado(periodo: str, unidad: str, monto_pagado: float, fecha_pago: st
     return None
 
 
+def marcar_todos_pagado(periodo: str, fecha_pago: str):
+    """Marca como pagadas todas las unidades PENDIENTES de un período."""
+    if liq_esta_cerrada(periodo):
+        return 0
+    liq = get_liquidacion(periodo)
+    pendientes = [r for r in liq if r.get("tipo_pago", "PENDIENTE") == "PENDIENTE"]
+    for r in pendientes:
+        marcar_pagado(periodo, str(r["unidad"]), r["total_a_pagar"], fecha_pago)
+    return len(pendientes)
+
+
 def get_años_con_liquidacion():
     wb = _get_wb()
     años = []

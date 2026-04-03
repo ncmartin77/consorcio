@@ -13,6 +13,16 @@ from pdf_gen import generar_pdf_liquidacion, generar_pdf_resumen_edificio, gener
 app = Flask(__name__)
 app.secret_key = "edificio-brasil-secret-2024"
 
+_MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
+          "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
+
+@app.template_filter("mes_largo")
+def mes_largo(periodo):
+    try:
+        return f"{_MESES[int(periodo[5:7]) - 1]} {periodo[:4]}"
+    except Exception:
+        return periodo
+
 
 def _fecha_hoy():
     """Returns today's date, using simulated date from config if set."""
@@ -338,6 +348,20 @@ def cerrar_liquidacion(periodo):
     else:
         db.set_liq_estado(periodo, "CERRADA")
         flash(f"Liquidación de {periodo} cerrada. Ya no se pueden registrar pagos.", "success")
+    return redirect(url_for("liquidacion", periodo=periodo))
+
+
+@app.route("/liquidacion/pagar-todo/<periodo>", methods=["POST"])
+def pagar_todo(periodo):
+    if db.liq_esta_cerrada(periodo):
+        flash(f"La liquidación de {periodo} está cerrada.", "danger")
+        return redirect(url_for("liquidacion", periodo=periodo))
+    fecha_pago = request.form.get("fecha_pago") or _fecha_hoy().strftime("%Y-%m-%d")
+    n = db.marcar_todos_pagado(periodo, fecha_pago)
+    if n:
+        flash(f"{n} unidad(es) marcada(s) como pagadas.", "success")
+    else:
+        flash("No hay unidades pendientes de pago.", "info")
     return redirect(url_for("liquidacion", periodo=periodo))
 
 

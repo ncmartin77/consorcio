@@ -3,7 +3,7 @@
 {% block content %}
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h4><i class="bi bi-receipt"></i> Liquidación Mensual</h4>
+  <h4><i class="bi bi-receipt"></i> Liquidación — <span class="text-primary">{{ periodo | mes_largo }}</span></h4>
   <div class="d-flex gap-2 align-items-center flex-wrap">
     <input type="month" class="form-control form-control-sm" id="periodoSelector"
            value="{{ periodo }}">
@@ -24,6 +24,11 @@
         <i class="bi bi-arrow-clockwise"></i> Generar
       </button>
     </form>
+    {% endif %}
+    {% if liq and not liq_cerrada and pendientes > 0 %}
+    <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#modalPagoCompleto">
+      <i class="bi bi-check2-all"></i> Pago Completo
+    </button>
     {% endif %}
     {% if liq %}
     <a href="{{ url_for('descargar_pdf', periodo=periodo) }}" class="btn btn-danger btn-sm">
@@ -241,6 +246,33 @@
 
 {% endif %}
 
+<!-- ===== MODAL PAGO COMPLETO ===== -->
+<div class="modal fade" id="modalPagoCompleto" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('pagar_todo', periodo=periodo) }}">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title"><i class="bi bi-check2-all"></i> Pago Completo</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-3 small">
+            Se registrarán como <strong>pagadas</strong> las <strong>{{ pendientes }}</strong> unidad(es) pendientes, cada una por su total a pagar.
+          </p>
+          <label class="form-label fw-semibold">Fecha de Pago *</label>
+          <input type="date" class="form-control" name="fecha_pago" id="pc_fecha" required>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-check2-all"></i> Confirmar Todo
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <!-- ===== MODAL PAGO ===== -->
 <div class="modal fade" id="modalPago" tabindex="-1">
   <div class="modal-dialog modal-sm">
@@ -307,6 +339,10 @@
 document.getElementById('periodoSelector').addEventListener('change', function() {
   window.location.href = '{{ url_for("liquidacion") }}/' + this.value;
 });
+
+const _hoy = new Date().toISOString().split('T')[0];
+const pcFecha = document.getElementById('pc_fecha');
+if (pcFecha) pcFecha.value = _hoy;
 
 let _saldoActual = 0;
 

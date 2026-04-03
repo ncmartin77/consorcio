@@ -21,15 +21,15 @@
     <div class="collapse navbar-collapse" id="navMenu">
       <ul class="navbar-nav me-auto">
         <li class="nav-item">
-          <a class="nav-link {% if request.endpoint == 'liquidacion' %}active{% endif %}"
-             href="{{ url_for('liquidacion') }}">
-            <i class="bi bi-receipt"></i> Liquidación
-          </a>
-        </li>
-        <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'gastos' %}active{% endif %}"
              href="{{ url_for('gastos') }}">
             <i class="bi bi-list-check"></i> Gastos Mensuales
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'liquidacion' %}active{% endif %}"
+             href="{{ url_for('liquidacion') }}">
+            <i class="bi bi-receipt"></i> Liquidación
           </a>
         </li>
         <li class="nav-item">
