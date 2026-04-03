@@ -93,6 +93,10 @@ templates/      ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 - `fecha_pago` must be ≥ `fecha` (emission date) of the factura — enforced in `pagar_factura` route (backend) and via `min=` on the date input (frontend).
 - `marcar_todos_pagado(periodo, fecha_pago)` pays all PENDIENTE units at once (used by the "Pago Completo" button in Liquidación).
 
+**Factura desde gasto variable:** VARIABLE-type gastos in Gastos Mensuales show a receipt button that opens `#modalFacturaVariable` pre-filled with the gasto's concept and amount. Submits to the existing `save_factura` route.
+
+**Backup:** `GET /backup` streams a ZIP of `data/edificio_brasil.xlsx` as a browser download named `backup_edificio_brasil_YYYYMMDD_HHMM.zip`. Button visible in the navbar on every page.
+
 ## Templates and filters
 
 `app.py` registers a Jinja filter `mes_largo` (e.g., `"2026-04" | mes_largo` → `"Abril 2026"`). Use it in any template that displays a period to the user.
