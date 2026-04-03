@@ -204,21 +204,32 @@ def gastos(periodo=None):
 
     # Estado de cada gasto recurrente en el período
     gastos_recurrentes = db.get_gastos_recurrentes()
-    facturas_periodo = [f for f in db.get_facturas()
+    todas_facturas = db.get_facturas()
+    facturas_periodo = [f for f in todas_facturas
                         if str(f.get("fecha") or "")[:7] == periodo]
     recurrentes_estado = []
     for gr in gastos_recurrentes:
         concepto_up = gr["concepto"].strip().upper()
         factura = next((f for f in facturas_periodo
                         if f.get("descripcion", "").strip().upper() == concepto_up), None)
-        recurrentes_estado.append({**gr, "factura": factura})
+        # Última factura del mismo concepto en períodos anteriores (para pre-cargar)
+        anteriores = sorted(
+            [f for f in todas_facturas
+             if f.get("descripcion", "").strip().upper() == concepto_up
+             and str(f.get("fecha") or "")[:7] < periodo],
+            key=lambda f: str(f.get("fecha") or ""), reverse=True
+        )
+        recurrentes_estado.append({**gr, "factura": factura,
+                                   "ultima_anterior": anteriores[0] if anteriores else None})
 
+    proveedores = db.get_proveedores()
     return render_template("gastos.html", gastos=gastos_list, periodo=periodo, total=total,
                            prox_periodo=prox_periodo, liq_prox_cerrada=liq_prox_cerrada,
                            liq_prox_existe=liq_prox_existe,
                            liq_actual_existe=liq_actual_existe,
                            liq_actual_cerrada=liq_actual_cerrada,
-                           recurrentes_estado=recurrentes_estado)
+                           recurrentes_estado=recurrentes_estado,
+                           proveedores=proveedores)
 
 
 @app.route("/gastos/save", methods=["POST"])

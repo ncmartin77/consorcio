@@ -118,6 +118,10 @@
                   <span class="badge bg-warning text-dark">
                     <i class="bi bi-exclamation-triangle"></i> Sin factura
                   </span>
+                  <button class="btn btn-sm btn-outline-primary ms-2"
+                          onclick='abrirEmitirFactura({{ gr|tojson }})'>
+                    <i class="bi bi-plus-circle"></i> Emitir
+                  </button>
                 {% elif fac.estado == 'PENDIENTE' %}
                   <span class="badge bg-info text-dark">
                     <i class="bi bi-receipt"></i> Factura registrada — sin pagar
@@ -232,6 +236,71 @@
   </div>
 </div>
 
+<!-- Modal Emitir Factura Recurrente -->
+<div class="modal fade" id="modalEmitirRecurrente" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('save_factura') }}">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title">
+            <i class="bi bi-plus-circle"></i> Emitir Factura — <span id="er_titulo"></span>
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-info py-2 small mb-3" id="er_aviso_anterior" style="display:none">
+            <i class="bi bi-info-circle"></i>
+            Datos pre-cargados de la última factura del mes anterior. Confirmá el monto y el proveedor.
+          </div>
+          <div class="alert alert-warning py-2 small mb-3" id="er_aviso_sin_anterior" style="display:none">
+            <i class="bi bi-exclamation-triangle"></i>
+            No hay facturas anteriores para este concepto. Completá los datos manualmente.
+          </div>
+          <input type="hidden" name="descripcion" id="er_descripcion">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Proveedor *</label>
+            <select class="form-select" name="proveedor_id" id="er_proveedor">
+              <option value="">-- Sin proveedor registrado --</option>
+              {% for p in proveedores %}
+              <option value="{{ p.id }}">{{ p.nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Importe *</label>
+              <div class="input-group">
+                <span class="input-group-text">$</span>
+                <input type="number" class="form-control" name="importe" id="er_importe"
+                       step="0.01" min="0" required>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Fecha *</label>
+              <input type="date" class="form-control" name="fecha" id="er_fecha" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">N° Factura</label>
+              <input type="text" class="form-control" name="numero_factura" id="er_nro"
+                     placeholder="Ej: 0001-00012345">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Categoría</label>
+              <input type="text" class="form-control" name="categoria" id="er_categoria">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save"></i> Guardar Factura
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 {% block scripts %}
 <script>
@@ -258,5 +327,19 @@ document.getElementById('modalGasto').addEventListener('hidden.bs.modal', functi
   document.getElementById('gasto_importe').value = '';
   document.getElementById('gasto_tipo').value = 'FIJO';
 });
+
+function abrirEmitirFactura(gr) {
+  const ult = gr.ultima_anterior;
+  document.getElementById('er_titulo').textContent = gr.concepto;
+  document.getElementById('er_descripcion').value = gr.concepto;
+  document.getElementById('er_importe').value = ult ? ult.importe : '';
+  document.getElementById('er_proveedor').value = ult ? (ult.proveedor_id || '') : '';
+  document.getElementById('er_categoria').value = ult ? (ult.categoria || gr.categoria || '') : (gr.categoria || '');
+  document.getElementById('er_nro').value = '';
+  document.getElementById('er_fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('er_aviso_anterior').style.display = ult ? 'block' : 'none';
+  document.getElementById('er_aviso_sin_anterior').style.display = ult ? 'none' : 'block';
+  new bootstrap.Modal(document.getElementById('modalEmitirRecurrente')).show();
+}
 </script>
 {% endblock %}
