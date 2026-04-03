@@ -6,10 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Windows (normal use):**
 ```
-instalar.bat            # first time: verifies Python 3.8+, creates venv, installs deps
+instalar.bat            # first time: fully unattended installer (calls instalar.ps1)
 iniciar.bat             # starts Flask on http://localhost:5000
 crear_distribucion.bat  # creates a ZIP for deployment on another machine (calls .ps1)
 ```
+
+**Installer logic (`instalar.ps1`):**
+1. Self-elevates to admin via `Start-Process -Verb RunAs`
+2. Looks for Python 3.8+ in common Windows locations
+3. If missing: silently downloads `python-3.12.7-amd64.exe` and installs with `/quiet PrependPath=1`
+4. If download fails: installs WSL + Debian via `wsl --install -d Debian --no-launch`
+5. If WSL needs a reboot: registers `RunOnce` registry key and calls `Restart-Computer -Force`
+6. After reboot (with `-PostReboot` param): waits 30s for WSL init, then sets up Debian
+7. Writes `.runtime` flag (`windows` or `wsl\n<wslpath>`) read by `iniciar.bat`
+8. All output logged to `instalacion.log`
 
 **From WSL/terminal:**
 ```bash

@@ -6,22 +6,28 @@ Aplicación web local para gestionar expensas, liquidaciones, facturas y caja de
 
 ## Requisitos previos
 
-| Requisito | Versión mínima | Dónde conseguirlo |
-|-----------|---------------|-------------------|
-| Windows   | 10 / 11       | —                 |
-| Python    | 3.8           | https://www.python.org/downloads/ |
+| Requisito | Mínimo | Notas |
+|-----------|--------|-------|
+| Windows   | 10 (build 19041) / 11 | — |
 | Conexión a internet | — | Solo para la instalación inicial |
+| Python 3.8+ | opcional | El instalador lo descarga si falta |
 
-> **Al instalar Python:** tildar la opción **"Add Python to PATH"** antes de hacer clic en *Install Now*.
+> No necesitás instalar nada manualmente. El instalador lo hace todo solo.
 
 ---
 
 ## Instalación (primera vez)
 
 1. Descomprimí el ZIP en la carpeta donde quieras tener la app (ej: `C:\Consorcio\`).
-2. Abrí la carpeta y hacé doble clic en **`instalar.bat`**.
-3. El instalador verifica Python, crea el entorno virtual e instala las dependencias automáticamente.
-4. Al terminar, cerrá esa ventana.
+2. Hacé doble clic en **`instalar.bat`** — no requiere ninguna intervención.
+3. El instalador:
+   - Se auto-eleva a administrador
+   - Detecta si Python está instalado; si no, lo descarga e instala en silencio
+   - Si no hay conexión o Python falla, instala WSL con Debian automáticamente
+   - Si WSL requiere reinicio, lo programa y reinicia solo — al volver, continúa automáticamente
+   - Crea el entorno virtual e instala todas las dependencias
+   - Genera un log detallado en `instalacion.log`
+4. Al finalizar, ejecutá `iniciar.bat`.
 
 ---
 
