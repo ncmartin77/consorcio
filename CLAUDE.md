@@ -112,6 +112,14 @@ templates/      ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 
 **Backup:** `GET /backup` streams a ZIP of `data/edificio_brasil.xlsx` as a browser download named `backup_edificio_brasil_YYYYMMDD_HHMM.zip`. Button visible in the navbar on every page.
 
+**Versión del sistema:** stored in `version.txt` (e.g. `0.5-0304`, where the suffix is the release date DDMM). Read at startup via a `@app.context_processor` in `app.py` that injects `app_version` into all templates. Displayed as a badge in the navbar (`base.html`). **Increment the minor number on every push** (e.g. `0.5-0304` → `0.6-0304`). Update `version.txt` before committing.
+
+**Tareas Pendientes:** a global memo/checklist shown in Gastos Mensuales (always visible, regardless of period). Stored in the `TAREAS` Excel sheet (`id`, `descripcion`). Operations are fully AJAX (no page reload):
+- `POST /tareas/add` → returns `{id, descripcion}` JSON
+- `POST /tareas/delete/<id>` → returns `{ok: true}` JSON
+- Checking off a task deletes it from the sheet and shows a one-item "Deshacer" banner; clicking it re-adds via `/tareas/add`.
+- `migrar.py` handles adding the TAREAS sheet to existing installs.
+
 **Caja Diaria — fecha display:** dates are stored internally as `YYYY-MM-DD` but displayed to the user as `DD/MM/YYYY` in `caja.html`.
 
 **Caja Diaria — delete block:** `delete_movimiento()` in `excel_db.py` reads the movement's actual `fecha` from the Excel row, derives its period (`YYYY-MM`), and checks `liq_esta_cerrada()` for that period before deleting. Returns `False` if blocked (CERRADA), `True` on success. The route in `app.py` checks the return value and flashes an error if blocked. This prevents deletion even if the URL period parameter is manipulated.

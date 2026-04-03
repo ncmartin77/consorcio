@@ -24,6 +24,17 @@ def mes_largo(periodo):
         return periodo
 
 
+@app.context_processor
+def inject_version():
+    try:
+        _vpath = os.path.join(os.path.dirname(__file__), "version.txt")
+        with open(_vpath) as _f:
+            _ver = _f.read().strip()
+    except Exception:
+        _ver = "?"
+    return {"app_version": _ver}
+
+
 def _fecha_hoy():
     """Returns today's date, using simulated date from config if set."""
     cfg = db.get_config()
@@ -226,6 +237,7 @@ def gastos(periodo=None):
                                    "ultima_anterior": anteriores[0] if anteriores else None})
 
     proveedores = db.get_proveedores()
+    tareas = db.get_tareas()
     return render_template("gastos.html", gastos=gastos_list, gastos_fr=gastos_fr,
                            periodo=periodo, total=total, total_fr=total_fr,
                            prox_periodo=prox_periodo, liq_prox_cerrada=liq_prox_cerrada,
@@ -233,7 +245,7 @@ def gastos(periodo=None):
                            liq_actual_existe=liq_actual_existe,
                            liq_actual_cerrada=liq_actual_cerrada,
                            recurrentes_estado=recurrentes_estado,
-                           proveedores=proveedores)
+                           proveedores=proveedores, tareas=tareas)
 
 
 @app.route("/gastos/save", methods=["POST"])
@@ -271,6 +283,25 @@ def delete_gasto(row_num, periodo):
     db.delete_gasto(row_num)
     _recalcular_liq_si_posible(periodo)
     return redirect(url_for("gastos", periodo=periodo))
+
+
+# ---------------------------------------------------------------------------
+# TAREAS PENDIENTES (AJAX)
+# ---------------------------------------------------------------------------
+
+@app.route("/tareas/add", methods=["POST"])
+def tareas_add():
+    descripcion = (request.form.get("descripcion") or "").strip()
+    if not descripcion:
+        return jsonify({"error": "descripcion requerida"}), 400
+    tarea = db.add_tarea(descripcion)
+    return jsonify(tarea)
+
+
+@app.route("/tareas/delete/<int:tarea_id>", methods=["POST"])
+def tareas_delete(tarea_id):
+    db.delete_tarea(tarea_id)
+    return jsonify({"ok": True})
 
 
 # ---------------------------------------------------------------------------

@@ -22,6 +22,7 @@ SHEET_FACTURAS = "FACTURAS"
 SHEET_PEDIDOS = "PEDIDOS_PRESUPUESTO"
 SHEET_PRESUPUESTOS = "PRESUPUESTOS"
 SHEET_GASTOS_RECURRENTES = "GASTOS_RECURRENTES"
+SHEET_TAREAS = "TAREAS"
 LIQPREFIX = "LIQUIDACIONES_"
 SHEET_LIQ_ESTADOS = "LIQUIDACIONES_ESTADO"
 _LIQ_EST_HEADER = ["periodo", "estado"]
@@ -108,6 +109,10 @@ def _init_db():
     # GASTOS_RECURRENTES
     ws = wb.create_sheet(SHEET_GASTOS_RECURRENTES)
     ws.append(["id", "concepto", "categoria"])
+
+    # TAREAS
+    ws = wb.create_sheet(SHEET_TAREAS)
+    ws.append(["id", "descripcion"])
 
     wb.save(DB_PATH)
 
@@ -820,6 +825,40 @@ def delete_gasto_recurrente(gid: int):
             ws.delete_rows(i)
             break
     _save_wb(wb)
+
+
+# ---------------------------------------------------------------------------
+# TAREAS PENDIENTES
+# ---------------------------------------------------------------------------
+
+def get_tareas():
+    wb = _get_wb()
+    ws = _ensure_sheet(wb, SHEET_TAREAS, ["id", "descripcion"])
+    tareas = []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if row[0] is not None:
+            tareas.append({"id": int(row[0]), "descripcion": str(row[1] or "")})
+    return tareas
+
+
+def add_tarea(descripcion: str):
+    wb = _get_wb()
+    ws = _ensure_sheet(wb, SHEET_TAREAS, ["id", "descripcion"])
+    new_id = _next_id(ws)
+    ws.append([new_id, descripcion.strip()])
+    _save_wb(wb)
+    return {"id": new_id, "descripcion": descripcion.strip()}
+
+
+def delete_tarea(tarea_id: int):
+    wb = _get_wb()
+    ws = _ensure_sheet(wb, SHEET_TAREAS, ["id", "descripcion"])
+    for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        if row[0] is not None and int(row[0]) == tarea_id:
+            ws.delete_rows(i)
+            _save_wb(wb)
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------

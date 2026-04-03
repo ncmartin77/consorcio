@@ -60,6 +60,9 @@ def migrate():
     if ensure_sheet(wb, "LIQUIDACIONES_ESTADO", ["periodo", "estado"]):
         changes.append("Hoja LIQUIDACIONES_ESTADO creada")
 
+    if ensure_sheet(wb, "TAREAS", ["id", "descripcion"]):
+        changes.append("Hoja TAREAS creada")
+
     if ensure_sheet(wb, "PEDIDOS_PRESUPUESTO",
                     ["id", "fecha", "descripcion", "categoria",
                      "estado", "proveedor_elegido", "notas"]):

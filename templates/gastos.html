@@ -206,6 +206,42 @@
 </div>
 
 <div class="row mt-3">
+  <div class="col-lg-4 mb-3">
+    <div class="card shadow-sm border-warning">
+      <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-check2-square"></i> Tareas Pendientes</span>
+        <span class="badge bg-dark" id="tareaCount">{{ tareas|length }}</span>
+      </div>
+      <div class="card-body p-2">
+        <!-- Undo banner -->
+        <div id="undoBar" class="alert alert-info py-1 px-2 mb-2 d-none d-flex justify-content-between align-items-center" style="font-size:0.85rem">
+          <span><i class="bi bi-arrow-counterclockwise"></i> "<span id="undoDesc"></span>" completada</span>
+          <button class="btn btn-sm btn-outline-primary py-0" onclick="deshacerTarea()">Deshacer</button>
+        </div>
+        <!-- Lista de tareas -->
+        <div id="tareasList">
+          {% for t in tareas %}
+          <div class="d-flex align-items-center gap-2 py-1 border-bottom tarea-item" id="tarea-{{ t.id }}">
+            <input type="checkbox" class="form-check-input mt-0" style="cursor:pointer;min-width:1rem"
+                   onchange="completarTarea({{ t.id }}, {{ t.descripcion|tojson }})">
+            <span class="flex-grow-1" style="font-size:0.9rem">{{ t.descripcion }}</span>
+          </div>
+          {% else %}
+          <p class="text-muted small text-center mb-1" id="emptyMsg">Sin tareas pendientes</p>
+          {% endfor %}
+        </div>
+        <!-- Agregar tarea -->
+        <div class="input-group input-group-sm mt-2">
+          <input type="text" class="form-control" id="nuevaTarea"
+                 placeholder="Nueva tarea..." maxlength="200"
+                 onkeydown="if(event.key==='Enter'){agregarTarea();event.preventDefault();}">
+          <button class="btn btn-warning" onclick="agregarTarea()">
+            <i class="bi bi-plus-lg"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="col-lg-4">
     <div class="card shadow-sm border-success">
       <div class="card-header bg-success text-white">
@@ -436,6 +472,70 @@
 {% endblock %}
 {% block scripts %}
 <script>
+// ---- TAREAS PENDIENTES ----
+let lastUndo = null;
+
+function actualizarContador() {
+  const n = document.querySelectorAll('.tarea-item').length;
+  document.getElementById('tareaCount').textContent = n;
+  const empty = document.getElementById('emptyMsg');
+  if (empty) empty.style.display = n ? 'none' : 'block';
+}
+
+async function completarTarea(id, descripcion) {
+  await fetch(`/tareas/delete/${id}`, {method: 'POST'});
+  document.getElementById(`tarea-${id}`).remove();
+  actualizarContador();
+  // Mostrar undo
+  lastUndo = descripcion;
+  document.getElementById('undoDesc').textContent = descripcion;
+  document.getElementById('undoBar').classList.remove('d-none');
+}
+
+async function deshacerTarea() {
+  if (!lastUndo) return;
+  const resp = await fetch('/tareas/add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'descripcion=' + encodeURIComponent(lastUndo)
+  });
+  const t = await resp.json();
+  lastUndo = null;
+  document.getElementById('undoBar').classList.add('d-none');
+  agregarTareaDOM(t.id, t.descripcion);
+}
+
+function agregarTareaDOM(id, descripcion) {
+  const empty = document.getElementById('emptyMsg');
+  if (empty) empty.style.display = 'none';
+  const div = document.createElement('div');
+  div.className = 'd-flex align-items-center gap-2 py-1 border-bottom tarea-item';
+  div.id = `tarea-${id}`;
+  div.innerHTML = `<input type="checkbox" class="form-check-input mt-0" style="cursor:pointer;min-width:1rem"
+    onchange="completarTarea(${id}, ${JSON.stringify(descripcion)})">
+    <span class="flex-grow-1" style="font-size:0.9rem">${descripcion}</span>`;
+  document.getElementById('tareasList').appendChild(div);
+  actualizarContador();
+}
+
+async function agregarTarea() {
+  const input = document.getElementById('nuevaTarea');
+  const desc = input.value.trim();
+  if (!desc) return;
+  const resp = await fetch('/tareas/add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'descripcion=' + encodeURIComponent(desc)
+  });
+  const t = await resp.json();
+  input.value = '';
+  agregarTareaDOM(t.id, t.descripcion);
+  // Al agregar nueva, descartamos el undo anterior
+  lastUndo = null;
+  document.getElementById('undoBar').classList.add('d-none');
+}
+// ---- FIN TAREAS ----
+
 // Redirigir con mes seleccionado
 document.querySelector('input[name="p"]').addEventListener('change', function() {
   window.location.href = '{{ url_for("gastos") }}/' + this.value;
