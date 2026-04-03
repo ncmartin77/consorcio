@@ -199,6 +199,8 @@ def gastos(periodo=None):
     prox_periodo = db._next_periodo(periodo)
     liq_prox_cerrada = db.liq_esta_cerrada(prox_periodo)
     liq_prox_existe = db.liquidacion_existe(prox_periodo)
+    liq_actual_existe = db.liquidacion_existe(periodo)
+    liq_actual_cerrada = db.liq_esta_cerrada(periodo)
 
     # Estado de cada gasto recurrente en el período
     gastos_recurrentes = db.get_gastos_recurrentes()
@@ -214,6 +216,8 @@ def gastos(periodo=None):
     return render_template("gastos.html", gastos=gastos_list, periodo=periodo, total=total,
                            prox_periodo=prox_periodo, liq_prox_cerrada=liq_prox_cerrada,
                            liq_prox_existe=liq_prox_existe,
+                           liq_actual_existe=liq_actual_existe,
+                           liq_actual_cerrada=liq_actual_cerrada,
                            recurrentes_estado=recurrentes_estado)
 
 
@@ -354,9 +358,17 @@ def liquidacion(periodo=None):
 def generar_liquidacion(periodo):
     if db.liq_esta_cerrada(periodo):
         flash(f"La liquidación de {periodo} está CERRADA y no puede modificarse.", "warning")
-    else:
-        db.generar_liquidacion(periodo)
-        flash(f"Liquidación generada/actualizada para {periodo}.", "success")
+        return redirect(url_for("liquidacion", periodo=periodo))
+    # Validar que la liquidación del mes anterior esté CERRADA
+    periodo_anterior = db._prev_periodo(periodo)
+    if db.liquidacion_existe(periodo_anterior) and not db.liq_esta_cerrada(periodo_anterior):
+        flash(
+            f"La liquidación de {mes_largo(periodo_anterior)} debe estar CERRADA antes de generar la de {mes_largo(periodo)}.",
+            "danger"
+        )
+        return redirect(url_for("gastos", periodo=db._prev_periodo(periodo)))
+    db.generar_liquidacion(periodo)
+    flash(f"Liquidación generada/actualizada para {periodo}.", "success")
     return redirect(url_for("liquidacion", periodo=periodo))
 
 

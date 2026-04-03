@@ -154,22 +154,29 @@
         {% if liq_prox_cerrada %}
         <div class="alert alert-danger py-2 small mb-0">
           <i class="bi bi-lock-fill"></i>
-          La liquidación de <strong>{{ prox_periodo }}</strong> está <strong>CERRADA</strong>.
+          La liquidación de <strong>{{ prox_periodo | mes_largo }}</strong> está <strong>CERRADA</strong>.
           Los cambios se reflejarán en el mes siguiente.
+        </div>
+        {% elif liq_actual_existe and not liq_actual_cerrada %}
+        <div class="alert alert-warning py-2 small mb-0">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          La liquidación de <strong>{{ periodo | mes_largo }}</strong> debe estar
+          <strong>CERRADA</strong> antes de generar la de <strong>{{ prox_periodo | mes_largo }}</strong>.
+          <a href="{{ url_for('liquidacion', periodo=periodo) }}" class="alert-link">Ir a Liquidación →</a>
         </div>
         {% else %}
         <form method="POST" action="{{ url_for('generar_liquidacion', periodo=prox_periodo) }}">
           <button type="submit" class="btn btn-success w-100">
             <i class="bi bi-receipt"></i>
             {% if liq_prox_existe %}Recalcular{% else %}Generar{% endif %}
-            Liquidación {{ prox_periodo }}
+            Liquidación {{ prox_periodo | mes_largo }}
           </button>
         </form>
         <p class="text-muted small mt-2">
           {% if liq_prox_existe %}
-          La liquidación de <strong>{{ prox_periodo }}</strong> ya existe y se recalculará con los gastos actuales de <strong>{{ periodo }}</strong>.
+          La liquidación de <strong>{{ prox_periodo | mes_largo }}</strong> ya existe y se recalculará con los gastos actuales de <strong>{{ periodo | mes_largo }}</strong>.
           {% else %}
-          Distribuye los gastos de <strong>{{ periodo }}</strong> entre todas las unidades para la liquidación de <strong>{{ prox_periodo }}</strong>.
+          Distribuye los gastos de <strong>{{ periodo | mes_largo }}</strong> entre todas las unidades para la liquidación de <strong>{{ prox_periodo | mes_largo }}</strong>.
           {% endif %}
         </p>
         {% endif %}
