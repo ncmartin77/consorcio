@@ -1151,7 +1151,7 @@ def get_historial_unidades():
             continue
         ws = wb[sheet_name]
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if not row[0] or not row[1]:
+            if len(row) < 10 or not row[0] or not row[1]:
                 continue
             numero = str(row[1])
             fecha_p = row[14] if len(row) > 14 else None
