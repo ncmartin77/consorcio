@@ -691,7 +691,7 @@ def _next_id(ws):
 # PROVEEDORES
 # ---------------------------------------------------------------------------
 
-_PROV_HEADER = ["id", "nombre", "cuit", "telefono", "email", "direccion", "categoria", "notas"]
+_PROV_HEADER = ["id", "nombre", "cuit", "telefono", "email", "direccion", "categoria", "notas", "gasto_recurrente"]
 
 def get_proveedores():
     wb = _get_wb()

@@ -18,6 +18,7 @@
             <th>Nombre</th>
             <th>CUIT</th>
             <th>Categoría</th>
+            <th>Gasto Recurrente</th>
             <th>Teléfono</th>
             <th>Email</th>
             <th>Dirección</th>
@@ -31,6 +32,7 @@
             <td><strong>{{ p.nombre }}</strong></td>
             <td class="text-muted">{{ p.cuit }}</td>
             <td>{% if p.categoria %}<span class="badge bg-secondary">{{ p.categoria }}</span>{% endif %}</td>
+            <td>{% if p.get('gasto_recurrente') %}<span class="badge bg-success"><i class="bi bi-arrow-repeat"></i> {{ p.gasto_recurrente }}</span>{% endif %}</td>
             <td>{{ p.telefono }}</td>
             <td><a href="mailto:{{ p.email }}">{{ p.email }}</a></td>
             <td class="text-muted small">{{ p.direccion }}</td>
@@ -51,7 +53,7 @@
           </tr>
           {% else %}
           <tr>
-            <td colspan="8" class="text-center text-muted py-4">
+            <td colspan="9" class="text-center text-muted py-4">
               No hay proveedores cargados.
             </td>
           </tr>
@@ -102,6 +104,20 @@
               <label class="form-label fw-semibold">Dirección</label>
               <input type="text" class="form-control" id="prov_direccion" name="direccion">
             </div>
+            {% if gastos_recurrentes %}
+            <div class="col-12">
+              <label class="form-label fw-semibold">
+                <i class="bi bi-arrow-repeat text-success"></i> Gasto Recurrente Asociado
+              </label>
+              <select class="form-select" id="prov_gasto_recurrente" name="gasto_recurrente">
+                <option value="">-- Ninguno --</option>
+                {% for gr in gastos_recurrentes %}
+                <option value="{{ gr.concepto }}">{{ gr.concepto }}{% if gr.categoria %} ({{ gr.categoria }}){% endif %}</option>
+                {% endfor %}
+              </select>
+              <small class="text-muted">Al crear una factura de este proveedor, se pre-seleccionará este gasto recurrente automáticamente.</small>
+            </div>
+            {% endif %}
             <div class="col-12">
               <label class="form-label fw-semibold">Notas</label>
               <textarea class="form-control" id="prov_notas" name="notas" rows="2"></textarea>
@@ -133,6 +149,8 @@ function editarProv(p) {
   document.getElementById('prov_email').value = p.email || '';
   document.getElementById('prov_direccion').value = p.direccion || '';
   document.getElementById('prov_notas').value = p.notas || '';
+  const selGR = document.getElementById('prov_gasto_recurrente');
+  if (selGR) selGR.value = p.gasto_recurrente || '';
   new bootstrap.Modal(document.getElementById('modalProv')).show();
 }
 document.getElementById('modalProv').addEventListener('hidden.bs.modal', function() {
@@ -140,6 +158,8 @@ document.getElementById('modalProv').addEventListener('hidden.bs.modal', functio
     '<i class="bi bi-plus-circle"></i> Nuevo Proveedor';
   this.querySelectorAll('input,textarea').forEach(el => el.value = '');
   document.getElementById('prov_id').value = '';
+  const selGR = document.getElementById('prov_gasto_recurrente');
+  if (selGR) selGR.value = '';
 });
 </script>
 {% endblock %}

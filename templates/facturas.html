@@ -227,6 +227,25 @@
 document.getElementById('fac_fecha').value = new Date().toISOString().split('T')[0];
 document.getElementById('pagar_fecha').value = new Date().toISOString().split('T')[0];
 
+// Mapa proveedor_id → gasto_recurrente
+const provRecurrente = {
+  {% for p in proveedores %}{% if p.get('gasto_recurrente') %}
+  "{{ p.id }}": "{{ p.gasto_recurrente }}",
+  {% endif %}{% endfor %}
+};
+
+document.getElementById('fac_proveedor').addEventListener('change', function() {
+  const gr = provRecurrente[this.value];
+  const selGR = document.getElementById('fac_recurrente');
+  if (selGR && gr) {
+    selGR.value = gr;
+    seleccionarRecurrente(selGR);
+  } else if (selGR) {
+    selGR.value = '';
+    seleccionarRecurrente(selGR);
+  }
+});
+
 function seleccionarRecurrente(sel) {
   const concepto = sel.value;
   const categoria = sel.selectedOptions[0]?.dataset.categoria || '';

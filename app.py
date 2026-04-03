@@ -438,7 +438,9 @@ def plano(periodo=None):
 @app.route("/proveedores")
 def proveedores():
     lista = db.get_proveedores()
-    return render_template("proveedores.html", proveedores=lista)
+    gastos_recurrentes = db.get_gastos_recurrentes()
+    return render_template("proveedores.html", proveedores=lista,
+                           gastos_recurrentes=gastos_recurrentes)
 
 
 @app.route("/proveedores/save", methods=["POST"])
@@ -452,6 +454,7 @@ def save_proveedor():
         "direccion": request.form.get("direccion", "").strip(),
         "categoria": request.form.get("categoria", "").strip(),
         "notas": request.form.get("notas", "").strip(),
+        "gasto_recurrente": request.form.get("gasto_recurrente", "").strip(),
     }
     if not data["nombre"]:
         flash("El nombre del proveedor es obligatorio.", "danger")
