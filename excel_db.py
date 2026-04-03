@@ -480,7 +480,8 @@ def generar_liquidacion(periodo: str):
         ws.delete_rows(r)
 
     # Recalcular y agregar filas preservando pagos
-    for u in unidades:
+    expensas_ya_asignadas = 0.0
+    for idx, u in enumerate(unidades):
         numero = str(u["numero"])
         pct_vals = []
         for cat in categorias:
@@ -492,7 +493,12 @@ def generar_liquidacion(periodo: str):
                     pass
         pct = pct_vals[0] if len(pct_vals) == 1 else (sum(pct_vals) / len(pct_vals) if pct_vals else 0.0)
 
-        expensas = round(total_gastos * pct / 100, 2)
+        if idx == len(unidades) - 1 and total_gastos > 0:
+            # Ajuste contable: la última unidad absorbe la diferencia de redondeo
+            expensas = round(total_gastos - expensas_ya_asignadas, 2)
+        else:
+            expensas = round(total_gastos * pct / 100, 2)
+            expensas_ya_asignadas += expensas
 
         prev_row = prev_liq.get(numero)
         if not prev_row:
