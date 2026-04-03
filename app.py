@@ -72,7 +72,26 @@ def config():
 
     cfg = db.get_config()
     categorias = db.get_categorias()
-    return render_template("config.html", cfg=cfg, categorias=categorias)
+    gastos_recurrentes = db.get_gastos_recurrentes()
+    return render_template("config.html", cfg=cfg, categorias=categorias,
+                           gastos_recurrentes=gastos_recurrentes)
+
+
+@app.route("/config/recurrente/add", methods=["POST"])
+def add_gasto_recurrente():
+    concepto = request.form.get("concepto", "").strip()
+    categoria = request.form.get("categoria", "").strip()
+    if concepto:
+        db.add_gasto_recurrente(concepto, categoria)
+        flash(f"Gasto recurrente '{concepto}' agregado.", "success")
+    return redirect(url_for("config"))
+
+
+@app.route("/config/recurrente/delete/<int:gid>", methods=["POST"])
+def delete_gasto_recurrente(gid):
+    db.delete_gasto_recurrente(gid)
+    flash("Gasto recurrente eliminado.", "success")
+    return redirect(url_for("config"))
 
 
 @app.route("/config/categoria/add", methods=["POST"])
@@ -459,8 +478,10 @@ def facturas():
     lista = db.get_facturas(estado=estado)
     provs = db.get_proveedores()
     total_pendiente = sum(f["importe"] for f in lista if f["estado"] == "PENDIENTE")
+    gastos_recurrentes = db.get_gastos_recurrentes()
     return render_template("facturas.html", facturas=lista, proveedores=provs,
-                           estado_filtro=estado, total_pendiente=total_pendiente)
+                           estado_filtro=estado, total_pendiente=total_pendiente,
+                           gastos_recurrentes=gastos_recurrentes)
 
 
 @app.route("/facturas/save", methods=["POST"])

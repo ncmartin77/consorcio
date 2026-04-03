@@ -20,6 +20,7 @@ SHEET_PROVEEDORES = "PROVEEDORES"
 SHEET_FACTURAS = "FACTURAS"
 SHEET_PEDIDOS = "PEDIDOS_PRESUPUESTO"
 SHEET_PRESUPUESTOS = "PRESUPUESTOS"
+SHEET_GASTOS_RECURRENTES = "GASTOS_RECURRENTES"
 LIQPREFIX = "LIQUIDACIONES_"
 SHEET_LIQ_ESTADOS = "LIQUIDACIONES_ESTADO"
 _LIQ_EST_HEADER = ["periodo", "estado"]
@@ -102,6 +103,10 @@ def _init_db():
     ws = wb.create_sheet(SHEET_PRESUPUESTOS)
     ws.append(["id", "pedido_id", "proveedor_id", "proveedor_nombre", "fecha",
                "importe", "notas", "seleccionado"])
+
+    # GASTOS_RECURRENTES
+    ws = wb.create_sheet(SHEET_GASTOS_RECURRENTES)
+    ws.append(["id", "concepto", "categoria"])
 
     wb.save(DB_PATH)
 
@@ -734,6 +739,42 @@ def delete_proveedor(pid):
 
 
 # ---------------------------------------------------------------------------
+# GASTOS RECURRENTES
+# ---------------------------------------------------------------------------
+
+_GR_HEADER = ["id", "concepto", "categoria"]
+
+
+def get_gastos_recurrentes():
+    wb = _get_wb()
+    ws = _ensure_sheet(wb, SHEET_GASTOS_RECURRENTES, _GR_HEADER)
+    result = []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if row[0] is not None:
+            result.append({"id": row[0], "concepto": row[1] or "", "categoria": row[2] or ""})
+    return result
+
+
+def add_gasto_recurrente(concepto: str, categoria: str = ""):
+    wb = _get_wb()
+    ws = _ensure_sheet(wb, SHEET_GASTOS_RECURRENTES, _GR_HEADER)
+    new_id = _next_id(ws)
+    ws.append([new_id, concepto.strip(), categoria.strip()])
+    _save_wb(wb)
+    return new_id
+
+
+def delete_gasto_recurrente(gid: int):
+    wb = _get_wb()
+    ws = _ensure_sheet(wb, SHEET_GASTOS_RECURRENTES, _GR_HEADER)
+    for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        if row[0] is not None and str(row[0]) == str(gid):
+            ws.delete_rows(i)
+            break
+    _save_wb(wb)
+
+
+# ---------------------------------------------------------------------------
 # FACTURAS
 # ---------------------------------------------------------------------------
 
@@ -786,6 +827,18 @@ def save_factura(data: dict):
     data["id"] = new_id
     ws.append([data.get(col) for col in _FAC_HEADER])
     _save_wb(wb)
+
+    # Auto-crear gasto si la descripción coincide con un gasto recurrente configurado
+    desc = (data.get("descripcion") or "").strip()
+    fecha = data.get("fecha")
+    if desc and fecha:
+        recurrentes = get_gastos_recurrentes()
+        for gr in recurrentes:
+            if gr["concepto"].strip().upper() == desc.upper():
+                periodo = str(fecha)[:7]
+                save_gasto(periodo, gr["concepto"], float(data.get("importe") or 0), "FIJO")
+                break
+
     return new_id
 
 
@@ -816,10 +869,16 @@ def pagar_factura(fid: int, fecha_pago: str):
                 categoria=f.get("categoria") or "Proveedor",
                 importe=importe,
             )
-            # También registrar como gasto mensual del período de pago
+            # Registrar como gasto mensual, excepto si ya fue creado al registrar la factura recurrente
             periodo = fecha_dt.strftime("%Y-%m")
             concepto = f.get("descripcion") or proveedor
-            save_gasto(periodo, concepto[:100], importe, f.get("categoria") or "FIJO")
+            recurrentes = get_gastos_recurrentes()
+            es_recurrente = any(
+                gr["concepto"].strip().upper() == concepto.strip().upper()
+                for gr in recurrentes
+            )
+            if not es_recurrente:
+                save_gasto(periodo, concepto[:100], importe, f.get("categoria") or "FIJO")
             return True
     return False
 

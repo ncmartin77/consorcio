@@ -86,6 +86,62 @@
   </div>
 
   <div class="col-lg-5">
+    <!-- Gastos Recurrentes -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-header bg-success text-white">
+        <i class="bi bi-arrow-repeat"></i> Gastos Recurrentes Mensuales
+      </div>
+      <div class="card-body">
+        <p class="text-muted small">
+          Gastos que se repiten cada mes (ej: luz común, gas, ascensor).
+          Al registrar una factura con la misma descripción, el gasto se agrega automáticamente a la liquidación.
+        </p>
+        {% if gastos_recurrentes %}
+        <table class="table table-sm table-bordered">
+          <thead class="table-light">
+            <tr><th>Concepto</th><th>Categoría</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for gr in gastos_recurrentes %}
+            <tr>
+              <td><strong>{{ gr.concepto }}</strong></td>
+              <td class="text-muted">{{ gr.categoria }}</td>
+              <td>
+                <form method="POST" action="{{ url_for('delete_gasto_recurrente', gid=gr.id) }}"
+                      onsubmit="return confirm('¿Eliminar gasto recurrente {{ gr.concepto }}?')">
+                  <button class="btn btn-sm btn-outline-danger">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted small">No hay gastos recurrentes configurados.</p>
+        {% endif %}
+
+        <hr>
+        <h6>Agregar Gasto Recurrente</h6>
+        <form method="POST" action="{{ url_for('add_gasto_recurrente') }}" class="row g-2">
+          <div class="col-6">
+            <input type="text" class="form-control form-control-sm" name="concepto"
+                   placeholder="Ej: Luz Común" required>
+          </div>
+          <div class="col-4">
+            <input type="text" class="form-control form-control-sm" name="categoria"
+                   placeholder="Categoría (opt.)">
+          </div>
+          <div class="col-2">
+            <button type="submit" class="btn btn-sm btn-success w-100">
+              <i class="bi bi-plus"></i>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div class="card shadow-sm">
       <div class="card-header bg-secondary text-white">
         <i class="bi bi-percent"></i> Categorías de Porcentaje

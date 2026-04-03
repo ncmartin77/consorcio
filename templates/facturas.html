@@ -116,6 +116,22 @@
         </div>
         <div class="modal-body">
           <div class="row g-3">
+            {% if gastos_recurrentes %}
+            <div class="col-12">
+              <label class="form-label fw-semibold">
+                <i class="bi bi-arrow-repeat text-success"></i> Gasto Recurrente
+              </label>
+              <select class="form-select" id="fac_recurrente" onchange="seleccionarRecurrente(this)">
+                <option value="">-- Seleccionar gasto recurrente (opcional) --</option>
+                {% for gr in gastos_recurrentes %}
+                <option value="{{ gr.concepto }}" data-categoria="{{ gr.categoria }}">
+                  {{ gr.concepto }}{% if gr.categoria %} ({{ gr.categoria }}){% endif %}
+                </option>
+                {% endfor %}
+              </select>
+              <small class="text-muted">Al seleccionar, se completa la descripción y el gasto se agrega automáticamente al mes de la factura.</small>
+            </div>
+            {% endif %}
             <div class="col-md-3">
               <label class="form-label fw-semibold">Fecha *</label>
               <input type="date" class="form-control" name="fecha" id="fac_fecha" required>
@@ -210,6 +226,20 @@
 // Fecha por defecto: hoy
 document.getElementById('fac_fecha').value = new Date().toISOString().split('T')[0];
 document.getElementById('pagar_fecha').value = new Date().toISOString().split('T')[0];
+
+function seleccionarRecurrente(sel) {
+  const concepto = sel.value;
+  const categoria = sel.selectedOptions[0]?.dataset.categoria || '';
+  const descInput = document.querySelector('#modalFac input[name="descripcion"]');
+  const catInput  = document.querySelector('#modalFac input[name="categoria"]');
+  if (concepto) {
+    descInput.value = concepto;
+    if (categoria) catInput.value = categoria;
+  } else {
+    descInput.value = '';
+    catInput.value  = '';
+  }
+}
 
 function pagarFactura(fid, proveedor, importe) {
   document.getElementById('pagar_prov').textContent = proveedor;
