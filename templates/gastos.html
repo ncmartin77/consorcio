@@ -224,11 +224,23 @@
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Tipo</label>
-            <select class="form-select" id="gasto_tipo" name="tipo">
+            <select class="form-select" id="gasto_tipo" name="tipo" onchange="onTipoChange()">
               <option value="FIJO">Fijo</option>
               <option value="VARIABLE">Variable</option>
               <option value="FONDO_RESERVA">Fondo de Reserva</option>
             </select>
+          </div>
+          <div class="mb-3" id="div_fondo_reserva" style="display:none">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="gasto_fondo_reserva"
+                     name="usar_fondo_reserva" value="1">
+              <label class="form-check-label" for="gasto_fondo_reserva">
+                Usar de Fondo de Reserva
+                <span class="text-muted small d-block">
+                  Se registra como salida en Caja Diaria pero <strong>no</strong> afecta la liquidación mensual.
+                </span>
+              </label>
+            </div>
           </div>
         </div>
         <div class="modal-footer">
@@ -372,6 +384,15 @@ document.querySelector('input[name="p"]').addEventListener('change', function() 
   window.location.href = '{{ url_for("gastos") }}/' + this.value;
 });
 
+function onTipoChange() {
+  const tipo = document.getElementById('gasto_tipo').value;
+  const div = document.getElementById('div_fondo_reserva');
+  div.style.display = (tipo === 'VARIABLE') ? 'block' : 'none';
+  if (tipo !== 'VARIABLE') {
+    document.getElementById('gasto_fondo_reserva').checked = false;
+  }
+}
+
 function editarGasto(g) {
   document.getElementById('modalGastoTitulo').innerHTML =
     '<i class="bi bi-pencil"></i> Editar Gasto';
@@ -379,6 +400,8 @@ function editarGasto(g) {
   document.getElementById('gasto_concepto').value = g.concepto;
   document.getElementById('gasto_importe').value = g.importe;
   document.getElementById('gasto_tipo').value = g.tipo;
+  document.getElementById('gasto_fondo_reserva').checked = false;
+  onTipoChange();
   new bootstrap.Modal(document.getElementById('modalGasto')).show();
 }
 
@@ -389,6 +412,8 @@ document.getElementById('modalGasto').addEventListener('hidden.bs.modal', functi
   document.getElementById('gasto_concepto').value = '';
   document.getElementById('gasto_importe').value = '';
   document.getElementById('gasto_tipo').value = 'FIJO';
+  document.getElementById('gasto_fondo_reserva').checked = false;
+  document.getElementById('div_fondo_reserva').style.display = 'none';
 });
 
 function abrirFacturaVariable(g) {

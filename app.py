@@ -239,6 +239,7 @@ def save_gasto():
     importe = request.form.get("importe", "0")
     tipo = request.form.get("tipo", "FIJO")
     row_num = request.form.get("row_num")
+    usar_fondo_reserva = request.form.get("usar_fondo_reserva") == "1"
 
     try:
         importe = float(importe.replace(",", "."))
@@ -247,6 +248,14 @@ def save_gasto():
 
     if not concepto:
         flash("El concepto es obligatorio.", "danger")
+        return redirect(url_for("gastos", periodo=periodo))
+
+    if usar_fondo_reserva and tipo == "VARIABLE":
+        # Registrar como salida en Caja Diaria con categoría FONDO_RESERVA.
+        # No aparece en Gastos Mensuales → no afecta la liquidación.
+        fecha_hoy = _fecha_hoy().strftime("%Y-%m-%d")
+        db.save_movimiento(fecha_hoy, concepto, "SALIDA", "FONDO_RESERVA", importe)
+        flash(f"Fondo de Reserva registrado en Caja Diaria: ${importe:,.2f}", "success")
         return redirect(url_for("gastos", periodo=periodo))
 
     db.save_gasto(periodo, concepto, importe, tipo, int(row_num) if row_num else None)

@@ -91,6 +91,8 @@ templates/      ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 
 **Fondo de reserva** is a special gasto of type `FONDO_RESERVA`, auto-inserted each month by `ensure_fondo_reserva_gasto()`. Its accumulated total is tracked separately via `get_fondo_reserva()` which sums CAJA entries of category `FONDO_RESERVA`.
 
+**"Usar de Fondo de Reserva" on variable gastos:** the Agregar Gasto modal in Gastos Mensuales shows a checkbox (only when tipo = VARIABLE). When checked, `save_gasto` route in `app.py` calls `db.save_movimiento()` with tipo=SALIDA and categoria=FONDO_RESERVA (today's date), then returns — no entry is written to GASTOS_MENSUALES and no liquidación recalculation is triggered. The movement appears in Caja Diaria and counts toward `get_fondo_reserva()` totals, but does not affect the monthly expense distribution.
+
 **Gastos recurrentes** (`GASTOS_RECURRENTES` sheet): expense concepts that repeat every month (e.g., Luz Común, Gas). Key behaviors:
 - When a factura is saved with a `descripcion` matching a recurring concept (case-insensitive), `save_factura()` auto-calls `save_gasto()` for that period immediately — no need to wait for payment.
 - When that factura is later paid, `pagar_factura()` skips the duplicate `save_gasto()` call.
