@@ -57,8 +57,9 @@
             </div>
             <div class="col-md-4">
               <label class="form-label fw-semibold">Día de Vencimiento</label>
-              <input type="number" class="form-control" name="dia_vencimiento" min="1" max="31"
+              <input type="number" class="form-control" name="dia_vencimiento" min="0" max="31"
                      value="{{ cfg.get('dia_vencimiento','15') }}">
+              <div class="form-text">0 = último día del mes</div>
             </div>
             <div class="col-12">
               <hr>

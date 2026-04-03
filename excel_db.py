@@ -3,6 +3,7 @@ Capa de acceso al Excel (base de datos).
 Todas las operaciones de lectura/escritura pasan por aquí.
 """
 import os
+import calendar as _calendar
 from datetime import date, datetime
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -456,6 +457,27 @@ def generar_liquidacion(periodo: str):
     ensure_fondo_reserva_gasto(mes_gastos)
     cfg = get_config()
     tasa_mora = float(cfg.get("tasa_mora", 7)) / 100
+
+    # Determinar "hoy" (respeta fecha_simulada)
+    fs = cfg.get("fecha_simulada", "").strip() if cfg.get("fecha_simulada") else ""
+    if fs:
+        try:
+            hoy = datetime.strptime(fs, "%Y-%m-%d").date()
+        except ValueError:
+            hoy = date.today()
+    else:
+        hoy = date.today()
+
+    # Calcular fecha de vencimiento del período
+    try:
+        dia_venc = int(cfg.get("dia_vencimiento", 15) or 15)
+        year_p, month_p = int(periodo[:4]), int(periodo[5:7])
+        ultimo_dia = _calendar.monthrange(year_p, month_p)[1]
+        dia_venc_real = ultimo_dia if dia_venc <= 0 else min(dia_venc, ultimo_dia)
+        fecha_vencimiento = date(year_p, month_p, dia_venc_real)
+    except Exception:
+        fecha_vencimiento = None
+
     unidades = get_unidades(solo_activas=True)
     gastos = get_gastos(mes_gastos)
     total_gastos = sum(g["importe"] for g in gastos)
@@ -518,13 +540,17 @@ def generar_liquidacion(periodo: str):
         else:
             deuda_anterior = round(prev_row["total_a_pagar"], 2)
 
-        interes = round(deuda_anterior * tasa_mora, 2)
-        total = round(expensas + deuda_anterior + interes, 2)
-
         # Restaurar pago previo y recalcular estado
         pago = pagos_previos.get(numero, {})
         monto_pagado = pago.get("monto_pagado", 0.0)
         fecha_pago = pago.get("fecha_pago")
+
+        interes_deuda = round(deuda_anterior * tasa_mora, 2)
+        mora_corriente = 0.0
+        if fecha_vencimiento and hoy > fecha_vencimiento and monto_pagado == 0:
+            mora_corriente = round(expensas * tasa_mora, 2)
+        interes = round(interes_deuda + mora_corriente, 2)
+        total = round(expensas + deuda_anterior + interes, 2)
 
         if monto_pagado >= total and monto_pagado > 0:
             tipo_pago = "TOTAL"

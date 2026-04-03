@@ -331,6 +331,25 @@ def delete_movimiento(row_num, periodo):
 def liquidacion(periodo=None):
     if not periodo:
         periodo = _periodo_actual()
+
+    # Auto-aplicar mora si hoy superó el día de vencimiento y la liquidación está abierta
+    liq_generada_check = db.liquidacion_existe(periodo)
+    liq_cerrada_check = db.liq_esta_cerrada(periodo)
+    if liq_generada_check and not liq_cerrada_check:
+        import calendar as _cal
+        cfg_check = db.get_config()
+        hoy_check = _fecha_hoy()
+        try:
+            dia_venc = int(cfg_check.get("dia_vencimiento", 15) or 15)
+            yp, mp = int(periodo[:4]), int(periodo[5:7])
+            ultimo = _cal.monthrange(yp, mp)[1]
+            dia_real = ultimo if dia_venc <= 0 else min(dia_venc, ultimo)
+            from datetime import date as _date
+            if hoy_check > _date(yp, mp, dia_real):
+                db.generar_liquidacion(periodo)
+        except Exception:
+            pass
+
     liq = db.get_liquidacion(periodo)
     mes_gastos = db._prev_periodo(periodo)  # gastos del mes anterior
     gastos = db.get_gastos(mes_gastos)
