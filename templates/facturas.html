@@ -75,7 +75,7 @@
             <td class="text-nowrap">
               {% if f.estado == 'PENDIENTE' %}
               <button class="btn btn-sm btn-success me-1"
-                      onclick="pagarFactura({{ f.id }}, '{{ f.proveedor_nombre }}', {{ f.importe }})"
+                      onclick="pagarFactura({{ f.id }}, '{{ f.proveedor_nombre }}', {{ f.importe }}, '{{ f.fecha }}')"
                       title="Marcar como pagada">
                 <i class="bi bi-check-circle"></i> Pagar
               </button>
@@ -260,11 +260,14 @@ function seleccionarRecurrente(sel) {
   }
 }
 
-function pagarFactura(fid, proveedor, importe) {
+function pagarFactura(fid, proveedor, importe, fechaEmision) {
   document.getElementById('pagar_prov').textContent = proveedor;
   document.getElementById('pagar_importe').textContent =
     '$ ' + importe.toLocaleString('es-AR', {minimumFractionDigits: 2});
   document.getElementById('formPagar').action = '/facturas/pagar/' + fid;
+  const fechaInput = document.getElementById('pagar_fecha');
+  fechaInput.min = fechaEmision || '';
+  if (fechaInput.value < (fechaEmision || '')) fechaInput.value = fechaEmision;
   new bootstrap.Modal(document.getElementById('modalPagar')).show();
 }
 </script>

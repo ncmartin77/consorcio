@@ -574,6 +574,12 @@ def save_factura():
 @app.route("/facturas/pagar/<int:fid>", methods=["POST"])
 def pagar_factura(fid):
     fecha_pago = request.form.get("fecha_pago") or date.today().strftime("%Y-%m-%d")
+    factura = next((f for f in db.get_facturas() if str(f["id"]) == str(fid)), None)
+    if factura:
+        fecha_emision = str(factura.get("fecha") or "")
+        if fecha_emision and fecha_pago < fecha_emision:
+            flash(f"La fecha de pago ({fecha_pago}) no puede ser anterior a la fecha de emisión de la factura ({fecha_emision}).", "danger")
+            return redirect(url_for("facturas"))
     ok = db.pagar_factura(fid, fecha_pago)
     if ok:
         periodo = fecha_pago[:7]
