@@ -258,6 +258,13 @@ def generar_pdf_liquidacion(liquidacion_rows: list, gastos: list, config: dict, 
         if idx < len(liquidacion_rows) - 1:
             story.append(PageBreak())
 
+    # Timestamp al pie de la última página
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(Paragraph(
+        f"Generado el {date.today().strftime('%d/%m/%Y')} a las {__import__('datetime').datetime.now().strftime('%H:%M')}",
+        ParagraphStyle("ts", fontSize=7, fontName="Helvetica", alignment=TA_RIGHT,
+                       textColor=colors.HexColor("#888888"))))
+
     doc.build(story)
     return buffer.getvalue()
 
@@ -420,6 +427,11 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         ("LEFTPADDING", (1,0), (1,0), 8),
     ]))
     story.append(combo)
+    story.append(Spacer(1, 0.3*cm))
+    story.append(Paragraph(
+        f"Generado el {date.today().strftime('%d/%m/%Y')} a las {__import__('datetime').datetime.now().strftime('%H:%M')}",
+        st("ts", fontSize=7, fontName="Helvetica", alignment=TA_RIGHT,
+           textColor=colors.HexColor("#888888"))))
 
     doc.build(story)
     return buffer.getvalue()

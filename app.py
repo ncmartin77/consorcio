@@ -462,11 +462,17 @@ def descargar_pdf(periodo):
     saldo_caja, _, _ = db.get_saldo_caja()
     fondo = db.get_fondo_reserva()
     pdf_bytes = generar_pdf_resumen_edificio(liq, gastos, cfg, periodo, saldo_caja, fondo)
+    _meses_pdf = ["enero","febrero","marzo","abril","mayo","junio",
+                  "julio","agosto","septiembre","octubre","noviembre","diciembre"]
+    _mes_str = _meses_pdf[int(periodo[5:7]) - 1] + "_" + periodo[:4]
+    _edificio_str = cfg.get("edificio_nombre", "edificio").lower().replace(" ", "_")
+    import re as _re
+    _edificio_str = _re.sub(r"[^a-z0-9_]", "", _edificio_str)
     return send_file(
         io.BytesIO(pdf_bytes),
         mimetype="application/pdf",
         as_attachment=True,
-        download_name=f"resumen_edificio_{periodo}.pdf"
+        download_name=f"liquidacion_{_mes_str}_{_edificio_str}.pdf"
     )
 
 

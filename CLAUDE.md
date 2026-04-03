@@ -6,8 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Windows (normal use):**
 ```
-instalar.bat   # first time: creates venv and installs dependencies
-iniciar.bat    # starts Flask on http://localhost:5000
+instalar.bat            # first time: verifies Python 3.8+, creates venv, installs deps
+iniciar.bat             # starts Flask on http://localhost:5000
+crear_distribucion.bat  # creates a ZIP for deployment on another machine (calls .ps1)
 ```
 
 **From WSL/terminal:**
@@ -94,3 +95,7 @@ templates/      ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 - `generar_pdf_liquidacion()` — detailed liquidation (currently unused in routes)
 
 All return `bytes` which are streamed via Flask's `send_file`.
+
+**PDF filename format:** `liquidacion_{mes}_{año}_{edificio_nombre}.pdf` (e.g. `liquidacion_abril_2026_edificio_brasil.pdf`). Sanitized to lowercase alphanumeric + underscores.
+
+**Timestamp footer:** both `generar_pdf_resumen_edificio` and `generar_pdf_liquidacion` append a small right-aligned "Generado el DD/MM/YYYY a las HH:MM" line at the bottom.
