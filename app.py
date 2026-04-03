@@ -193,15 +193,28 @@ def _recalcular_liq_si_posible(periodo):
 def gastos(periodo=None):
     if not periodo:
         periodo = _periodo_actual()
-    db.ensure_fondo_reserva_gasto(periodo)  # Agregar automáticamente si no existe
+    db.ensure_fondo_reserva_gasto(periodo)
     gastos_list = db.get_gastos(periodo)
     total = db.get_total_gastos(periodo)
     prox_periodo = db._next_periodo(periodo)
     liq_prox_cerrada = db.liq_esta_cerrada(prox_periodo)
     liq_prox_existe = db.liquidacion_existe(prox_periodo)
+
+    # Estado de cada gasto recurrente en el período
+    gastos_recurrentes = db.get_gastos_recurrentes()
+    facturas_periodo = [f for f in db.get_facturas()
+                        if str(f.get("fecha") or "")[:7] == periodo]
+    recurrentes_estado = []
+    for gr in gastos_recurrentes:
+        concepto_up = gr["concepto"].strip().upper()
+        factura = next((f for f in facturas_periodo
+                        if f.get("descripcion", "").strip().upper() == concepto_up), None)
+        recurrentes_estado.append({**gr, "factura": factura})
+
     return render_template("gastos.html", gastos=gastos_list, periodo=periodo, total=total,
                            prox_periodo=prox_periodo, liq_prox_cerrada=liq_prox_cerrada,
-                           liq_prox_existe=liq_prox_existe)
+                           liq_prox_existe=liq_prox_existe,
+                           recurrentes_estado=recurrentes_estado)
 
 
 @app.route("/gastos/save", methods=["POST"])
@@ -242,6 +255,7 @@ def delete_gasto(row_num, periodo):
 def caja(periodo=None):
     if not periodo:
         periodo = _periodo_actual()
+    liq_cerrada = db.liq_esta_cerrada(periodo)
     movimientos = db.get_caja(periodo)
     entradas = sum(m["importe"] for m in movimientos if m["tipo"] == "ENTRADA")
     salidas = sum(m["importe"] for m in movimientos if m["tipo"] == "SALIDA")
@@ -251,12 +265,16 @@ def caja(periodo=None):
                            periodo=periodo,
                            entradas=entradas,
                            salidas=salidas,
-                           saldo=saldo)
+                           saldo=saldo,
+                           liq_cerrada=liq_cerrada)
 
 
 @app.route("/caja/save", methods=["POST"])
 def save_movimiento():
     periodo = request.form.get("periodo", _periodo_actual())
+    if db.liq_esta_cerrada(periodo):
+        flash(f"La liquidación de {periodo} está cerrada. No se pueden registrar movimientos.", "danger")
+        return redirect(url_for("caja", periodo=periodo))
     fecha = request.form.get("fecha", "")
     descripcion = request.form.get("descripcion", "").strip()
     tipo = request.form.get("tipo", "ENTRADA")
@@ -281,6 +299,9 @@ def save_movimiento():
 
 @app.route("/caja/delete/<int:row_num>/<periodo>", methods=["POST"])
 def delete_movimiento(row_num, periodo):
+    if db.liq_esta_cerrada(periodo):
+        flash(f"La liquidación de {periodo} está cerrada. No se pueden eliminar movimientos.", "danger")
+        return redirect(url_for("caja", periodo=periodo))
     db.delete_movimiento(row_num)
     flash("Movimiento eliminado.", "success")
     return redirect(url_for("caja", periodo=periodo))
