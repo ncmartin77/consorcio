@@ -2,11 +2,6 @@
 #  instalar.ps1  -  Instalador completamente automatico
 #  App Consorcio
 # ============================================================
-#  Estrategia:
-#    1. Usa Python de Windows si ya esta instalado (>= 3.8)
-#    2. Si no, descarga e instala Python 3.12 en silencio
-#    3. Si falla la descarga, instala WSL + Debian como fallback
-# ============================================================
 
 param([switch]$PostReboot)
 
@@ -22,7 +17,7 @@ function Log {
     $line = "[" + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + "] [" + $Level + "] " + $Msg
     Write-Host $line
     try { Add-Content -Path $LogFile -Value $line -Encoding UTF8 -ErrorAction Stop }
-    catch { Write-Host "  (no se pudo escribir al log: " + $_ + ")" }
+    catch {}
 }
 
 Log ("PS1 iniciado. Ruta: " + $AppDir)
@@ -56,7 +51,8 @@ function Find-Python {
         ($env:LOCALAPPDATA + "\Programs\Python\Python310\python.exe"),
         ($env:LOCALAPPDATA + "\Programs\Python\Python39\python.exe"),
         "C:\Python312\python.exe",
-        "C:\Python311\python.exe"
+        "C:\Python311\python.exe",
+        "C:\Python310\python.exe"
     )
     foreach ($cmd in $candidates) {
         try {
@@ -105,7 +101,7 @@ function Install-PythonWindows {
     $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
     $userPath    = [System.Environment]::GetEnvironmentVariable("Path", "User")
     $env:Path    = $machinePath + ";" + $userPath
-    Log "Python 3.12 instalado. PATH actualizado."
+    Log "Python 3.12 instalado correctamente."
     return $true
 }
 
@@ -148,7 +144,8 @@ function Install-WSLDebian {
     try {
         $wc = New-Object System.Net.WebClient
         $wc.DownloadFile($kernelUrl, $kernelFile)
-        Start-Process msiexec -Wait -ArgumentList ("/i `"" + $kernelFile + "`" /quiet /norestart")
+        $msiArgs = "/i `"" + $kernelFile + "`" /quiet /norestart"
+        Start-Process msiexec -Wait -ArgumentList $msiArgs
         Remove-Item $kernelFile -Force -ErrorAction SilentlyContinue
         Log "Kernel WSL2 actualizado."
     } catch {
@@ -176,7 +173,7 @@ function Install-WSLDebian {
 # ================================================================
 function Schedule-ContinueAfterReboot {
     $scriptPath = $MyInvocation.ScriptName
-    $cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File `"" + $scriptPath + "`" -PostReboot"
+    $cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File " + [char]34 + $scriptPath + [char]34 + " -PostReboot"
     Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce" -Name "ConsorcioInstalar" -Value $cmd -Force
     Log "Continuacion post-reinicio registrada en RunOnce."
 }
@@ -190,7 +187,6 @@ function Setup-WSL {
     $rest    = $AppDir.Substring(2) -replace "\\\\", "/"
     $wslPath = "/mnt/" + $drive + $rest
     Log ("Ruta WSL: " + $wslPath)
-
     $bashLines = @(
         "#!/bin/bash",
         "set -e",
@@ -210,7 +206,6 @@ function Setup-WSL {
     $drive2   = $tmpSh.Substring(0, 1).ToLower()
     $rest2    = $tmpSh.Substring(2) -replace "\\\\", "/"
     $tmpShWsl = "/mnt/" + $drive2 + $rest2
-
     Log "Ejecutando setup en Debian (puede tardar unos minutos)..."
     wsl -d Debian -- bash $tmpShWsl 2>&1 | ForEach-Object { Log ("  [WSL] " + $_) }
     Remove-Item $tmpSh -Force -ErrorAction SilentlyContinue
@@ -255,6 +250,26 @@ function Setup-Windows {
 }
 
 # ================================================================
+#  FUNCION: crear acceso directo en el Escritorio
+# ================================================================
+function Create-Shortcut {
+    try {
+        $shell    = New-Object -ComObject WScript.Shell
+        $desktop  = [Environment]::GetFolderPath("CommonDesktopDirectory")
+        $lnkPath  = Join-Path $desktop "App Consorcio.lnk"
+        $lnk      = $shell.CreateShortcut($lnkPath)
+        $lnk.TargetPath       = Join-Path $AppDir "iniciar.bat"
+        $lnk.WorkingDirectory = $AppDir
+        $lnk.Description      = "Iniciar App Consorcio"
+        $lnk.IconLocation     = "shell32.dll,13"
+        $lnk.Save()
+        Log ("Acceso directo creado en: " + $lnkPath)
+    } catch {
+        Log ("No se pudo crear el acceso directo: " + $_) "WARN"
+    }
+}
+
+# ================================================================
 #  FUNCION: crear iniciar.bat segun runtime
 # ================================================================
 function Write-Launcher {
@@ -263,15 +278,17 @@ function Write-Launcher {
     if ($Runtime -eq "windows") {
         $lines = @(
             "@echo off",
-            "if not exist `"%~dp0venv\Scripts\activate.bat`" (",
-            "  echo Entorno no encontrado. Ejecuta instalar.bat primero.",
+            "set APPDIR=%~dp0",
+            "if not exist `"%APPDIR%venv\Scripts\activate.bat`" (",
+            "  echo [ERROR] Entorno virtual no encontrado.",
+            "  echo Revisa el log: %APPDIR%instalacion.log",
             "  pause",
             "  exit /b 1",
             ")",
-            "call `"%~dp0venv\Scripts\activate.bat`"",
+            "call `"%APPDIR%venv\Scripts\activate.bat`"",
             "echo Iniciando App Consorcio en http://localhost:5000",
             "start `"`" `"http://localhost:5000`"",
-            "python `"%~dp0app.py`""
+            "python `"%APPDIR%app.py`""
         )
     } else {
         $bashCmd = "cd '" + $WslPath + "' && source venv_wsl/bin/activate && python3 app.py"
@@ -288,6 +305,22 @@ function Write-Launcher {
 }
 
 # ================================================================
+#  FUNCION: fin exitoso
+# ================================================================
+function Finish-OK {
+    param([string]$Runtime, [string]$WslPath = "")
+    Write-Launcher -Runtime $Runtime -WslPath $WslPath
+    Create-Shortcut
+    Log "===================================================="
+    Log ("  INSTALACION COMPLETADA  (runtime: " + $Runtime + ")")
+    Log "  Acceso directo creado en el Escritorio."
+    Log "  Ejecuta iniciar.bat o el acceso directo para iniciar."
+    Log "===================================================="
+    Read-Host "`nInstalacion completa. Presiona Enter para cerrar"
+    exit 0
+}
+
+# ================================================================
 #  FLUJO PRINCIPAL
 # ================================================================
 
@@ -301,15 +334,7 @@ $python = Find-Python
 if ($python) {
     Log "--- Camino 1: Python de Windows ---"
     $ok = Setup-Windows -PythonCmd $python
-    if ($ok) {
-        Write-Launcher -Runtime "windows"
-        Log "===================================================="
-        Log "  INSTALACION COMPLETADA  (runtime: Windows Python)"
-        Log "  Ejecuta iniciar.bat para iniciar la app."
-        Log "===================================================="
-        Read-Host "`nInstalacion completa. Presiona Enter para cerrar"
-        exit 0
-    }
+    if ($ok) { Finish-OK -Runtime "windows" }
     Log "Fallo la configuracion con Python existente." "WARN"
 }
 
@@ -320,15 +345,7 @@ if ($installed) {
     $python = Find-Python
     if ($python) {
         $ok = Setup-Windows -PythonCmd $python
-        if ($ok) {
-            Write-Launcher -Runtime "windows"
-            Log "===================================================="
-            Log "  INSTALACION COMPLETADA  (runtime: Windows Python 3.12)"
-            Log "  Ejecuta iniciar.bat para iniciar la app."
-            Log "===================================================="
-            Read-Host "`nInstalacion completa. Presiona Enter para cerrar"
-            exit 0
-        }
+        if ($ok) { Finish-OK -Runtime "windows" }
     }
 }
 Log "No se pudo instalar Python para Windows. Usando WSL Debian..." "WARN"
@@ -338,10 +355,17 @@ $wslResult = Install-WSLDebian
 
 if ($wslResult -eq "ready") {
     $wslPath = Setup-WSL
-    Write-Launcher -Runtime "wsl" -WslPath $wslPath
-    Log "===================================================="
-    Log "  INSTALACION COMPLETADA  (runtime: WSL Debian)"
-    Log "  Ejecuta iniciar.bat para iniciar la app."
-    Log "===================================================="
-    Read-Host "`nInstalacion completa. Presiona Enter para cerrar"
+    Finish-OK -Runtime "wsl" -WslPath $wslPath
 }
+
+# Si llegamos aqui, todos los caminos fallaron
+Log "===================================================="  "ERROR"
+Log "  INSTALACION FALLIDA. Revisa instalacion.log"       "ERROR"
+Log "  Log: " + $LogFile                                  "ERROR"
+Log "====================================================" "ERROR"
+Write-Host ""
+Write-Host "INSTALACION FALLIDA." -ForegroundColor Red
+Write-Host ("Revisa el archivo de log para ver que fallo:") -ForegroundColor Yellow
+Write-Host $LogFile -ForegroundColor Cyan
+Write-Host ""
+Read-Host "Presiona Enter para cerrar"

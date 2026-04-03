@@ -14,7 +14,15 @@ if /i "%RUNTIME%"=="wsl" goto :wsl_launch
 
 :: ---- Windows Python ----
 if not exist "%APPDIR%venv\Scripts\activate.bat" (
-    echo El entorno virtual no existe. Ejecuta instalar.bat primero.
+    echo [ERROR] El entorno virtual no existe.
+    echo.
+    if exist "%APPDIR%instalacion.log" (
+        echo La instalacion tuvo errores. Revisa el log:
+        echo %APPDIR%instalacion.log
+    ) else (
+        echo Ejecuta instalar.bat primero.
+    )
+    echo.
     pause
     exit /b 1
 )
