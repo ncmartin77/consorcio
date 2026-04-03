@@ -214,16 +214,16 @@
       </div>
       <div class="card-body p-2">
         <!-- Undo banner -->
-        <div id="undoBar" class="alert alert-info py-1 px-2 mb-2 d-none d-flex justify-content-between align-items-center" style="font-size:0.85rem">
+        <div id="undoBar" class="alert alert-info py-1 px-2 mb-2 d-flex justify-content-between align-items-center" style="display:none!important;font-size:0.85rem">
           <span><i class="bi bi-arrow-counterclockwise"></i> "<span id="undoDesc"></span>" completada</span>
           <button class="btn btn-sm btn-outline-primary py-0" onclick="deshacerTarea()">Deshacer</button>
         </div>
         <!-- Lista de tareas -->
         <div id="tareasList">
           {% for t in tareas %}
-          <div class="d-flex align-items-center gap-2 py-1 border-bottom tarea-item" id="tarea-{{ t.id }}">
-            <input type="checkbox" class="form-check-input mt-0" style="cursor:pointer;min-width:1rem"
-                   onchange="completarTarea({{ t.id }}, {{ t.descripcion|tojson }})">
+          <div class="d-flex align-items-center gap-2 py-1 border-bottom tarea-item"
+               id="tarea-{{ t.id }}" data-id="{{ t.id }}" data-desc="{{ t.descripcion|e }}">
+            <input type="checkbox" class="form-check-input mt-0 tarea-check" style="cursor:pointer;min-width:1rem">
             <span class="flex-grow-1" style="font-size:0.9rem">{{ t.descripcion }}</span>
           </div>
           {% else %}
@@ -475,6 +475,16 @@
 // ---- TAREAS PENDIENTES ----
 let lastUndo = null;
 
+function _undoShow(desc) {
+  lastUndo = desc;
+  document.getElementById('undoDesc').textContent = desc;
+  document.getElementById('undoBar').style.setProperty('display', 'flex', 'important');
+}
+function _undoHide() {
+  lastUndo = null;
+  document.getElementById('undoBar').style.setProperty('display', 'none', 'important');
+}
+
 function actualizarContador() {
   const n = document.querySelectorAll('.tarea-item').length;
   document.getElementById('tareaCount').textContent = n;
@@ -482,27 +492,34 @@ function actualizarContador() {
   if (empty) empty.style.display = n ? 'none' : 'block';
 }
 
-async function completarTarea(id, descripcion) {
-  await fetch(`/tareas/delete/${id}`, {method: 'POST'});
-  document.getElementById(`tarea-${id}`).remove();
-  actualizarContador();
-  // Mostrar undo
-  lastUndo = descripcion;
-  document.getElementById('undoDesc').textContent = descripcion;
-  document.getElementById('undoBar').classList.remove('d-none');
-}
+// Delegación de eventos: captura clicks en cualquier checkbox de tarea
+document.getElementById('tareasList').addEventListener('change', function(e) {
+  if (!e.target.classList.contains('tarea-check')) return;
+  const item = e.target.closest('.tarea-item');
+  if (!item) return;
+  const id = item.dataset.id;
+  const desc = item.dataset.desc;
+  fetch('/tareas/delete/' + id, {method: 'POST'})
+    .then(function() {
+      item.remove();
+      actualizarContador();
+      _undoShow(desc);
+    });
+});
 
-async function deshacerTarea() {
+function deshacerTarea() {
   if (!lastUndo) return;
-  const resp = await fetch('/tareas/add', {
+  const desc = lastUndo;
+  fetch('/tareas/add', {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-    body: 'descripcion=' + encodeURIComponent(lastUndo)
+    body: 'descripcion=' + encodeURIComponent(desc)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(t) {
+    _undoHide();
+    agregarTareaDOM(t.id, t.descripcion);
   });
-  const t = await resp.json();
-  lastUndo = null;
-  document.getElementById('undoBar').classList.add('d-none');
-  agregarTareaDOM(t.id, t.descripcion);
 }
 
 function agregarTareaDOM(id, descripcion) {
@@ -510,29 +527,38 @@ function agregarTareaDOM(id, descripcion) {
   if (empty) empty.style.display = 'none';
   const div = document.createElement('div');
   div.className = 'd-flex align-items-center gap-2 py-1 border-bottom tarea-item';
-  div.id = `tarea-${id}`;
-  div.innerHTML = `<input type="checkbox" class="form-check-input mt-0" style="cursor:pointer;min-width:1rem"
-    onchange="completarTarea(${id}, ${JSON.stringify(descripcion)})">
-    <span class="flex-grow-1" style="font-size:0.9rem">${descripcion}</span>`;
+  div.id = 'tarea-' + id;
+  div.dataset.id = id;
+  div.dataset.desc = descripcion;
+  const chk = document.createElement('input');
+  chk.type = 'checkbox';
+  chk.className = 'form-check-input mt-0 tarea-check';
+  chk.style.cssText = 'cursor:pointer;min-width:1rem';
+  const span = document.createElement('span');
+  span.className = 'flex-grow-1';
+  span.style.fontSize = '0.9rem';
+  span.textContent = descripcion;
+  div.appendChild(chk);
+  div.appendChild(span);
   document.getElementById('tareasList').appendChild(div);
   actualizarContador();
 }
 
-async function agregarTarea() {
+function agregarTarea() {
   const input = document.getElementById('nuevaTarea');
   const desc = input.value.trim();
   if (!desc) return;
-  const resp = await fetch('/tareas/add', {
+  fetch('/tareas/add', {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
     body: 'descripcion=' + encodeURIComponent(desc)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(t) {
+    input.value = '';
+    agregarTareaDOM(t.id, t.descripcion);
+    _undoHide();
   });
-  const t = await resp.json();
-  input.value = '';
-  agregarTareaDOM(t.id, t.descripcion);
-  // Al agregar nueva, descartamos el undo anterior
-  lastUndo = null;
-  document.getElementById('undoBar').classList.add('d-none');
 }
 // ---- FIN TAREAS ----
 

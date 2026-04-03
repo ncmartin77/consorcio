@@ -317,13 +317,18 @@ def caja(periodo=None):
     movimientos = db.get_caja(periodo)
     entradas = sum(m["importe"] for m in movimientos if m["tipo"] == "ENTRADA")
     salidas = sum(m["importe"] for m in movimientos if m["tipo"] == "SALIDA")
-    saldo = entradas - salidas
+    saldo_mes = round(entradas - salidas, 2)
+    # Saldo acumulado total (incluye todos los períodos anteriores)
+    saldo_acumulado, _, _ = db.get_saldo_caja()
+    saldo_anterior = round(saldo_acumulado - saldo_mes, 2)
     return render_template("caja.html",
                            movimientos=movimientos,
                            periodo=periodo,
                            entradas=entradas,
                            salidas=salidas,
-                           saldo=saldo,
+                           saldo=saldo_mes,
+                           saldo_anterior=saldo_anterior,
+                           saldo_acumulado=saldo_acumulado,
                            liq_cerrada=liq_cerrada)
 
 

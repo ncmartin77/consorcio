@@ -25,32 +25,42 @@
 
 <!-- Resumen -->
 <div class="row g-3 mb-3">
-  <div class="col-md-4">
+  <div class="col-md-3">
+    <div class="card border-secondary text-center">
+      <div class="card-body py-2">
+        <div class="text-secondary fw-bold" style="font-size:0.8rem">SALDO ANTERIOR</div>
+        <div class="fw-bold fs-6 {% if saldo_anterior >= 0 %}text-secondary{% else %}text-danger{% endif %}">
+          $ {{ "%.2f"|format(saldo_anterior)|replace(".",",") }}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
     <div class="card border-success text-center">
       <div class="card-body py-2">
-        <div class="text-success fw-bold fs-6">ENTRADAS</div>
-        <div class="fw-bold fs-5 text-success">
+        <div class="text-success fw-bold" style="font-size:0.8rem">ENTRADAS MES</div>
+        <div class="fw-bold fs-6 text-success">
           $ {{ "%.2f"|format(entradas)|replace(".",",") }}
         </div>
       </div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-md-3">
     <div class="card border-danger text-center">
       <div class="card-body py-2">
-        <div class="text-danger fw-bold fs-6">SALIDAS</div>
-        <div class="fw-bold fs-5 text-danger">
+        <div class="text-danger fw-bold" style="font-size:0.8rem">SALIDAS MES</div>
+        <div class="fw-bold fs-6 text-danger">
           $ {{ "%.2f"|format(salidas)|replace(".",",") }}
         </div>
       </div>
     </div>
   </div>
-  <div class="col-md-4">
-    <div class="card {% if saldo >= 0 %}border-primary{% else %}border-warning{% endif %} text-center">
+  <div class="col-md-3">
+    <div class="card {% if saldo_acumulado >= 0 %}border-primary{% else %}border-warning{% endif %} text-center">
       <div class="card-body py-2">
-        <div class="fw-bold fs-6 {% if saldo >= 0 %}text-primary{% else %}text-warning{% endif %}">SALDO</div>
-        <div class="fw-bold fs-5 {% if saldo >= 0 %}text-primary{% else %}text-warning{% endif %}">
-          $ {{ "%.2f"|format(saldo)|replace(".",",") }}
+        <div class="fw-bold {% if saldo_acumulado >= 0 %}text-primary{% else %}text-warning{% endif %}" style="font-size:0.8rem">SALDO ACUMULADO</div>
+        <div class="fw-bold fs-6 {% if saldo_acumulado >= 0 %}text-primary{% else %}text-warning{% endif %}">
+          $ {{ "%.2f"|format(saldo_acumulado)|replace(".",",") }}
         </div>
       </div>
     </div>
