@@ -88,6 +88,12 @@
             <i class="bi bi-gear"></i> Configuración
           </a>
         </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'verificar_recibo' %}active{% endif %}"
+             href="{{ url_for('verificar_recibo') }}">
+            <i class="bi bi-shield-check"></i> Verificar
+          </a>
+        </li>
       </ul>
       <a href="{{ url_for('backup') }}" class="btn btn-sm btn-outline-light ms-2" title="Backup base de datos">
         <i class="bi bi-cloud-download"></i> Backup

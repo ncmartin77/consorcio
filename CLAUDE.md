@@ -2,14 +2,23 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Idioma
+Responde siempre en español.
+
+## Git
+Después de cada cambio significativo, hacer commit y push a GitHub.
+Usar mensajes de commit descriptivos en español.
+
 ## Running the app
 
 **Windows (normal use):**
 ```
-instalar.bat            # first time: fully unattended installer (calls instalar.ps1)
-iniciar.bat             # starts Flask on http://localhost:5000
-actualizar.bat          # update existing install: backup Excel + run migrar.py + pip install
-crear_distribucion.bat  # creates a ZIP for deployment (calls .ps1); excludes data/ and venv/
+instalar.bat                  # first time: fully unattended installer (calls instalar.ps1)
+iniciar.bat                   # starts Flask on http://localhost:5000 (solo esta PC)
+iniciar_red.bat               # starts Flask on 0.0.0.0 (accesible desde la red local); detecta IP automáticamente
+crear_accesos_directos.bat    # crea dos .lnk en el Escritorio: uno para cada modo de inicio
+actualizar.bat                # update existing install: backup Excel + run migrar.py + pip install
+crear_distribucion.bat        # creates a ZIP for deployment (calls .ps1); excludes data/ and venv/
 ```
 
 **Data migration (`migrar.py`):** idempotent script that adds missing sheets and columns to an existing `edificio_brasil.xlsx` without touching any data. Run it after copying new code files over an existing install. Called automatically by `instalar.ps1` and `actualizar.ps1` if the Excel already exists. Handles: `GASTOS_RECURRENTES`, `LIQUIDACIONES_ESTADO`, `PEDIDOS_PRESUPUESTO`, `PRESUPUESTOS` sheets; `gasto_recurrente` column in PROVEEDORES; `numero_factura`/`categoria`/`extraordinario` in FACTURAS; `piso`/`deuda_inicial` in UNIDADES; new CONFIG keys.
@@ -32,8 +41,11 @@ crear_distribucion.bat  # creates a ZIP for deployment (calls .ps1); excludes da
 **From WSL/terminal:**
 ```bash
 source venv/Scripts/activate   # or venv/bin/activate on Linux
-python app.py                  # runs on port 5000, debug=True
+python app.py                  # runs on port 5000, debug=True, host=127.0.0.1
+APP_HOST=0.0.0.0 python app.py # runs accessible from local network
 ```
+
+**`APP_HOST` env var:** `app.py` reads `APP_HOST` (default `127.0.0.1`) to set the Flask bind address. `iniciar_red.bat` sets `APP_HOST=0.0.0.0` before launching. Do not hardcode the host in `app.run()`.
 
 **Git** is not in WSL PATH — use the full path:
 ```bash
@@ -111,6 +123,8 @@ templates/      ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 **Factura desde gasto variable:** VARIABLE-type gastos in Gastos Mensuales show a receipt button that opens `#modalFacturaVariable` pre-filled with the gasto's concept and amount. Submits to the existing `save_factura` route.
 
 **Backup:** `GET /backup` streams a ZIP of `data/edificio_brasil.xlsx` as a browser download named `backup_edificio_brasil_YYYYMMDD_HHMM.zip`. Button visible in the navbar on every page.
+
+**Verificación de autenticidad de recibos (HMAC + QR):** cada recibo PDF incluye un código de verificación de 32 chars hex y un QR al pie. El código es un HMAC-SHA256 calculado sobre los campos clave del recibo (`periodo|unidad|descripcion|expensas|deuda_anterior|interes|total_a_pagar|tipo_pago|monto_pagado|fecha_pago|edificio_nombre`) usando una clave secreta almacenada en CONFIG (`clave_firma`). La clave se genera automáticamente con `secrets.token_hex(32)` la primera vez que se necesita (`get_clave_firma()` en `excel_db.py`). El QR codifica la URL `{url_app}/verificar/{periodo}/{unidad}/{codigo}`. La ruta `/verificar/<periodo>/<unidad>/<codigo>` recalcula el HMAC con los datos actuales del Excel y lo compara con `hmac.compare_digest`. La página `verificar.html` muestra 4 estados: `formulario` (entrada manual), `no_encontrado`, `valido`, `invalido`. La URL base se configura en CONFIG como `url_app` (default `http://localhost:5000`); si la app está en red local se configura con la IP real (ej. `http://192.168.1.100:5000`) para que el QR sea escaneable desde celulares. Campo visible en Configuración → sección "Verificación de Recibos". `migrar.py` agrega `clave_firma` y `url_app` a instalaciones existentes. **Bug conocido (corregido):** `config.html` tenía un `<input type="hidden" name="url_app">` duplicado que aparecía antes del campo visible en el mismo form; Flask tomaba el primer valor (el viejo), impidiendo guardar la nueva URL. Eliminado el hidden duplicado.
 
 **Versión del sistema:** stored in `version.txt` (e.g. `0.7-0304`, where the suffix is the release date DDMM). Read at startup via a `@app.context_processor` in `app.py` that injects `app_version` into all templates. Displayed as a badge in the navbar (`base.html`). **Increment the minor number on every push** (e.g. `0.7-0304` → `0.8-0304`). Update `version.txt` before committing.
 

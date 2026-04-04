@@ -9,9 +9,10 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import (
-    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable, PageBreak
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable, PageBreak, Image as RLImage
 )
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+import qrcode
 
 
 def _fmt(val):
@@ -469,7 +470,9 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
 
 
 def generar_recibo_pago(row: dict, config: dict, periodo: str,
-                        gastos: list = None, facturas_extras: list = None) -> bytes:
+                        gastos: list = None, facturas_extras: list = None,
+                        codigo_verificacion: str = None,
+                        url_verificacion: str = None) -> bytes:
     """
     Resumen de expensas por unidad funcional.
     Formato basado en referencias/3-2.pdf.
@@ -733,6 +736,51 @@ def generar_recibo_pago(row: dict, config: dict, periodo: str,
         story.append(Paragraph(
             "  |  ".join(combined),
             st("footer", fontSize=7, alignment=TA_CENTER, textColor=c_gris)))
+
+    # ---- CÓDIGO DE VERIFICACIÓN + QR ----
+    if codigo_verificacion:
+        story.append(Spacer(1, 0.3*cm))
+        story.append(HRFlowable(width="100%", thickness=0.5,
+                                color=colors.HexColor("#cccccc")))
+        story.append(Spacer(1, 0.15*cm))
+
+        url_qr = url_verificacion or codigo_verificacion
+        qr = qrcode.QRCode(version=1, box_size=4, border=2,
+                           error_correction=qrcode.constants.ERROR_CORRECT_M)
+        qr.add_data(url_qr)
+        qr.make(fit=True)
+        qr_img = qr.make_image(fill_color="black", back_color="white")
+        qr_buf = io.BytesIO()
+        qr_img.save(qr_buf, format="PNG")
+        qr_buf.seek(0)
+        qr_rl = RLImage(qr_buf, width=2.2*cm, height=2.2*cm)
+
+        codigo_fmt = "  ".join(
+            codigo_verificacion[i:i+8] for i in range(0, len(codigo_verificacion), 8)
+        )
+        base_url = url_qr.split("/verificar")[0] if "/verificar" in url_qr else url_qr
+        verif_table = Table(
+            [[
+                qr_rl,
+                Paragraph(
+                    f"<b>CÓDIGO DE VERIFICACIÓN</b><br/>"
+                    f"<font size='7.5' color='#222222'><b>{codigo_fmt}</b></font><br/>"
+                    f"<font size='6.5' color='#666666'>"
+                    f"Escaneá el QR o ingresá el código en {base_url}/verificar<br/>"
+                    f"para verificar la autenticidad de este recibo.</font>",
+                    st("verif", fontSize=7, alignment=TA_LEFT)
+                )
+            ]],
+            colWidths=[2.6*cm, 14*cm]
+        )
+        verif_table.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (0, -1), 0),
+            ("LEFTPADDING", (1, 0), (1, -1), 10),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ]))
+        story.append(verif_table)
 
     doc.build(story)
     return buffer.getvalue()

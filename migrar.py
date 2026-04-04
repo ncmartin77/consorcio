@@ -102,6 +102,8 @@ def migrate():
             "direccion_cobro": "",
             "texto_anuncio": "",
             "whatsapp": "",
+            "clave_firma": "",
+            "url_app": "http://localhost:5000",
         }
         for key, default in new_keys.items():
             if key not in config_keys:

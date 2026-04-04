@@ -247,6 +247,20 @@
                         placeholder="Texto que aparecerá en el resumen de expensas (cambios de horario, avisos, etc.)">{{ cfg.get('texto_anuncio','') }}</textarea>
             </div>
             <div class="col-12">
+              <hr>
+              <h6 class="text-primary"><i class="bi bi-shield-check"></i> Verificación de Recibos</h6>
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">URL de la aplicación</label>
+              <input type="url" class="form-control" name="url_app"
+                     placeholder="http://192.168.1.100:5000"
+                     value="{{ cfg.get('url_app','http://localhost:5000') }}">
+              <div class="form-text">
+                Dirección donde está accesible la app en tu red local. Se usa para generar el QR de verificación en los recibos.
+                Si solo la usás desde esta PC, dejá <code>http://localhost:5000</code>.
+              </div>
+            </div>
+            <div class="col-12">
               <button type="submit" class="btn btn-info text-white">
                 <i class="bi bi-save"></i> Guardar Configuración Resumen
               </button>
@@ -287,6 +301,7 @@
               <input type="hidden" name="horario_cobro" value="{{ cfg.get('horario_cobro','') }}">
               <input type="hidden" name="direccion_cobro" value="{{ cfg.get('direccion_cobro','') }}">
               <input type="hidden" name="texto_anuncio" value="{{ cfg.get('texto_anuncio','') }}">
+              <input type="hidden" name="url_app" value="{{ cfg.get('url_app','http://localhost:5000') }}">
               <div class="input-group">
                 <input type="date" class="form-control" name="fecha_simulada"
                        value="{{ cfg.get('fecha_simulada','') }}">

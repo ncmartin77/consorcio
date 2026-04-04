@@ -3,6 +3,9 @@ Capa de acceso al Excel (base de datos).
 Todas las operaciones de lectura/escritura pasan por aquí.
 """
 import os
+import secrets
+import hashlib
+import hmac as _hmac
 import calendar as _calendar
 from datetime import date, datetime
 from openpyxl import Workbook, load_workbook
@@ -141,6 +144,39 @@ def save_config(data: dict):
         else:
             ws.append([k, v])
     _save_wb(wb)
+
+
+def get_clave_firma() -> str:
+    """Retorna la clave secreta HMAC almacenada en CONFIG. La genera si no existe."""
+    cfg = get_config()
+    clave = cfg.get("clave_firma", "")
+    if clave:
+        return clave
+    clave = secrets.token_hex(32)
+    save_config({"clave_firma": clave})
+    return clave
+
+
+def generar_codigo_verificacion(row: dict, cfg: dict, clave_firma: str) -> str:
+    """
+    Genera un código HMAC-SHA256 de 32 chars hex a partir de los datos del recibo.
+    Sirve para verificar que el recibo no fue alterado.
+    """
+    campos = "|".join([
+        str(row.get("periodo", "")),
+        str(row.get("unidad", "")),
+        str(row.get("descripcion", "")),
+        f"{float(row.get('expensas', 0)):.2f}",
+        f"{float(row.get('deuda_anterior', 0)):.2f}",
+        f"{float(row.get('interes', 0)):.2f}",
+        f"{float(row.get('total_a_pagar', 0)):.2f}",
+        str(row.get("tipo_pago", "")),
+        f"{float(row.get('monto_pagado', 0)):.2f}",
+        str(row.get("fecha_pago", "")),
+        str(cfg.get("edificio_nombre", "")),
+    ])
+    mac = _hmac.new(clave_firma.encode(), campos.encode(), hashlib.sha256)
+    return mac.hexdigest()[:32]
 
 
 # ---------------------------------------------------------------------------

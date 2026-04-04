@@ -86,6 +86,7 @@ def config():
             "horario_cobro": request.form.get("horario_cobro", ""),
             "direccion_cobro": request.form.get("direccion_cobro", ""),
             "texto_anuncio": request.form.get("texto_anuncio", ""),
+            "url_app": request.form.get("url_app", "http://localhost:5000"),
         }
         db.save_config(data)
         flash("Configuración guardada.", "success")
@@ -551,12 +552,53 @@ def descargar_recibo(periodo, unidad):
     mes_gastos = db._prev_periodo(periodo)
     gastos = db.get_gastos(mes_gastos)
     facturas_extras = db.get_facturas_extraordinarias_periodo(mes_gastos)
-    pdf_bytes = generar_recibo_pago(row, cfg, periodo, gastos, facturas_extras)
+
+    clave_firma = db.get_clave_firma()
+    codigo = db.generar_codigo_verificacion(row, cfg, clave_firma)
+    url_app = cfg.get("url_app", "http://localhost:5000").rstrip("/")
+    url_verificacion = f"{url_app}/verificar/{periodo}/{unidad}/{codigo}"
+
+    pdf_bytes = generar_recibo_pago(
+        row, cfg, periodo, gastos, facturas_extras,
+        codigo_verificacion=codigo,
+        url_verificacion=url_verificacion,
+    )
     return send_file(
         io.BytesIO(pdf_bytes),
         mimetype="application/pdf",
         as_attachment=True,
         download_name=f"resumen_expensas_{unidad}_{periodo}.pdf"
+    )
+
+
+@app.route("/verificar")
+@app.route("/verificar/<periodo>/<unidad>/<codigo>")
+def verificar_recibo(periodo=None, unidad=None, codigo=None):
+    """Página de verificación de autenticidad de un recibo."""
+    if not periodo or not unidad or not codigo:
+        return render_template("verificar.html", estado="formulario")
+
+    liq = db.get_liquidacion(periodo)
+    row = next((r for r in liq if str(r["unidad"]) == str(unidad)), None)
+    if not row:
+        return render_template("verificar.html", estado="no_encontrado",
+                               periodo=periodo, unidad=unidad)
+
+    cfg = db.get_config()
+    clave_firma = db.get_clave_firma()
+    codigo_esperado = db.generar_codigo_verificacion(row, cfg, clave_firma)
+
+    import hmac as _hmac_mod
+    valido = _hmac_mod.compare_digest(codigo.lower(), codigo_esperado.lower())
+
+    return render_template(
+        "verificar.html",
+        estado="valido" if valido else "invalido",
+        row=row,
+        cfg=cfg,
+        periodo=periodo,
+        unidad=unidad,
+        codigo=codigo,
     )
 
 
@@ -863,4 +905,5 @@ def reset_datos():
 
 if __name__ == "__main__":
     db._init_db() if not os.path.exists(db.DB_PATH) else None
-    app.run(debug=True, port=5000)
+    host = os.environ.get("APP_HOST", "127.0.0.1")
+    app.run(debug=True, host=host, port=5000)
