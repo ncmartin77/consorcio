@@ -21,7 +21,7 @@ actualizar.bat                # update existing install: backup Excel + run migr
 crear_distribucion.bat        # creates a ZIP for deployment (calls .ps1); excludes data/ and venv/
 ```
 
-**Data migration (`migrar.py`):** idempotent script that adds missing sheets and columns to an existing `edificio_brasil.xlsx` without touching any data. Run it after copying new code files over an existing install. Called automatically by `instalar.ps1` and `actualizar.ps1` if the Excel already exists. Handles: `GASTOS_RECURRENTES`, `LIQUIDACIONES_ESTADO`, `PEDIDOS_PRESUPUESTO`, `PRESUPUESTOS` sheets; `gasto_recurrente` column in PROVEEDORES; `numero_factura`/`categoria`/`extraordinario` in FACTURAS; `piso`/`deuda_inicial` in UNIDADES; new CONFIG keys.
+**Data migration (`migrar.py`):** idempotent script that adds missing sheets and columns to an existing `edificio_brasil.xlsx` without touching any data. Run it after copying new code files over an existing install. Called automatically by `instalar.ps1` and `actualizar.ps1` if the Excel already exists. Handles: `GASTOS_RECURRENTES`, `LIQUIDACIONES_ESTADO`, `PEDIDOS_PRESUPUESTO`, `PRESUPUESTOS` sheets; `gasto_recurrente` column in PROVEEDORES; `numero_factura`/`categoria`/`extraordinario`/`archivo_pdf` in FACTURAS; `piso`/`deuda_inicial` in UNIDADES; new CONFIG keys.
 
 **Update process (existing install with data):**
 1. User clicks Backup button in app → downloads ZIP of Excel to Downloads
@@ -122,7 +122,18 @@ templates/      ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 
 **Factura desde gasto variable:** VARIABLE-type gastos in Gastos Mensuales show a receipt button that opens `#modalFacturaVariable` pre-filled with the gasto's concept and amount. Submits to the existing `save_factura` route.
 
-**Backup:** `GET /backup` streams a ZIP of `data/edificio_brasil.xlsx` as a browser download named `backup_edificio_brasil_YYYYMMDD_HHMM.zip`. Button visible in the navbar on every page.
+**Comprobantes de facturas (upload de archivos):** cada factura puede tener un PDF adjunto (escaneado o foto de la factura física). Key behaviors:
+- Columna `archivo_pdf` en la hoja FACTURAS del Excel; almacena la ruta relativa desde `DATA_DIR` (ej. `facturas/proveedor_sa/2026-04-11_143022.pdf`).
+- `db.FACTURAS_DIR` = `data/facturas/` — directorio raíz de todos los comprobantes.
+- Subdirectorios por proveedor: el nombre se sanitiza con `_sanitize_dirname()` en `app.py` (minúsculas, sin tildes, espacios → guiones bajos, solo `[a-z0-9_-]`).
+- Nombre de archivo: `{YYYY-MM-DD_HHMMSS}.pdf` — timestamp del momento de la subida.
+- Conversión automática: imágenes (PNG, JPG, GIF, TIFF, BMP) se convierten a PDF con Pillow (`img.save(path, "PDF", resolution=150)`). Imágenes con transparencia (RGBA/P/LA) se convierten a RGB antes de guardar.
+- Rutas: `POST /facturas/<fid>/upload` (subida), `GET /facturas/<fid>/comprobante` (visualización inline en el navegador).
+- Seguridad: `ver_comprobante` verifica con `os.realpath` que el path resuelto esté dentro de `DATA_DIR` (previene path traversal).
+- UI: botón upload (siempre visible por fila) y botón ver-PDF azul (solo si `archivo_pdf` está seteado). Un único `<form id="formUpload">` oculto es reutilizado por JS para todas las filas.
+- Dependencia: `Pillow>=10.0.0` en `requirements.txt`.
+
+**Backup:** `GET /backup` streams a ZIP containing `data/edificio_brasil.xlsx` **y toda la carpeta `data/facturas/`** (comprobantes PDF de facturas) como descarga del navegador, con nombre `backup_edificio_brasil_YYYYMMDD_HHMM.zip`. Botón visible en el navbar en todas las páginas.
 
 **Verificación de autenticidad de recibos (HMAC + QR):** cada recibo PDF incluye un código de verificación de 32 chars hex y un QR al pie. El código es un HMAC-SHA256 calculado sobre los campos clave del recibo (`periodo|unidad|descripcion|expensas|deuda_anterior|interes|total_a_pagar|tipo_pago|monto_pagado|fecha_pago|edificio_nombre`) usando una clave secreta almacenada en CONFIG (`clave_firma`). La clave se genera automáticamente con `secrets.token_hex(32)` la primera vez que se necesita (`get_clave_firma()` en `excel_db.py`). El QR codifica la URL `{url_app}/verificar/{periodo}/{unidad}/{codigo}`. La ruta `/verificar/<periodo>/<unidad>/<codigo>` recalcula el HMAC con los datos actuales del Excel y lo compara con `hmac.compare_digest`. La página `verificar.html` muestra 4 estados: `formulario` (entrada manual), `no_encontrado`, `valido`, `invalido`. La URL base se configura en CONFIG como `url_app` (default `http://localhost:5000`); si la app está en red local se configura con la IP real (ej. `http://192.168.1.100:5000`) para que el QR sea escaneable desde celulares. Campo visible en Configuración → sección "Verificación de Recibos". `migrar.py` agrega `clave_firma` y `url_app` a instalaciones existentes. **Bug conocido (corregido):** `config.html` tenía un `<input type="hidden" name="url_app">` duplicado que aparecía antes del campo visible en el mismo form; Flask tomaba el primer valor (el viejo), impidiendo guardar la nueva URL. Eliminado el hidden duplicado.
 
