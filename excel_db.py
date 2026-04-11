@@ -14,6 +14,7 @@ from openpyxl.utils import get_column_letter
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 DB_PATH = os.path.join(DATA_DIR, "edificio_brasil.xlsx")
+FACTURAS_DIR = os.path.join(DATA_DIR, "facturas")
 
 SHEET_CAJA = "CAJA_DIARIA"
 SHEET_GASTOS = "GASTOS_MENSUALES"
@@ -94,7 +95,7 @@ def _init_db():
     # FACTURAS
     ws = wb.create_sheet(SHEET_FACTURAS)
     ws.append(["id", "fecha", "proveedor_id", "proveedor_nombre", "descripcion",
-               "importe", "estado", "fecha_pago", "categoria", "numero_factura", "extraordinario"])
+               "importe", "estado", "fecha_pago", "categoria", "numero_factura", "extraordinario", "archivo_pdf"])
 
     # LIQUIDACIONES_ESTADO
     ws = wb.create_sheet(SHEET_LIQ_ESTADOS)
@@ -902,7 +903,7 @@ def delete_tarea(tarea_id: int):
 # ---------------------------------------------------------------------------
 
 _FAC_HEADER = ["id", "fecha", "proveedor_id", "proveedor_nombre", "descripcion",
-               "importe", "estado", "fecha_pago", "categoria", "numero_factura", "extraordinario"]
+               "importe", "estado", "fecha_pago", "categoria", "numero_factura", "extraordinario", "archivo_pdf"]
 
 def get_facturas(estado=None):
     wb = _get_wb()
@@ -1046,6 +1047,19 @@ def delete_factura(fid):
             break
     _save_wb(wb)
     return True
+
+
+def set_factura_archivo_pdf(fid: int, ruta_relativa: str):
+    """Guarda la ruta relativa del PDF adjunto en la columna archivo_pdf."""
+    wb = _get_wb()
+    ws = _ensure_sheet(wb, SHEET_FACTURAS, _FAC_HEADER)
+    col_idx = _FAC_HEADER.index("archivo_pdf") + 1
+    for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        if row[0] is not None and str(row[0]) == str(fid):
+            ws.cell(row=i, column=col_idx).value = ruta_relativa
+            _save_wb(wb)
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------

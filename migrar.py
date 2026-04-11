@@ -82,7 +82,7 @@ def migrate():
 
     if "FACTURAS" in wb.sheetnames:
         ws = wb["FACTURAS"]
-        for col in ["numero_factura", "categoria", "extraordinario"]:
+        for col in ["numero_factura", "categoria", "extraordinario", "archivo_pdf"]:
             if ensure_column(ws, col, "" if col != "extraordinario" else 0):
                 changes.append(f"FACTURAS: columna '{col}' agregada")
 

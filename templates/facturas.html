@@ -52,6 +52,7 @@
             <th class="text-end">Importe</th>
             <th class="text-center">Estado</th>
             <th>Fecha Pago</th>
+            <th class="text-center">Comprobante</th>
             <th></th>
           </tr>
         </thead>
@@ -72,6 +73,21 @@
               {% endif %}
             </td>
             <td class="text-muted">{{ f.fecha_pago or '' }}</td>
+            <td class="text-center text-nowrap">
+              {% if f.get('archivo_pdf') %}
+              <a href="{{ url_for('ver_comprobante', fid=f.id) }}"
+                 class="btn btn-sm btn-outline-info"
+                 target="_blank"
+                 title="Ver comprobante PDF">
+                <i class="bi bi-file-earmark-pdf"></i>
+              </a>
+              {% endif %}
+              <button class="btn btn-sm btn-outline-secondary"
+                      onclick="abrirUpload({{ f.id }})"
+                      title="{{ 'Reemplazar comprobante' if f.get('archivo_pdf') else 'Adjuntar comprobante' }}">
+                <i class="bi bi-upload"></i>
+              </button>
+            </td>
             <td class="text-nowrap">
               {% if f.estado == 'PENDIENTE' %}
               <button class="btn btn-sm btn-success me-1"
@@ -92,7 +108,7 @@
           </tr>
           {% else %}
           <tr>
-            <td colspan="9" class="text-center text-muted py-4">
+            <td colspan="10" class="text-center text-muted py-4">
               No hay facturas {% if estado_filtro %}{{ estado_filtro.lower() }}s{% endif %}.
             </td>
           </tr>
@@ -220,6 +236,12 @@
   </div>
 </div>
 
+<!-- Formulario oculto para subir comprobante (reutilizado por JS) -->
+<form id="formUpload" method="POST" enctype="multipart/form-data" style="display:none">
+  <input type="file" id="inputComprobante" name="comprobante"
+         accept=".pdf,.png,.jpg,.jpeg,.gif,.tiff,.bmp">
+</form>
+
 {% endblock %}
 {% block scripts %}
 <script>
@@ -258,6 +280,14 @@ function seleccionarRecurrente(sel) {
     descInput.value = '';
     catInput.value  = '';
   }
+}
+
+function abrirUpload(fid) {
+  const input = document.getElementById('inputComprobante');
+  const form  = document.getElementById('formUpload');
+  form.action = '/facturas/' + fid + '/upload';
+  input.onchange = function() { if (input.files.length > 0) form.submit(); };
+  input.click();
 }
 
 function pagarFactura(fid, proveedor, importe, fechaEmision) {

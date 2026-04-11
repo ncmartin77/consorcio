@@ -3,6 +3,7 @@ App Flask - Administración de Consorcio Edificio Brasil
 Correr con: python app.py  o  flask run
 """
 import os
+import re
 from datetime import date
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
 import io
@@ -869,6 +870,76 @@ def apertura():
 
 
 # ---------------------------------------------------------------------------
+# COMPROBANTES DE FACTURAS (upload / visualización)
+# ---------------------------------------------------------------------------
+
+_ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "gif", "tiff", "bmp"}
+
+def _sanitize_dirname(name: str) -> str:
+    """Convierte un nombre de proveedor en un nombre de directorio seguro."""
+    name = name.strip().lower()
+    for src, dst in [("áàäâ", "a"), ("éèëê", "e"), ("íìïî", "i"), ("óòöô", "o"), ("úùüû", "u"), ("ñ", "n")]:
+        for c in src:
+            name = name.replace(c, dst)
+    name = re.sub(r"\s+", "_", name)
+    name = re.sub(r"[^a-z0-9_\-]", "", name)
+    return name or "sin_proveedor"
+
+def _allowed_file(filename: str) -> bool:
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in _ALLOWED_EXTENSIONS
+
+@app.route("/facturas/<int:fid>/upload", methods=["POST"])
+def upload_comprobante(fid):
+    """Recibe un archivo (PDF o imagen), lo convierte a PDF si es necesario y lo adjunta a la factura."""
+    file = request.files.get("comprobante")
+    if not file or file.filename == "":
+        flash("No se seleccionó ningún archivo.", "danger")
+        return redirect(url_for("facturas"))
+    if not _allowed_file(file.filename):
+        flash("Tipo de archivo no permitido. Use PDF, PNG, JPG, GIF, TIFF o BMP.", "danger")
+        return redirect(url_for("facturas"))
+    factura = next((f for f in db.get_facturas() if str(f["id"]) == str(fid)), None)
+    if not factura:
+        flash("Factura no encontrada.", "danger")
+        return redirect(url_for("facturas"))
+    proveedor_dir = _sanitize_dirname(factura.get("proveedor_nombre") or "")
+    dest_dir = os.path.join(db.FACTURAS_DIR, proveedor_dir)
+    os.makedirs(dest_dir, exist_ok=True)
+    from datetime import datetime as _dt
+    timestamp = _dt.now().strftime("%Y-%m-%d_%H%M%S")
+    dest_path = os.path.join(dest_dir, f"{timestamp}.pdf")
+    ext = file.filename.rsplit(".", 1)[1].lower()
+    if ext == "pdf":
+        file.save(dest_path)
+    else:
+        from PIL import Image
+        img = Image.open(file.stream)
+        if img.mode in ("RGBA", "P", "LA"):
+            img = img.convert("RGB")
+        img.save(dest_path, "PDF", resolution=150)
+    ruta = os.path.join("facturas", proveedor_dir, f"{timestamp}.pdf")
+    db.set_factura_archivo_pdf(fid, ruta)
+    flash("Comprobante adjuntado correctamente.", "success")
+    return redirect(url_for("facturas"))
+
+
+@app.route("/facturas/<int:fid>/comprobante")
+def ver_comprobante(fid):
+    """Sirve el PDF adjunto de una factura directamente en el navegador."""
+    factura = next((f for f in db.get_facturas() if str(f["id"]) == str(fid)), None)
+    if not factura or not factura.get("archivo_pdf"):
+        flash("Esta factura no tiene comprobante adjunto.", "warning")
+        return redirect(url_for("facturas"))
+    full_path = os.path.join(db.DATA_DIR, factura["archivo_pdf"])
+    real_path = os.path.realpath(full_path)
+    real_data = os.path.realpath(db.DATA_DIR)
+    if not real_path.startswith(real_data + os.sep) or not os.path.isfile(real_path):
+        flash("El archivo del comprobante no se encontró.", "danger")
+        return redirect(url_for("facturas"))
+    return send_file(real_path, mimetype="application/pdf")
+
+
+# ---------------------------------------------------------------------------
 # BACKUP
 # ---------------------------------------------------------------------------
 
@@ -878,6 +949,12 @@ def backup():
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.write(db.DB_PATH, "edificio_brasil.xlsx")
+        if os.path.isdir(db.FACTURAS_DIR):
+            for root, dirs, files in os.walk(db.FACTURAS_DIR):
+                for fname in files:
+                    fpath = os.path.join(root, fname)
+                    arcname = os.path.relpath(fpath, os.path.dirname(db.FACTURAS_DIR))
+                    zf.write(fpath, arcname)
     buf.seek(0)
     fecha = _fecha_hoy().strftime("%Y%m%d_%H%M")
     return send_file(
