@@ -523,7 +523,7 @@ def generar_recibo_pago(row: dict, config: dict, periodo: str,
 
     # ---- TÍTULO ----
     story.append(Paragraph(
-        f"RESUMEN DE EXPENSAS — {edificio.upper()}",
+        f"RECIBO PAGO EXPENSAS — {edificio.upper()}",
         st("titulo", fontSize=13, fontName="Helvetica-Bold",
            alignment=TA_CENTER, textColor=c_azul, spaceAfter=4)))
 
@@ -548,66 +548,6 @@ def generar_recibo_pago(row: dict, config: dict, periodo: str,
         ("RIGHTPADDING", (2,0), (2,-1), 8),
     ]))
     story.append(header_t)
-    story.append(Spacer(1, 0.4*cm))
-
-    # ---- DETALLE DE GASTOS COMUNES ----
-    story.append(Paragraph(
-        f"DETALLE DE GASTOS DE {mes_gastos_largo}",
-        st("det_title", fontSize=9, fontName="Helvetica-Bold",
-           alignment=TA_CENTER, textColor=c_azul, spaceAfter=4)))
-
-    gasto_header = [
-        [Paragraph("<b>CONCEPTO</b>", st("gh", fontSize=8, textColor=colors.white)),
-         Paragraph("<b>PERÍODO</b>", st("gh2", fontSize=8, textColor=colors.white, alignment=TA_CENTER)),
-         Paragraph("<b>IMPORTE POR UF</b>", st("gh3", fontSize=8, textColor=colors.white, alignment=TA_RIGHT)),
-         Paragraph("<b>IMPORTE TOTAL</b>", st("gh4", fontSize=8, textColor=colors.white, alignment=TA_RIGHT))],
-    ]
-    gasto_rows = []
-    total_importe_uf = 0.0
-    total_importe_total = 0.0
-
-    # Filter out extraordinary facturas from regular gastos display
-    ids_extra = set()
-    for fe in facturas_extras:
-        # extraordinary facturas don't appear in regular gastos section
-        pass
-
-    for g in gastos:
-        importe_uf = round(g["importe"] * pct / 100, 2)
-        total_importe_uf += importe_uf
-        total_importe_total += g["importe"]
-        gasto_rows.append([
-            Paragraph(g["concepto"], st("gc", fontSize=8)),
-            Paragraph(mes_gastos_abrev, st("gc2", fontSize=8, alignment=TA_CENTER)),
-            Paragraph(_fmt(importe_uf), st("gc3", fontSize=8, alignment=TA_RIGHT)),
-            Paragraph(_fmt(g["importe"]), st("gc4", fontSize=8, alignment=TA_RIGHT)),
-        ])
-
-    # Subtotal row
-    subtotal_row = [
-        Paragraph("<b>GASTOS COMUNES</b>", st("gs", fontSize=8, fontName="Helvetica-Bold")),
-        Paragraph("", st("gs2")),
-        Paragraph(f"<b>{_fmt(total_importe_uf)}</b>", st("gs3", fontSize=8, fontName="Helvetica-Bold", alignment=TA_RIGHT)),
-        Paragraph(f"<b>{_fmt(total_importe_total)}</b>", st("gs4", fontSize=8, fontName="Helvetica-Bold", alignment=TA_RIGHT)),
-    ]
-
-    col_w_det = [8*cm, 2.5*cm, 3*cm, 3*cm]  # = 16.5 cm
-    det_data = gasto_header + gasto_rows + [subtotal_row]
-    n_det = len(det_data)
-
-    det_t = Table(det_data, colWidths=col_w_det)
-    det_style = [
-        ("BACKGROUND", (0,0), (-1,0), c_azul),
-        ("ROWBACKGROUNDS", (0,1), (-1,n_det-2), [colors.white, colors.HexColor("#f5f5f5")]),
-        ("BACKGROUND", (0,n_det-1), (-1,n_det-1), colors.HexColor("#dce8f8")),
-        ("GRID", (0,0), (-1,-1), 0.3, colors.HexColor("#cccccc")),
-        ("TOPPADDING", (0,0), (-1,-1), 3),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
-        ("LEFTPADDING", (0,0), (0,-1), 5),
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-    ]
-    det_t.setStyle(TableStyle(det_style))
-    story.append(det_t)
     story.append(Spacer(1, 0.4*cm))
 
     # ---- RESUMEN / TOTALES ----
