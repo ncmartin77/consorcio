@@ -14,7 +14,15 @@ import os
 import sys
 from openpyxl import load_workbook
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "data", "edificio_brasil.xlsx")
+_BASE_DIR = os.path.dirname(__file__)
+_APP_ENV = os.environ.get("APP_ENV", "produccion").lower()
+if _APP_ENV not in ("produccion", "pruebas"):
+    _APP_ENV = "produccion"
+
+if _APP_ENV == "produccion":
+    DB_PATH = os.path.join(_BASE_DIR, "data", "edificio_brasil.xlsx")
+else:
+    DB_PATH = os.path.join(_BASE_DIR, "data", "pruebas", "edificio_brasil.xlsx")
 
 
 def _header(ws):
@@ -44,6 +52,26 @@ def ensure_sheet(wb, name, header):
 
 
 def migrate():
+    # ── Descargar desde Drive si está configurado ─────────────────────────────
+    drive = None
+    try:
+        from drive_sync import DriveSync
+        if DriveSync.is_configured():
+            drive = DriveSync(env=_APP_ENV)
+            print(f"[Drive] Descargando base de datos desde Drive ({_APP_ENV})...")
+            os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+            descargado = drive.download_excel(DB_PATH)
+            if descargado:
+                print("[Drive] Descarga completada.")
+            else:
+                print("[Drive] No hay archivo en Drive todavía. Usando archivo local.")
+                drive = None  # No subir si no había nada en Drive
+    except ImportError:
+        pass
+    except Exception as exc:
+        print(f"[Drive] AVISO: Error al conectar con Drive: {exc}")
+        drive = None
+
     if not os.path.exists(DB_PATH):
         print("INFO: No existe base de datos todavía. Se creará al iniciar la app.")
         return True
@@ -118,8 +146,16 @@ def migrate():
         for c in changes:
             print(f"  + {c}")
         print(f"\nMigracion completada. {len(changes)} cambio(s) aplicado(s).")
+        # ── Subir versión migrada a Drive ─────────────────────────────────────
+        if drive:
+            print("[Drive] Subiendo base de datos migrada a Drive...")
+            drive.upload_excel(DB_PATH)
+            print("[Drive] Subida completada.")
     else:
         print("La base de datos ya está al día. No se requieren cambios.")
+        # Subir igualmente para sincronizar si no estaba en Drive
+        if drive:
+            drive.upload_excel(DB_PATH)
 
     return True
 

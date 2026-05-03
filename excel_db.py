@@ -12,9 +12,61 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+# ── Entorno: produccion (default) o pruebas ───────────────────────────────────
+_BASE_DIR = os.path.dirname(__file__)
+_APP_ENV = os.environ.get("APP_ENV", "produccion").lower()
+if _APP_ENV not in ("produccion", "pruebas"):
+    _APP_ENV = "produccion"
+
+# Produccion: data/             Pruebas: data/pruebas/
+DATA_DIR = (
+    os.path.join(_BASE_DIR, "data")
+    if _APP_ENV == "produccion"
+    else os.path.join(_BASE_DIR, "data", "pruebas")
+)
 DB_PATH = os.path.join(DATA_DIR, "edificio_brasil.xlsx")
 FACTURAS_DIR = os.path.join(DATA_DIR, "facturas")
+
+# ── Drive sync (opcional, activo sólo si token.json existe) ───────────────────
+_drive_instance = None
+_drive_initialized = False
+
+
+def _get_drive():
+    """
+    Devuelve DriveSync o None.
+    Instancia el objeto una sola vez (lazy singleton) y lo cachea.
+    Si Drive no está configurado o falla, la app sigue funcionando en modo local.
+    """
+    global _drive_instance, _drive_initialized
+    if _drive_initialized:
+        return _drive_instance
+    _drive_initialized = True
+    try:
+        from drive_sync import DriveSync
+        if DriveSync.is_configured():
+            _drive_instance = DriveSync(env=_APP_ENV)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(f"[Drive] No se pudo inicializar: {exc}")
+    return _drive_instance
+
+
+def sync_from_drive():
+    """
+    Descarga el Excel desde Drive hacia el cache local.
+    Llamar al inicio de la app para tener la versión más reciente.
+    Si Drive no está configurado o falla, no hace nada (la app usa el local).
+    """
+    drive = _get_drive()
+    if not drive:
+        return
+    os.makedirs(DATA_DIR, exist_ok=True)
+    descargado = drive.download_excel(DB_PATH)
+    if descargado:
+        print(f"[Drive] Base de datos sincronizada ({_APP_ENV}).")
+    else:
+        print(f"[Drive] Sin archivo en Drive todavía — usando datos locales ({_APP_ENV}).")
 
 SHEET_CAJA = "CAJA_DIARIA"
 SHEET_GASTOS = "GASTOS_MENSUALES"
@@ -38,12 +90,21 @@ _LIQ_EST_HEADER = ["periodo", "estado"]
 
 def _get_wb():
     if not os.path.exists(DB_PATH):
-        _init_db()
+        # Intentar descargar desde Drive antes de crear una BD nueva
+        drive = _get_drive()
+        if drive:
+            drive.download_excel(DB_PATH)
+        if not os.path.exists(DB_PATH):
+            _init_db()
     return load_workbook(DB_PATH)
 
 
 def _save_wb(wb):
     wb.save(DB_PATH)
+    # Subir a Drive en segundo plano (no bloquea la respuesta HTTP)
+    drive = _get_drive()
+    if drive:
+        drive.upload_excel_async(DB_PATH)
 
 
 def _init_db():
@@ -1058,6 +1119,11 @@ def set_factura_archivo_pdf(fid: int, ruta_relativa: str):
         if row[0] is not None and str(row[0]) == str(fid):
             ws.cell(row=i, column=col_idx).value = ruta_relativa
             _save_wb(wb)
+            # Subir el PDF a Drive en segundo plano
+            drive = _get_drive()
+            if drive:
+                local_pdf = os.path.join(DATA_DIR, ruta_relativa)
+                drive.upload_factura_async(local_pdf, ruta_relativa)
             return True
     return False
 

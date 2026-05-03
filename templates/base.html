@@ -98,10 +98,20 @@
       <a href="{{ url_for('backup') }}" class="btn btn-sm btn-outline-light ms-2" title="Backup base de datos">
         <i class="bi bi-cloud-download"></i> Backup
       </a>
-      <span class="badge bg-secondary ms-3 opacity-75" style="font-size:0.7rem">v{{ app_version }}</span>
+      {% if drive_activo %}
+      <span class="badge bg-success ms-2 opacity-75" title="Google Drive activo ({{ app_env }})" style="font-size:0.7rem">
+        <i class="bi bi-cloud-check-fill"></i> Drive
+      </span>
+      {% endif %}
+      <span class="badge bg-secondary ms-2 opacity-75" style="font-size:0.7rem">v{{ app_version }}</span>
     </div>
   </div>
 </nav>
+{% if app_env == 'pruebas' %}
+<div class="alert alert-warning text-center mb-0 py-2 fw-bold rounded-0" role="alert">
+  <i class="bi bi-flask"></i>&nbsp; MODO PRUEBAS — Los datos NO corresponden a producción
+</div>
+{% endif %}
 
 <div class="container-fluid mt-3">
   {% with messages = get_flashed_messages(with_categories=true) %}

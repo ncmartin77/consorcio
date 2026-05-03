@@ -33,7 +33,11 @@ def inject_version():
             _ver = _f.read().strip()
     except Exception:
         _ver = "?"
-    return {"app_version": _ver}
+    return {
+        "app_version": _ver,
+        "app_env": db._APP_ENV,
+        "drive_activo": db._get_drive() is not None,
+    }
 
 
 def _fecha_hoy():
@@ -981,6 +985,9 @@ def reset_datos():
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    db._init_db() if not os.path.exists(db.DB_PATH) else None
+    # Sincronizar desde Drive (si está configurado) antes de iniciar
+    db.sync_from_drive()
+    if not os.path.exists(db.DB_PATH):
+        db._init_db()
     host = os.environ.get("APP_HOST", "127.0.0.1")
     app.run(debug=True, host=host, port=5000)
