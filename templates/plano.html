@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+{% block title %}Plano del Edificio{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-building"></i> Plano del Edificio</h4>
+  <div class="d-flex gap-2 align-items-center">
+    <input type="month" class="form-control form-control-sm" id="periodoSelector"
+           value="{{ periodo }}">
+    <span class="text-muted small">Período: <strong>{{ periodo }}</strong></span>
+  </div>
+</div>
+
+<!-- Fondo de Reserva -->
+<div class="alert alert-success d-flex align-items-center gap-3 py-2 mb-3">
+  <i class="bi bi-piggy-bank-fill fs-4"></i>
+  <div>
+    <strong>Fondo de Reserva acumulado (pendiente de cobro):</strong>
+    <span class="fs-5 ms-2">$ {{ "%.2f"|format(fondo)|replace(".",",") }}</span>
+    <a href="{{ url_for('config') }}" class="ms-3 small text-muted">
+      <i class="bi bi-pencil"></i> Actualizar
+    </a>
+  </div>
+</div>
+
+<!-- Leyenda -->
+<div class="d-flex gap-3 mb-3 align-items-center flex-wrap">
+  <span class="badge-leyenda pagado"><i class="bi bi-check-circle-fill"></i> Pagado</span>
+  <span class="badge-leyenda pendiente"><i class="bi bi-clock-fill"></i> Pendiente</span>
+  <span class="badge-leyenda sin-liq"><i class="bi bi-dash-circle"></i> Sin liquidación</span>
+  <span class="badge-leyenda inactiva"><i class="bi bi-x-circle"></i> Inactiva</span>
+  <span class="text-muted small ms-2"><i class="bi bi-hand-index"></i> Hacé clic en una unidad para registrar un pago</span>
+</div>
+
+{% if not unidades %}
+<div class="alert alert-info">
+  No hay unidades cargadas. <a href="{{ url_for('unidades') }}">Agregá unidades primero.</a>
+</div>
+{% else %}
+
+<div class="edificio-container">
+  <!-- Techo -->
+  <div class="techo">
+    <div class="techo-triangle"></div>
+    <div class="techo-label"><i class="bi bi-building"></i> EDIFICIO</div>
+  </div>
+
+  <!-- Pisos (ordenados de mayor a menor desde Python) -->
+  {% for piso_nombre, piso_unidades in pisos %}
+  <div class="piso-row">
+    <div class="piso-label">{{ piso_nombre }}</div>
+    <div class="unidades-row">
+      {% for u in piso_unidades %}
+      {% if not u.activo %}
+        {% set estado_class = 'unidad-inactiva' %}
+        {% set estado_txt = 'Inactiva' %}
+        {% set estado_icon = '×' %}
+      {% elif u.tipo_pago == 'TOTAL' %}
+        {% set estado_class = 'unidad-pagada' %}
+        {% set estado_txt = 'Pagado' %}
+        {% set estado_icon = '✓' %}
+      {% elif u.tipo_pago == 'PARCIAL' %}
+        {% set estado_class = 'unidad-parcial' %}
+        {% set estado_txt = 'Parcial' %}
+        {% set estado_icon = '½' %}
+      {% elif u.tiene_liquidacion %}
+        {% set estado_class = 'unidad-pendiente' %}
+        {% set estado_txt = 'Pendiente' %}
+        {% set estado_icon = '!' %}
+      {% else %}
+        {% set estado_class = 'unidad-sin-liq' %}
+        {% set estado_txt = 'Sin liquidación' %}
+        {% set estado_icon = '—' %}
+      {% endif %}
+
+      <div class="unidad-box {{ estado_class }}"
+           data-numero="{{ u.numero }}"
+           data-descripcion="{{ u.descripcion }}"
+           data-propietario="{{ u.propietario }}"
+           data-inquilino="{{ u.inquilino }}"
+           data-piso="{{ u.piso }}"
+           data-pct="{{ '%.2f'|format(u.pct|float) }}"
+           data-expensas="{{ '%.2f'|format(u.expensas|float) }}"
+           data-deuda="{{ '%.2f'|format(u.deuda_anterior|float) }}"
+           data-interes="{{ '%.2f'|format(u.interes|float) }}"
+           data-total="{{ '%.2f'|format(u.total_a_pagar|float) }}"
+           data-monto="{{ '%.2f'|format(u.monto_pagado|float) }}"
+           data-saldo="{{ '%.2f'|format(u.saldo_pendiente|float) }}"
+           data-tipopago="{{ u.tipo_pago }}"
+           data-estado="{{ estado_txt }}"
+           data-tieneliq="{{ 'si' if u.tiene_liquidacion else 'no' }}">
+        <div class="unidad-numero">{{ u.numero }}</div>
+        <div class="unidad-estado-icon">{{ estado_icon }}</div>
+        {% if u.tipo_pago == 'PENDIENTE' and u.tiene_liquidacion %}
+        <div class="unidad-monto">$ {{ '{:,.0f}'.format(u.total_a_pagar) }}</div>
+        {% elif u.tipo_pago == 'PARCIAL' %}
+        <div class="unidad-monto text-warning">$ {{ '{:,.0f}'.format(u.saldo_pendiente) }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  <!-- Base del edificio -->
+  <div class="edificio-base"></div>
+</div>
+
+<!-- Modal Pago -->
+<div class="modal fade" id="modalPagoPlano" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <form method="POST" id="formPagoPlano">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title"><i class="bi bi-cash"></i> Registrar Pago</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <span class="fw-bold" id="pp_unidad"></span>
+            <span class="text-muted small ms-1" id="pp_ocupante"></span>
+          </div>
+          <div class="small mb-3">
+            <div class="d-flex justify-content-between text-muted mb-1">
+              <span>Total a pagar:</span><strong id="pp_total" class="text-danger"></strong>
+            </div>
+            <div id="pp_ya_pagado_row" class="d-flex justify-content-between text-muted mb-1" style="display:none">
+              <span>Ya abonado:</span><strong id="pp_ya_pagado" class="text-success"></strong>
+            </div>
+            <div id="pp_saldo_row" class="d-flex justify-content-between text-muted mb-1" style="display:none">
+              <span>Saldo pendiente:</span><strong id="pp_saldo" class="text-warning"></strong>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold" id="pp_label_monto">Monto Abonado *</label>
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              <input type="number" class="form-control" name="monto_pagado" id="pp_monto"
+                     step="0.01" min="0.01" required>
+            </div>
+            <div class="d-flex gap-2 mt-1">
+              <button type="button" class="btn btn-sm btn-outline-success w-100"
+                      onclick="pp_usarTotal()">Pago total</button>
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label fw-semibold">Fecha de Pago *</label>
+            <input type="date" class="form-control" name="fecha_pago" id="pp_fecha" required>
+          </div>
+          <div id="pp_aviso_parcial" class="alert alert-warning py-1 small mb-0" style="display:none">
+            <i class="bi bi-exclamation-triangle"></i>
+            Monto menor al saldo → se registrará como <strong>pago parcial</strong>.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success"><i class="bi bi-check-circle"></i> Confirmar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Tooltip flotante -->
+<div id="tooltip-unidad" class="tooltip-edificio" style="display:none;">
+  <div class="tooltip-header">
+    <span id="tt-numero" class="tt-numero"></span>
+    <span id="tt-descripcion" class="tt-descripcion"></span>
+    <span id="tt-estado-badge" class="tt-estado-badge"></span>
+  </div>
+  <div class="tooltip-body">
+    <div class="tt-row"><span>Propietario:</span> <strong id="tt-propietario"></strong></div>
+    <div class="tt-row" id="tt-inquilino-row"><span>Inquilino:</span> <strong id="tt-inquilino"></strong></div>
+    <div class="tt-row"><span>% U.F.:</span> <strong id="tt-pct"></strong>%</div>
+    <hr class="my-1">
+    <div class="tt-row" id="tt-liq-section">
+      <table class="w-100 small">
+        <tr><td>Expensas:</td><td class="text-end"><strong id="tt-expensas"></strong></td></tr>
+        <tr id="tt-deuda-row"><td>Deuda ant.:</td><td class="text-end text-danger"><strong id="tt-deuda"></strong></td></tr>
+        <tr id="tt-interes-row"><td>Interés mora:</td><td class="text-end text-warning"><strong id="tt-interes"></strong></td></tr>
+        <tr class="fw-bold"><td>TOTAL:</td><td class="text-end text-danger"><strong id="tt-total"></strong></td></tr>
+      </table>
+    </div>
+    <div id="tt-sin-liq" class="text-muted small text-center py-1" style="display:none;">
+      Sin liquidación generada para este período.
+    </div>
+  </div>
+</div>
+
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('periodoSelector').addEventListener('change', function() {
+  window.location.href = '{{ url_for("plano") }}/' + this.value;
+});
+
+const tooltip = document.getElementById('tooltip-unidad');
+const boxes = document.querySelectorAll('.unidad-box');
+
+function fmt(val) {
+  return '$ ' + parseFloat(val).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+let _pp_saldo = 0;
+
+function pp_usarTotal() {
+  document.getElementById('pp_monto').value = _pp_saldo.toFixed(2);
+  document.getElementById('pp_aviso_parcial').style.display = 'none';
+}
+
+boxes.forEach(box => {
+  box.addEventListener('mouseenter', function(e) {
+    const d = this.dataset;
+    document.getElementById('tt-numero').textContent = d.numero;
+    document.getElementById('tt-descripcion').textContent = d.descripcion ? ' — ' + d.descripcion : '';
+    document.getElementById('tt-propietario').textContent = d.propietario || '—';
+    document.getElementById('tt-inquilino').textContent = d.inquilino || '—';
+    document.getElementById('tt-inquilino-row').style.display = d.inquilino ? '' : 'none';
+    document.getElementById('tt-pct').textContent = d.pct;
+
+    const estadoBadge = document.getElementById('tt-estado-badge');
+    estadoBadge.textContent = d.estado;
+    estadoBadge.className = 'tt-estado-badge';
+    if (d.estado === 'Pagado') estadoBadge.classList.add('badge-pagado');
+    else if (d.estado === 'Pendiente') estadoBadge.classList.add('badge-pendiente');
+    else estadoBadge.classList.add('badge-neutral');
+
+    if (d.tieneliq === 'si') {
+      document.getElementById('tt-liq-section').style.display = '';
+      document.getElementById('tt-sin-liq').style.display = 'none';
+      document.getElementById('tt-expensas').textContent = fmt(d.expensas);
+      document.getElementById('tt-total').textContent = fmt(d.total);
+      const deuda = parseFloat(d.deuda);
+      document.getElementById('tt-deuda-row').style.display = deuda > 0 ? '' : 'none';
+      document.getElementById('tt-deuda').textContent = fmt(d.deuda);
+      const interes = parseFloat(d.interes);
+      document.getElementById('tt-interes-row').style.display = interes > 0 ? '' : 'none';
+      document.getElementById('tt-interes').textContent = fmt(d.interes);
+    } else {
+      document.getElementById('tt-liq-section').style.display = 'none';
+      document.getElementById('tt-sin-liq').style.display = '';
+    }
+
+    tooltip.style.display = 'block';
+    posicionarTooltip(e);
+  });
+
+  box.addEventListener('mousemove', posicionarTooltip);
+  box.addEventListener('mouseleave', function() { tooltip.style.display = 'none'; });
+
+  // Click → abrir modal de pago (solo si tiene liquidación y no es TOTAL)
+  box.addEventListener('click', function() {
+    const d = this.dataset;
+    if (d.tieneliq !== 'si' || d.tipopago === 'TOTAL' || d.tipopago === 'Inactiva') return;
+
+    tooltip.style.display = 'none';
+    const esParcial = d.tipopago === 'PARCIAL';
+    const saldo = esParcial ? parseFloat(d.saldo) : parseFloat(d.total);
+    _pp_saldo = saldo;
+
+    document.getElementById('pp_unidad').textContent = 'UF ' + d.numero + (d.descripcion ? ' — ' + d.descripcion : '');
+    document.getElementById('pp_ocupante').textContent = d.inquilino || d.propietario || '';
+    document.getElementById('pp_total').textContent = fmt(d.total);
+
+    if (esParcial) {
+      document.getElementById('pp_label_monto').textContent = 'Monto a agregar *';
+      document.getElementById('pp_ya_pagado').textContent = fmt(d.monto);
+      document.getElementById('pp_ya_pagado_row').style.display = 'flex';
+      document.getElementById('pp_saldo').textContent = fmt(saldo);
+      document.getElementById('pp_saldo_row').style.display = 'flex';
+    } else {
+      document.getElementById('pp_label_monto').textContent = 'Monto Abonado *';
+      document.getElementById('pp_ya_pagado_row').style.display = 'none';
+      document.getElementById('pp_saldo_row').style.display = 'none';
+    }
+
+    const input = document.getElementById('pp_monto');
+    input.value = saldo.toFixed(2);
+    input.max = saldo;
+    document.getElementById('pp_fecha').value = new Date().toISOString().split('T')[0];
+    document.getElementById('pp_aviso_parcial').style.display = 'none';
+    document.getElementById('formPagoPlano').action = '/liquidacion/pagar/{{ periodo }}/' + d.numero;
+    new bootstrap.Modal(document.getElementById('modalPagoPlano')).show();
+  });
+});
+
+document.getElementById('pp_monto').addEventListener('input', function() {
+  const v = parseFloat(this.value) || 0;
+  document.getElementById('pp_aviso_parcial').style.display =
+    (v > 0 && v < _pp_saldo) ? 'block' : 'none';
+});
+
+function posicionarTooltip(e) {
+  const ttW = tooltip.offsetWidth || 260;
+  const ttH = tooltip.offsetHeight || 200;
+  let x = e.clientX + window.scrollX + 15;
+  let y = e.clientY + window.scrollY - 10;
+  if (x + ttW > window.innerWidth + window.scrollX - 20) {
+    x = e.clientX + window.scrollX - ttW - 15;
+  }
+  if (y + ttH > window.innerHeight + window.scrollY - 20) {
+    y = e.clientY + window.scrollY - ttH - 10;
+  }
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+}
+</script>
+{% endblock %}

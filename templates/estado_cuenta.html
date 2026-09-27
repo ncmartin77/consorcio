@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Estado de Cuenta{% endblock %}
+{% block content %}
+
+<h4 class="mb-3"><i class="bi bi-journal-text"></i> Estado de Cuenta por Unidad</h4>
+
+{% if not unidades %}
+<div class="alert alert-info">No hay unidades cargadas.</div>
+{% else %}
+
+<div class="accordion" id="acordeonUnidades">
+{% for u in unidades %}
+{% set num = u.numero|string %}
+{% set filas = historial.get(num, []) %}
+{% set ocupante = u.inquilino or u.propietario or '—' %}
+{% set saldo_actual = filas[-1].saldo_pendiente if filas and filas[-1].tipo_pago != 'TOTAL' else 0 %}
+{% set total_pagado = filas|sum(attribute='monto_pagado') %}
+
+<div class="accordion-item">
+  <h2 class="accordion-header">
+    <button class="accordion-button collapsed py-2" type="button"
+            data-bs-toggle="collapse" data-bs-target="#uf{{ num }}">
+      <div class="d-flex w-100 align-items-center gap-3">
+        <span class="fw-bold text-primary" style="min-width:3rem">UF {{ num }}</span>
+        <span class="text-muted small" style="min-width:10rem">{{ u.descripcion }}</span>
+        <span style="min-width:12rem">{{ ocupante }}</span>
+        <span class="ms-auto me-3 small">
+          {% if filas %}
+            {% set ultimo = filas[-1] %}
+            {% if ultimo.tipo_pago == 'TOTAL' %}
+              <span class="badge bg-success">Al día</span>
+            {% elif ultimo.tipo_pago == 'PARCIAL' %}
+              <span class="badge bg-warning text-dark">Saldo: $ {{ "%.2f"|format(ultimo.saldo_pendiente)|replace(".",",") }}</span>
+            {% else %}
+              <span class="badge bg-danger">Debe: $ {{ "%.2f"|format(ultimo.total_a_pagar)|replace(".",",") }}</span>
+            {% endif %}
+          {% else %}
+            <span class="badge bg-secondary">Sin movimientos</span>
+          {% endif %}
+        </span>
+      </div>
+    </button>
+  </h2>
+  <div id="uf{{ num }}" class="accordion-collapse collapse">
+    <div class="accordion-body p-2">
+      {% if not filas %}
+        <p class="text-muted text-center py-2">Sin liquidaciones registradas.</p>
+      {% else %}
+      <table class="table table-sm table-striped table-hover mb-0 small">
+        <thead class="table-primary">
+          <tr>
+            <th>Período</th>
+            <th class="text-end">Expensas</th>
+            <th class="text-end">Deuda Ant.</th>
+            <th class="text-end">Interés</th>
+            <th class="text-end fw-bold">Total</th>
+            <th class="text-end">Abonado</th>
+            <th class="text-end">Saldo</th>
+            <th class="text-center">Estado</th>
+            <th class="text-center">Fecha Pago</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in filas|reverse %}
+          <tr class="{% if f.tipo_pago == 'TOTAL' %}table-success{% elif f.tipo_pago == 'PARCIAL' %}table-warning{% endif %}">
+            <td><strong>{{ f.periodo }}</strong></td>
+            <td class="text-end">$ {{ "%.2f"|format(f.expensas)|replace(".",",") }}</td>
+            <td class="text-end {% if f.deuda_anterior > 0 %}text-danger{% endif %}">
+              {% if f.deuda_anterior > 0 %}$ {{ "%.2f"|format(f.deuda_anterior)|replace(".",",") }}{% else %}—{% endif %}
+            </td>
+            <td class="text-end {% if f.interes > 0 %}text-warning{% endif %}">
+              {% if f.interes > 0 %}$ {{ "%.2f"|format(f.interes)|replace(".",",") }}{% else %}—{% endif %}
+            </td>
+            <td class="text-end fw-bold">$ {{ "%.2f"|format(f.total_a_pagar)|replace(".",",") }}</td>
+            <td class="text-end text-success">
+              {% if f.monto_pagado > 0 %}$ {{ "%.2f"|format(f.monto_pagado)|replace(".",",") }}{% else %}—{% endif %}
+            </td>
+            <td class="text-end {% if f.tipo_pago != 'TOTAL' and f.total_a_pagar > 0 %}text-danger{% endif %}">
+              {% if f.tipo_pago == 'TOTAL' %}—
+              {% elif f.saldo_pendiente > 0 %}$ {{ "%.2f"|format(f.saldo_pendiente)|replace(".",",") }}
+              {% else %}$ {{ "%.2f"|format(f.total_a_pagar)|replace(".",",") }}{% endif %}
+            </td>
+            <td class="text-center">
+              {% if f.tipo_pago == 'TOTAL' %}<span class="badge bg-success">Pagado</span>
+              {% elif f.tipo_pago == 'PARCIAL' %}<span class="badge bg-warning text-dark">Parcial</span>
+              {% else %}<span class="badge bg-danger">Pendiente</span>{% endif %}
+            </td>
+            <td class="text-center text-muted">{{ f.fecha_pago or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-bold small">
+          <tr>
+            <td>TOTAL</td>
+            <td colspan="4"></td>
+            <td class="text-end text-success">$ {{ "%.2f"|format(total_pagado)|replace(".",",") }}</td>
+            <td class="text-end {% if saldo_actual > 0 %}text-danger{% endif %}">
+              {% if saldo_actual > 0 %}$ {{ "%.2f"|format(saldo_actual)|replace(".",",") }}{% else %}—{% endif %}
+            </td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+      </table>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

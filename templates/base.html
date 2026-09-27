@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Consorcio Brasil{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="{{ url_for('index') }}">
+      <i class="bi bi-building"></i>
+      {% if consorcio_nombre %}{{ consorcio_nombre }}{% else %}Consorcios{% endif %}
+    </a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navMenu">
+      <ul class="navbar-nav me-auto">
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'gastos' %}active{% endif %}"
+             href="{{ url_for('gastos') }}">
+            <i class="bi bi-list-check"></i> Gastos Mensuales
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'liquidacion' %}active{% endif %}"
+             href="{{ url_for('liquidacion') }}">
+            <i class="bi bi-receipt"></i> Liquidación
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'caja' %}active{% endif %}"
+             href="{{ url_for('caja') }}">
+            <i class="bi bi-cash-stack"></i> Caja Diaria
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'unidades' %}active{% endif %}"
+             href="{{ url_for('unidades') }}">
+            <i class="bi bi-house-door"></i> Unidades
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'plano' %}active{% endif %}"
+             href="{{ url_for('plano') }}">
+            <i class="bi bi-building"></i> Plano
+          </a>
+        </li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle {% if request.endpoint in ['proveedores','facturas'] %}active{% endif %}"
+             href="#" role="button" data-bs-toggle="dropdown">
+            <i class="bi bi-truck"></i> Proveedores
+          </a>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="{{ url_for('proveedores') }}">
+              <i class="bi bi-people"></i> Proveedores
+            </a></li>
+            <li><a class="dropdown-item" href="{{ url_for('facturas') }}">
+              <i class="bi bi-receipt-cutoff"></i> Facturas
+            </a></li>
+          </ul>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint in ['presupuestos','detalle_pedido'] %}active{% endif %}"
+             href="{{ url_for('presupuestos') }}">
+            <i class="bi bi-clipboard2-check"></i> Presupuestos
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'estado_cuenta' %}active{% endif %}"
+             href="{{ url_for('estado_cuenta') }}">
+            <i class="bi bi-journal-text"></i> Estado de Cuenta
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'apertura' %}active{% endif %}"
+             href="{{ url_for('apertura') }}">
+            <i class="bi bi-play-circle"></i> Apertura
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'config' %}active{% endif %}"
+             href="{{ url_for('config') }}">
+            <i class="bi bi-gear"></i> Configuración
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'verificar_recibo' %}active{% endif %}"
+             href="{{ url_for('verificar_recibo') }}">
+            <i class="bi bi-shield-check"></i> Verificar
+          </a>
+        </li>
+      </ul>
+      <a href="{{ url_for('consorcios') }}" class="btn btn-sm btn-outline-light ms-2"
+         title="Cambiar consorcio">
+        <i class="bi bi-arrow-left-right"></i>
+      </a>
+      <a href="{{ url_for('backup') }}" class="btn btn-sm btn-outline-light ms-2" title="Backup base de datos">
+        <i class="bi bi-cloud-download"></i> Backup
+      </a>
+      {% if drive_activo %}
+      <span class="badge bg-success ms-2 opacity-75" title="Google Drive activo ({{ app_env }})" style="font-size:0.7rem">
+        <i class="bi bi-cloud-check-fill"></i> Drive
+      </span>
+      {% endif %}
+      <span class="badge bg-secondary ms-2 opacity-75" style="font-size:0.7rem">v{{ app_version }}</span>
+    </div>
+  </div>
+</nav>
+{% if app_env == 'pruebas' %}
+<div class="alert alert-warning text-center mb-0 py-2 fw-bold rounded-0" role="alert">
+  <i class="bi bi-flask"></i>&nbsp; MODO PRUEBAS — Los datos NO corresponden a producción
+</div>
+{% endif %}
+
+<div class="container-fluid mt-3">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ category }} alert-dismissible fade show py-2" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

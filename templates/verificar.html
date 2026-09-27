@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Verificar Recibo{% endblock %}
+
+{% block content %}
+<div class="container py-5" style="max-width: 650px;">
+
+  <div class="text-center mb-4">
+    <i class="bi bi-shield-check" style="font-size: 2.5rem; color: #1a3a5c;"></i>
+    <h4 class="mt-2 fw-bold" style="color: #1a3a5c;">Verificación de Autenticidad</h4>
+    <p class="text-muted small">Sistema de verificación de recibos — {{ cfg.edificio_nombre if cfg else "" }}</p>
+  </div>
+
+  {% if estado == "formulario" %}
+  {# Formulario manual: el usuario pega el código #}
+  <div class="card shadow-sm">
+    <div class="card-body p-4">
+      <p class="text-muted mb-3">
+        Ingresá los datos del recibo que querés verificar. Los encontrás impresos en el código de verificación del recibo.
+      </p>
+      <form method="get" action="">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Período <span class="text-muted fw-normal">(YYYY-MM)</span></label>
+          <input type="text" name="periodo_form" class="form-control" placeholder="2026-03" maxlength="7">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Unidad funcional</label>
+          <input type="text" name="unidad_form" class="form-control" placeholder="4" maxlength="10">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Código de verificación</label>
+          <input type="text" name="codigo_form" class="form-control font-monospace"
+                 placeholder="a1b2c3d4  e5f6a7b8  c9d0e1f2  a3b4c5d6" maxlength="40"
+                 style="letter-spacing: 0.05em;">
+          <div class="form-text">El código de 32 caracteres impreso en el recibo (sin espacios).</div>
+        </div>
+        <button type="submit" class="btn btn-primary w-100" onclick="
+          var p = document.querySelector('[name=periodo_form]').value.trim();
+          var u = document.querySelector('[name=unidad_form]').value.trim();
+          var c = document.querySelector('[name=codigo_form]').value.replace(/\s+/g,'').trim();
+          if(p && u && c){
+            window.location.href = '/verificar/' + p + '/' + u + '/' + c;
+            return false;
+          }
+          return true;
+        ">
+          <i class="bi bi-search me-1"></i> Verificar
+        </button>
+      </form>
+    </div>
+  </div>
+
+  {% elif estado == "no_encontrado" %}
+  <div class="card border-warning shadow-sm">
+    <div class="card-body text-center p-4">
+      <i class="bi bi-question-circle-fill text-warning" style="font-size: 3rem;"></i>
+      <h5 class="mt-3 fw-bold">Recibo no encontrado</h5>
+      <p class="text-muted">No existe una liquidación para el período <strong>{{ periodo }}</strong>, unidad <strong>{{ unidad }}</strong>.</p>
+      <a href="{{ url_for('verificar_recibo') }}" class="btn btn-outline-secondary mt-2">
+        <i class="bi bi-arrow-left me-1"></i> Intentar de nuevo
+      </a>
+    </div>
+  </div>
+
+  {% elif estado == "valido" %}
+  <div class="card border-success shadow-sm">
+    <div class="card-header bg-success text-white py-3 text-center">
+      <i class="bi bi-patch-check-fill me-2" style="font-size: 1.4rem;"></i>
+      <span class="fw-bold fs-5">Recibo Verificado</span>
+    </div>
+    <div class="card-body p-4">
+      <p class="text-success fw-semibold mb-3">
+        <i class="bi bi-check-circle-fill me-1"></i>
+        El recibo es auténtico y no fue modificado.
+      </p>
+      <table class="table table-sm table-bordered">
+        <tbody>
+          <tr>
+            <th class="text-muted fw-normal" style="width:40%">Edificio</th>
+            <td class="fw-semibold">{{ cfg.edificio_nombre }}</td>
+          </tr>
+          <tr>
+            <th class="text-muted fw-normal">Período</th>
+            <td>{{ periodo | mes_largo }}</td>
+          </tr>
+          <tr>
+            <th class="text-muted fw-normal">Unidad</th>
+            <td>UF N° {{ row.unidad }} — {{ row.descripcion }}</td>
+          </tr>
+          <tr>
+            <th class="text-muted fw-normal">Total a pagar</th>
+            <td class="fw-bold">$ {{ "%.2f"|format(row.total_a_pagar|float) }}</td>
+          </tr>
+          <tr>
+            <th class="text-muted fw-normal">Monto pagado</th>
+            <td>$ {{ "%.2f"|format(row.monto_pagado|float) }}</td>
+          </tr>
+          <tr>
+            <th class="text-muted fw-normal">Estado de pago</th>
+            <td>
+              {% if row.tipo_pago == "TOTAL" %}
+                <span class="badge bg-success">Pagado total</span>
+              {% elif row.tipo_pago == "PARCIAL" %}
+                <span class="badge bg-warning text-dark">Pago parcial</span>
+              {% else %}
+                <span class="badge bg-secondary">Pendiente</span>
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <th class="text-muted fw-normal">Fecha de pago</th>
+            <td>{{ row.fecha_pago or "—" }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="mt-3 p-2 bg-light rounded border text-center">
+        <small class="text-muted">Código verificado:</small><br>
+        <code class="text-success" style="letter-spacing: 0.1em; font-size: 0.85rem;">{{ codigo }}</code>
+      </div>
+    </div>
+  </div>
+
+  {% elif estado == "invalido" %}
+  <div class="card border-danger shadow-sm">
+    <div class="card-header bg-danger text-white py-3 text-center">
+      <i class="bi bi-x-octagon-fill me-2" style="font-size: 1.4rem;"></i>
+      <span class="fw-bold fs-5">Verificación Fallida</span>
+    </div>
+    <div class="card-body text-center p-4">
+      <i class="bi bi-exclamation-triangle-fill text-danger" style="font-size: 2.5rem;"></i>
+      <h5 class="mt-3 fw-bold text-danger">El recibo no es válido</h5>
+      <p class="text-muted">
+        El código de verificación no coincide con los datos registrados para el período
+        <strong>{{ periodo | mes_largo }}</strong>, unidad <strong>{{ unidad }}</strong>.
+      </p>
+      <p class="text-muted small">
+        Esto puede indicar que el recibo fue modificado o que el código fue ingresado incorrectamente.
+      </p>
+      <a href="{{ url_for('verificar_recibo') }}" class="btn btn-outline-danger mt-2">
+        <i class="bi bi-arrow-left me-1"></i> Intentar de nuevo
+      </a>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="text-center mt-4">
+    <a href="{{ url_for('index') }}" class="text-muted small">
+      <i class="bi bi-house me-1"></i> Volver al inicio
+    </a>
+  </div>
+
+</div>
+{% endblock %}

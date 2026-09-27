@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Presupuestos{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-clipboard2-check"></i> Pedidos de Presupuesto</h4>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalPedido">
+    <i class="bi bi-plus-circle"></i> Nuevo Pedido
+  </button>
+</div>
+
+<div class="row g-3">
+  {% for p in pedidos %}
+  <div class="col-md-6 col-lg-4">
+    <div class="card shadow-sm h-100
+      {% if p.estado == 'ADJUDICADO' %}border-success
+      {% elif p.estado == 'CERRADO' %}border-secondary
+      {% else %}border-primary{% endif %}">
+      <div class="card-header d-flex justify-content-between align-items-center
+        {% if p.estado == 'ADJUDICADO' %}bg-success text-white
+        {% elif p.estado == 'CERRADO' %}bg-secondary text-white
+        {% else %}bg-primary text-white{% endif %}">
+        <span class="fw-bold small">{{ p.fecha }}</span>
+        <span class="badge bg-white
+          {% if p.estado == 'ADJUDICADO' %}text-success
+          {% elif p.estado == 'CERRADO' %}text-secondary
+          {% else %}text-primary{% endif %}">
+          {{ p.estado }}
+        </span>
+      </div>
+      <div class="card-body">
+        <h6 class="card-title">{{ p.descripcion }}</h6>
+        {% if p.categoria %}
+        <span class="badge bg-secondary mb-2">{{ p.categoria }}</span>
+        {% endif %}
+        <div class="d-flex gap-3 small text-muted mb-2">
+          <span><i class="bi bi-file-text"></i> {{ p.cant_cotizaciones }} cotización(es)</span>
+          {% if p.mejor_precio %}
+          <span><i class="bi bi-tag"></i> Desde $ {{ "%.0f"|format(p.mejor_precio) }}</span>
+          {% endif %}
+        </div>
+        {% if p.proveedor_elegido %}
+        <div class="small text-success fw-semibold">
+          <i class="bi bi-check-circle-fill"></i> Adjudicado a: {{ p.proveedor_elegido }}
+        </div>
+        {% endif %}
+        {% if p.notas %}
+        <p class="small text-muted mb-0 mt-1">{{ p.notas }}</p>
+        {% endif %}
+      </div>
+      <div class="card-footer d-flex gap-2">
+        <a href="{{ url_for('detalle_pedido', pedido_id=p.id) }}"
+           class="btn btn-sm btn-outline-primary flex-fill">
+          <i class="bi bi-eye"></i> Ver cotizaciones
+        </a>
+        <button class="btn btn-sm btn-outline-secondary"
+                onclick="editarPedido({{ p|tojson }})">
+          <i class="bi bi-pencil"></i>
+        </button>
+        <form method="POST"
+              action="{{ url_for('delete_pedido', pid=p.id) }}"
+              onsubmit="return confirm('¿Eliminar pedido y todas sus cotizaciones?')">
+          <button class="btn btn-sm btn-outline-danger">
+            <i class="bi bi-trash"></i>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="col-12">
+    <div class="alert alert-info">
+      <i class="bi bi-info-circle"></i>
+      No hay pedidos de presupuesto todavía. Creá uno con el botón de arriba.
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Modal Pedido -->
+<div class="modal fade" id="modalPedido" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('save_pedido') }}">
+        <input type="hidden" name="id" id="ped_id">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="modalPedidoTitulo">
+            <i class="bi bi-plus-circle"></i> Nuevo Pedido de Presupuesto
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-5">
+              <label class="form-label fw-semibold">Fecha</label>
+              <input type="date" class="form-control" name="fecha" id="ped_fecha">
+            </div>
+            <div class="col-md-7">
+              <label class="form-label fw-semibold">Categoría</label>
+              <input type="text" class="form-control" name="categoria" id="ped_categoria"
+                     placeholder="Ej: Mantenimiento, Pintura">
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">Descripción *</label>
+              <textarea class="form-control" name="descripcion" id="ped_descripcion"
+                        rows="2" required placeholder="Describí el trabajo o servicio a presupuestar"></textarea>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Estado</label>
+              <select class="form-select" name="estado" id="ped_estado">
+                <option value="ABIERTO">Abierto</option>
+                <option value="ADJUDICADO">Adjudicado</option>
+                <option value="CERRADO">Cerrado</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">Notas</label>
+              <textarea class="form-control" name="notas" id="ped_notas" rows="2"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save"></i> Guardar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('ped_fecha').value = new Date().toISOString().split('T')[0];
+
+function editarPedido(p) {
+  document.getElementById('modalPedidoTitulo').innerHTML =
+    '<i class="bi bi-pencil"></i> Editar Pedido';
+  document.getElementById('ped_id').value = p.id;
+  document.getElementById('ped_fecha').value = p.fecha || '';
+  document.getElementById('ped_categoria').value = p.categoria || '';
+  document.getElementById('ped_descripcion').value = p.descripcion || '';
+  document.getElementById('ped_estado').value = p.estado || 'ABIERTO';
+  document.getElementById('ped_notas').value = p.notas || '';
+  new bootstrap.Modal(document.getElementById('modalPedido')).show();
+}
+document.getElementById('modalPedido').addEventListener('hidden.bs.modal', function() {
+  document.getElementById('modalPedidoTitulo').innerHTML =
+    '<i class="bi bi-plus-circle"></i> Nuevo Pedido de Presupuesto';
+  document.getElementById('ped_id').value = '';
+  document.getElementById('ped_descripcion').value = '';
+  document.getElementById('ped_categoria').value = '';
+  document.getElementById('ped_estado').value = 'ABIERTO';
+  document.getElementById('ped_notas').value = '';
+  document.getElementById('ped_fecha').value = new Date().toISOString().split('T')[0];
+});
+</script>
+{% endblock %}

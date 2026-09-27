@@ -1,0 +1,3 @@
+@echo off
+echo Creando ZIP de distribucion...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0crear_distribucion.ps1"
