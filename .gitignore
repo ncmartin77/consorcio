@@ -17,3 +17,6 @@ desktop.ini
 
 # Logs
 *.log
+
+# Índice de consorcios (dato por máquina, no se versiona)
+_consorcios.json

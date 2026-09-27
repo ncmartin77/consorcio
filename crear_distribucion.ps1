@@ -26,9 +26,11 @@ if (Test-Path $dest) {
 # Recolectar archivos/carpetas a incluir
 # Excluye: venv/, __pycache__/, .git/, data/ (el Excel de produccion
 # nunca viaja en el ZIP — cada instalacion conserva su propia BD)
-$excludeDirs = @("venv", "__pycache__", ".git", ".venv", "data")
+$excludeDirs  = @("venv", "__pycache__", ".git", ".venv", "data")
+$excludeFiles = @("_consorcios.json")   # índice por máquina, nunca viaja en el ZIP
 $items = Get-ChildItem -Path $src | Where-Object {
     $_.Name -notin $excludeDirs -and
+    $_.Name -notin $excludeFiles -and
     $_.Extension -ne ".zip"
 }
 
