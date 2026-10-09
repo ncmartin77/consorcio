@@ -177,6 +177,15 @@ templates/                ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 - `checkpoint_info` injected via `@app.context_processor` into all templates (comes from `get_checkpoint_info()`).
 - `migrar.py` does NOT need updates — no new Excel sheets or columns are involved.
 
+## Deploy online (Firebase / Cloud Run)
+
+Ver **`FIREBASE.md`** para el plan completo paso a paso.
+
+Resumen: Cloud Run (Flask en Docker) + Cloud Storage (Excel por consorcio) + Firebase Hosting (proxy/dominio).
+Variable clave: `USE_GCS=true` activa el backend GCS en `excel_db.py` en lugar del filesystem local.
+Archivos a crear: `Dockerfile`, `.dockerignore`, `gcs_sync.py`, `firebase.json`, `public/index.html`.
+Costo estimado: $0/mes dentro del free tier de GCP.
+
 ## Templates and filters
 
 `app.py` registers a Jinja filter `mes_largo` (e.g., `"2026-04" | mes_largo` → `"Abril 2026"`). Use it in any template that displays a period to the user.
