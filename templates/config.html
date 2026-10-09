@@ -272,6 +272,90 @@
   </div>
 </div>
 
+<!-- Checkpoint / Rollback -->
+<div class="row mt-3" id="checkpoint">
+  <div class="col-lg-12">
+    <div class="card shadow-sm {% if checkpoint_info %}border-success{% else %}border-secondary{% endif %}">
+      <div class="card-header {% if checkpoint_info %}bg-success{% else %}bg-secondary{% endif %} text-white d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-bookmark-check-fill"></i> Checkpoint / Rollback</span>
+        {% if checkpoint_info %}
+        <span class="badge {% if checkpoint_info.dias_restantes <= 7 %}bg-warning text-dark{% else %}bg-light text-dark{% endif %}">
+          {{ checkpoint_info.dias_restantes }} día(s) para consolidación automática
+        </span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        {% if checkpoint_info %}
+        <!-- Checkpoint activo -->
+        <div class="alert alert-success py-2 mb-3">
+          <i class="bi bi-bookmark-check-fill"></i>
+          <strong>Checkpoint activo</strong> —
+          creado el {{ checkpoint_info.fecha_creacion[:10] }}
+          {% if checkpoint_info.descripcion %}
+          <span class="text-muted">· {{ checkpoint_info.descripcion }}</span>
+          {% endif %}
+          <br>
+          <small class="text-muted">
+            Han pasado {{ checkpoint_info.dias_transcurridos }} día(s).
+            {% if checkpoint_info.dias_restantes > 0 %}
+              Se consolida automáticamente en {{ checkpoint_info.dias_restantes }} día(s) si no hacés rollback.
+            {% else %}
+              Este checkpoint ya venció y será eliminado automáticamente.
+            {% endif %}
+          </small>
+        </div>
+        <div class="row g-2">
+          <div class="col-auto">
+            <form method="POST" action="{{ url_for('rollback_checkpoint') }}"
+                  onsubmit="return confirm('¿Confirmar rollback? Los datos actuales volverán al estado del checkpoint. Esta acción no se puede deshacer.')">
+              <button type="submit" class="btn btn-warning">
+                <i class="bi bi-arrow-counterclockwise"></i> Hacer Rollback
+              </button>
+            </form>
+          </div>
+          <div class="col-auto">
+            <form method="POST" action="{{ url_for('eliminar_checkpoint') }}"
+                  onsubmit="return confirm('¿Consolidar y eliminar el checkpoint? Ya no podrás volver atrás.')">
+              <button type="submit" class="btn btn-outline-secondary">
+                <i class="bi bi-check2-circle"></i> Consolidar ahora
+              </button>
+            </form>
+          </div>
+          <div class="col-auto">
+            <form method="POST" action="{{ url_for('crear_checkpoint') }}" class="d-flex gap-2">
+              <input type="text" class="form-control form-control-sm" name="descripcion"
+                     placeholder="Descripción (opcional)" style="width:220px">
+              <button type="submit" class="btn btn-outline-success btn-sm">
+                <i class="bi bi-bookmark-plus"></i> Reemplazar checkpoint
+              </button>
+            </form>
+          </div>
+        </div>
+        {% else %}
+        <!-- Sin checkpoint -->
+        <p class="text-muted mb-3">
+          Un checkpoint guarda el estado actual de los datos.
+          Si en los próximos <strong>30 días</strong> algo sale mal, podés volver exactamente a este punto.
+          Pasado ese plazo sin rollback, el checkpoint se consolida automáticamente (se descarta).
+        </p>
+        <form method="POST" action="{{ url_for('crear_checkpoint') }}" class="row g-2 align-items-end">
+          <div class="col-md-5">
+            <label class="form-label fw-semibold">Descripción del checkpoint (opcional)</label>
+            <input type="text" class="form-control" name="descripcion"
+                   placeholder="Ej: antes de cerrar liquidación agosto">
+          </div>
+          <div class="col-auto">
+            <button type="submit" class="btn btn-success">
+              <i class="bi bi-bookmark-plus-fill"></i> Crear Checkpoint
+            </button>
+          </div>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Zona de reseteo -->
 <div class="row mt-3">
   <div class="col-lg-12">

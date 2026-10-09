@@ -4,6 +4,7 @@ Todas las operaciones de lectura/escritura pasan por aquí.
 """
 import os
 import json
+import shutil
 import threading
 import secrets
 import hashlib
@@ -1663,3 +1664,85 @@ def delete_gasto_extra(extra_id: int):
             _save_wb(wb)
             return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# CHECKPOINT / ROLLBACK
+# ---------------------------------------------------------------------------
+
+_CHECKPOINT_META = "_checkpoint.json"
+_CHECKPOINT_EXCEL = "_checkpoint.xlsx"
+_CHECKPOINT_DIAS = 30
+
+
+def _get_checkpoint_meta_path() -> str:
+    return os.path.join(get_data_dir(), _CHECKPOINT_META)
+
+
+def _get_checkpoint_excel_path() -> str:
+    return os.path.join(get_data_dir(), _CHECKPOINT_EXCEL)
+
+
+def get_checkpoint_info() -> dict | None:
+    """Retorna info del checkpoint activo, o None si no hay."""
+    meta_path = _get_checkpoint_meta_path()
+    if not os.path.exists(meta_path):
+        return None
+    try:
+        with open(meta_path, encoding="utf-8") as f:
+            info = json.load(f)
+        if not os.path.exists(_get_checkpoint_excel_path()):
+            os.remove(meta_path)
+            return None
+        # Calcular días transcurridos y días restantes
+        from datetime import datetime as _dt
+        fecha_creacion = _dt.fromisoformat(info["fecha_creacion"]).date()
+        dias_transcurridos = (date.today() - fecha_creacion).days
+        info["dias_transcurridos"] = dias_transcurridos
+        info["dias_restantes"] = max(0, _CHECKPOINT_DIAS - dias_transcurridos)
+        info["expirado"] = dias_transcurridos >= _CHECKPOINT_DIAS
+        return info
+    except Exception:
+        return None
+
+
+def _eliminar_checkpoint():
+    for p in (_get_checkpoint_meta_path(), _get_checkpoint_excel_path()):
+        try:
+            if os.path.exists(p):
+                os.remove(p)
+        except Exception:
+            pass
+
+
+def consolidar_si_expirado() -> bool:
+    """Si el checkpoint tiene 30 o más días, lo elimina automáticamente. Retorna True si se consolidó."""
+    info = get_checkpoint_info()
+    if not info:
+        return False
+    if info.get("expirado"):
+        _eliminar_checkpoint()
+        return True
+    return False
+
+
+def crear_checkpoint(descripcion: str = "") -> dict:
+    """Crea un snapshot del Excel actual. Reemplaza cualquier checkpoint previo."""
+    _eliminar_checkpoint()
+    shutil.copy2(get_db_path(), _get_checkpoint_excel_path())
+    info = {
+        "fecha_creacion": datetime.now().isoformat(),
+        "descripcion": descripcion,
+    }
+    with open(_get_checkpoint_meta_path(), "w", encoding="utf-8") as f:
+        json.dump(info, f, ensure_ascii=False, indent=2)
+    return info
+
+
+def rollback_checkpoint() -> bool:
+    """Restaura el Excel al estado del checkpoint y elimina el checkpoint. Retorna False si no hay."""
+    if not get_checkpoint_info():
+        return False
+    shutil.copy2(_get_checkpoint_excel_path(), get_db_path())
+    _eliminar_checkpoint()
+    return True

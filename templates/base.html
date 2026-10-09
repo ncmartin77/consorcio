@@ -108,6 +108,14 @@
         <i class="bi bi-cloud-check-fill"></i> Drive
       </span>
       {% endif %}
+      {% if checkpoint_info %}
+      <a href="{{ url_for('config') }}#checkpoint"
+         class="badge ms-2 text-decoration-none {% if checkpoint_info.dias_restantes <= 7 %}bg-warning text-dark{% else %}bg-success{% endif %}"
+         title="Checkpoint activo — {{ checkpoint_info.dias_restantes }} día(s) para consolidación"
+         style="font-size:0.7rem">
+        <i class="bi bi-bookmark-check-fill"></i> Checkpoint ({{ checkpoint_info.dias_restantes }}d)
+      </a>
+      {% endif %}
       <span class="badge bg-secondary ms-2 opacity-75" style="font-size:0.7rem">v{{ app_version }}</span>
     </div>
   </div>

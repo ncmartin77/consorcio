@@ -36,6 +36,7 @@ def _set_consorcio():
         c = db.get_consorcio(cid)
         if c:
             db.set_active_consorcio(c["data_dir_abs"], c["db_path_abs"])
+            db.consolidar_si_expirado()
             return
     # Sin consorcio activo → redirigir al selector (salvo que ya estemos yendo allá)
     if request.endpoint not in (None, "consorcios", "nuevo_consorcio", "abrir_consorcio"):
@@ -52,12 +53,14 @@ def inject_version():
         _ver = "?"
     cid = session.get("consorcio_id")
     c = db.get_consorcio(cid) if cid else None
+    checkpoint_info = db.get_checkpoint_info() if cid else None
     return {
         "app_version": _ver,
         "app_env": db._APP_ENV,
         "drive_activo": db._get_drive() is not None,
         "consorcio_nombre": c["nombre"] if c else "",
         "consorcio_id": cid or "",
+        "checkpoint_info": checkpoint_info,
     }
 
 
@@ -1116,6 +1119,35 @@ def backup():
 def reset_datos():
     db.reset_datos_operativos()
     flash("Datos reseteados: liquidaciones, gastos y caja borrados.", "success")
+    return redirect(url_for("config"))
+
+
+# ---------------------------------------------------------------------------
+# CHECKPOINT / ROLLBACK
+# ---------------------------------------------------------------------------
+
+@app.route("/checkpoint/crear", methods=["POST"])
+def crear_checkpoint():
+    descripcion = request.form.get("descripcion", "").strip()
+    db.crear_checkpoint(descripcion)
+    flash("Checkpoint creado. Podés hacer rollback en cualquier momento durante el próximo mes.", "success")
+    return redirect(url_for("config"))
+
+
+@app.route("/checkpoint/rollback", methods=["POST"])
+def rollback_checkpoint():
+    ok = db.rollback_checkpoint()
+    if ok:
+        flash("Rollback realizado. Los datos volvieron al estado del checkpoint.", "success")
+    else:
+        flash("No hay checkpoint activo para restaurar.", "warning")
+    return redirect(url_for("config"))
+
+
+@app.route("/checkpoint/eliminar", methods=["POST"])
+def eliminar_checkpoint():
+    db._eliminar_checkpoint()
+    flash("Checkpoint eliminado (consolidado manualmente).", "info")
     return redirect(url_for("config"))
 
 
