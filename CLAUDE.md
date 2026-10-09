@@ -165,6 +165,18 @@ templates/                ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 
 **Caja Diaria — delete block:** `delete_movimiento()` in `excel_db.py` reads the movement's actual `fecha` from the Excel row, derives its period (`YYYY-MM`), and checks `liq_esta_cerrada()` for that period before deleting. Returns `False` if blocked (CERRADA), `True` on success. The route in `app.py` checks the return value and flashes an error if blocked. This prevents deletion even if the URL period parameter is manipulated.
 
+**Checkpoint / Rollback:** file-based snapshot of a consorcio's Excel. No Excel schema changes — purely filesystem. One checkpoint per consorcio, stored in its `data/<cid>/` directory:
+- `_checkpoint.xlsx` — copy of `base.xlsx` at the moment of checkpoint creation
+- `_checkpoint.json` — metadata: `fecha_creacion` (ISO), `descripcion` (optional text)
+- Expiry: 30 days (`_CHECKPOINT_DIAS`). After that, `consolidar_si_expirado()` deletes both files automatically on the next request (`@before_request` calls it after `set_active_consorcio()`).
+- `crear_checkpoint(descripcion)` — copies current Excel and writes metadata; replaces any existing checkpoint.
+- `rollback_checkpoint()` — copies snapshot back over `base.xlsx`, deletes both checkpoint files; returns `False` if no checkpoint exists.
+- `get_checkpoint_info()` — returns metadata dict enriched with `dias_transcurridos`, `dias_restantes`, `expirado`; returns `None` if no checkpoint or if snapshot file is missing.
+- Routes: `POST /checkpoint/crear`, `POST /checkpoint/rollback`, `POST /checkpoint/eliminar` (manual consolidation).
+- UI: badge in navbar (green, turns amber when ≤ 7 days remain); full management card in `config.html#checkpoint`.
+- `checkpoint_info` injected via `@app.context_processor` into all templates (comes from `get_checkpoint_info()`).
+- `migrar.py` does NOT need updates — no new Excel sheets or columns are involved.
+
 ## Templates and filters
 
 `app.py` registers a Jinja filter `mes_largo` (e.g., `"2026-04" | mes_largo` → `"Abril 2026"`). Use it in any template that displays a period to the user.
