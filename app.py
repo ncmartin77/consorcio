@@ -638,6 +638,7 @@ def liquidacion(periodo=None):
     for e in extras:
         extras_por_unidad.setdefault(str(e["unidad"]), []).append(e)
     unidades = db.get_unidades(solo_activas=True)
+    cfg = db.get_config()
     return render_template("liquidacion.html",
                            liq=liq,
                            gastos=gastos,
@@ -648,6 +649,7 @@ def liquidacion(periodo=None):
                            total_deuda=total_deuda,
                            pendientes=pendientes,
                            total_cobrado=total_cobrado,
+                           cfg=cfg,
                            saldo_caja=saldo_caja,
                            entradas_caja=entradas,
                            salidas_caja=salidas,

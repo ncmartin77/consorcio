@@ -9,12 +9,44 @@
 </head>
 <body class="bg-light">
 
-<div class="container py-5" style="max-width:680px">
+{# Barra superior con usuario #}
+<nav class="navbar navbar-dark bg-primary px-3 py-2">
+  <span class="navbar-brand fw-bold mb-0">
+    <i class="bi bi-building"></i> Sistema de Consorcios
+  </span>
+  <div class="d-flex align-items-center gap-2">
+    {% if es_admin %}
+    <a href="{{ url_for('admin_usuarios') }}" class="btn btn-sm btn-warning">
+      <i class="bi bi-people-fill"></i> Administración
+    </a>
+    {% endif %}
+    <div class="dropdown">
+      <a href="#" class="d-flex align-items-center gap-1 text-white text-decoration-none dropdown-toggle"
+         data-bs-toggle="dropdown">
+        {% if usuario_foto %}
+          <img src="{{ usuario_foto }}" class="rounded-circle" width="28" height="28" referrerpolicy="no-referrer">
+        {% else %}
+          <i class="bi bi-person-circle fs-5"></i>
+        {% endif %}
+        <span class="d-none d-sm-inline small">{{ usuario_nombre }}</span>
+      </a>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><span class="dropdown-item-text small text-muted">{{ usuario_nombre }}</span></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
+          <i class="bi bi-box-arrow-right"></i> Cerrar sesión
+        </a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="container py-4" style="max-width:680px">
 
   <div class="text-center mb-4">
     <i class="bi bi-building-fill-gear text-primary" style="font-size:3rem"></i>
-    <h2 class="fw-bold mt-2">Sistema de Administración de Consorcios</h2>
-    <p class="text-muted">Seleccioná un consorcio para trabajar o creá uno nuevo.</p>
+    <h2 class="fw-bold mt-2">Seleccioná un consorcio</h2>
+    <p class="text-muted">Elegí con cuál querés trabajar o creá uno nuevo.</p>
   </div>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -29,7 +61,7 @@
   {% if consorcios %}
   <div class="card shadow-sm mb-4">
     <div class="card-header bg-primary text-white fw-semibold">
-      <i class="bi bi-building"></i> Consorcios existentes
+      <i class="bi bi-building"></i> Consorcios disponibles
     </div>
     <div class="list-group list-group-flush">
       {% for c in consorcios %}
@@ -39,19 +71,20 @@
           {% if c.descripcion %}
           <div class="text-muted small">{{ c.descripcion }}</div>
           {% endif %}
-          <div class="text-muted" style="font-size:0.72rem">{{ c.data_dir }}/{{ c.db_file }}</div>
         </div>
         <div class="d-flex gap-2">
           <a href="{{ url_for('abrir_consorcio', cid=c.id) }}"
              class="btn btn-primary btn-sm">
             <i class="bi bi-door-open"></i> Abrir
           </a>
+          {% if es_admin %}
           <form method="POST" action="{{ url_for('eliminar_consorcio', cid=c.id) }}"
-                onsubmit="return confirm('¿Eliminar «{{ c.nombre }}» del índice? Los datos en disco NO se borran.')">
+                onsubmit="return confirm('¿Eliminar «{{ c.nombre }}» del índice? Los datos NO se borran.')">
             <button type="submit" class="btn btn-outline-danger btn-sm">
               <i class="bi bi-trash"></i>
             </button>
           </form>
+          {% endif %}
         </div>
       </div>
       {% endfor %}
@@ -59,11 +92,12 @@
   </div>
   {% else %}
   <div class="alert alert-info">
-    <i class="bi bi-info-circle"></i> No hay consorcios registrados todavía. Creá uno abajo.
+    <i class="bi bi-info-circle"></i> No hay consorcios disponibles.
+    {% if es_admin %}Creá uno abajo.{% else %}Contactá al administrador para que te asigne acceso.{% endif %}
   </div>
   {% endif %}
 
-  <!-- Nuevo consorcio -->
+  {% if es_admin %}
   <div class="card shadow-sm">
     <div class="card-header bg-success text-white fw-semibold">
       <i class="bi bi-plus-circle"></i> Nuevo consorcio
@@ -71,7 +105,7 @@
     <div class="card-body">
       <form method="POST" action="{{ url_for('nuevo_consorcio') }}">
         <div class="mb-3">
-          <label class="form-label fw-semibold">Nombre del consorcio <span class="text-danger">*</span></label>
+          <label class="form-label fw-semibold">Nombre <span class="text-danger">*</span></label>
           <input type="text" class="form-control" name="nombre" placeholder="Ej: Edificio Belgrano 450"
                  required autofocus>
         </div>
@@ -86,6 +120,7 @@
       </form>
     </div>
   </div>
+  {% endif %}
 
 </div>
 

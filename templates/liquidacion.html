@@ -303,7 +303,7 @@
               {% if liq_cerrada %}
                 {% if tipo != 'PENDIENTE' %}
                 <a href="{{ url_for('descargar_recibo', periodo=periodo, unidad=r.unidad) }}"
-                   class="btn btn-sm btn-outline-primary" title="Descargar resumen">
+                   class="btn btn-sm btn-outline-primary" title="Descargar recibo">
                   <i class="bi bi-receipt"></i>
                 </a>
                 {% else %}
@@ -322,13 +322,21 @@
                 <i class="bi bi-cash-stack"></i>
               </button>
               <a href="{{ url_for('descargar_recibo', periodo=periodo, unidad=r.unidad) }}"
-                 class="btn btn-sm btn-outline-primary" title="Descargar resumen">
+                 class="btn btn-sm btn-outline-primary" title="Descargar recibo">
                 <i class="bi bi-receipt"></i>
               </a>
               {% elif tipo == 'TOTAL' %}
               <a href="{{ url_for('descargar_recibo', periodo=periodo, unidad=r.unidad) }}"
-                 class="btn btn-sm btn-outline-primary" title="Descargar resumen">
+                 class="btn btn-sm btn-outline-primary" title="Descargar recibo">
                 <i class="bi bi-receipt"></i>
+              </a>
+              {% endif %}
+              {# WhatsApp — siempre visible si la liquidación fue generada #}
+              {% if liq_generada %}
+              <a href="#"
+                 onclick="event.preventDefault(); enviarWA({{ r|tojson }})"
+                 class="btn btn-sm btn-outline-success" title="Enviar por WhatsApp">
+                <i class="bi bi-whatsapp"></i>
               </a>
               {% endif %}
             </td>
@@ -642,6 +650,45 @@ function eliminarExtra(eid, btn) {
         setTimeout(() => location.reload(), 400);
       }
     });
+}
+
+// ── WhatsApp ────────────────────────────────────────────────────────────────
+const _WA_EDIFICIO = {{ consorcio_nombre | tojson }};
+const _WA_PERIODO  = {{ (periodo | mes_largo) | tojson }};
+const _WA_DIA_VENC = {{ (cfg.dia_vencimiento or '15') | tojson }};
+const _WA_ALIAS    = {{ (cfg.alias_cbu or '') | tojson }};
+
+function fmt(n) {
+  return '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function enviarWA(r) {
+  const tipo = r.tipo_pago || 'PENDIENTE';
+  let lineas = [
+    `*${_WA_EDIFICIO}*`,
+    `📅 Liquidación ${_WA_PERIODO}`,
+    `🏠 Unidad: *${r.unidad}*`,
+    '',
+  ];
+
+  if (tipo === 'TOTAL') {
+    lineas.push(`✅ Pago registrado: *${fmt(r.monto_pagado)}*`);
+  } else if (tipo === 'PARCIAL') {
+    lineas.push(`💰 Total: ${fmt(r.total_a_pagar)}`);
+    lineas.push(`✅ Pagado: ${fmt(r.monto_pagado)}`);
+    lineas.push(`⚠️ Saldo pendiente: *${fmt(r.saldo_pendiente)}*`);
+  } else {
+    lineas.push(`💰 Expensas: ${fmt(r.expensas)}`);
+    if (r.deuda_anterior > 0) lineas.push(`⚠️ Deuda anterior: ${fmt(r.deuda_anterior)}`);
+    if (r.interes > 0)        lineas.push(`📈 Interés mora: ${fmt(r.interes)}`);
+    if (r.extras > 0)         lineas.push(`➕ Cargos extra: ${fmt(r.extras)}`);
+    lineas.push(`🔴 *Total a pagar: ${fmt(r.total_a_pagar)}*`);
+    lineas.push(`📆 Vencimiento: día ${_WA_DIA_VENC}`);
+    if (_WA_ALIAS) lineas.push(`🏦 Alias/CBU: ${_WA_ALIAS}`);
+  }
+
+  const texto = lineas.join('\n');
+  window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank');
 }
 </script>
 {% endblock %}
