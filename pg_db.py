@@ -121,6 +121,7 @@ def _insert_returning(sql: str, params=()) -> int:
 
 
 # ── No-ops para compatibilidad ────────────────────────────────────────────────
+def _get_drive(): return None
 def sync_from_drive(): pass
 def consolidar_si_expirado() -> bool: return False
 
