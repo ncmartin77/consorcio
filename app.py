@@ -8,7 +8,7 @@ from datetime import date
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, session
 import io
 
-import excel_db as db
+import pg_db as db
 from pdf_gen import generar_pdf_liquidacion, generar_pdf_resumen_edificio, generar_recibo_pago
 
 app = Flask(__name__)
@@ -1090,7 +1090,8 @@ def backup():
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         db_path = db.get_db_path()
-        zf.write(db_path, os.path.basename(db_path))
+        if os.path.isfile(db_path):
+            zf.write(db_path, os.path.basename(db_path))
         facturas_dir = db.get_facturas_dir()
         if os.path.isdir(facturas_dir):
             for root, dirs, files in os.walk(facturas_dir):
