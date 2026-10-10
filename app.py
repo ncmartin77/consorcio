@@ -12,7 +12,7 @@ import pg_db as db
 from pdf_gen import generar_pdf_liquidacion, generar_pdf_resumen_edificio, generar_recibo_pago
 
 app = Flask(__name__)
-app.secret_key = "edificio-brasil-secret-2024"
+app.secret_key = os.environ.get("SECRET_KEY", "edificio-brasil-secret-2024")
 
 _MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
           "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
