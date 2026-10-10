@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Gestión de Usuarios{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center mb-3 gap-2">
+  <h4 class="mb-0"><i class="bi bi-people-fill text-primary"></i> Gestión de Usuarios</h4>
+  <span class="badge bg-secondary">{{ usuarios|length }} usuario(s)</span>
+</div>
+
+{% if usuarios %}
+<div class="row g-3">
+  {% for u in usuarios %}
+  <div class="col-12 col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+
+        {# Header: foto + nombre + badges #}
+        <div class="d-flex align-items-center gap-3 mb-3">
+          {% if u.foto_url %}
+            <img src="{{ u.foto_url }}" class="rounded-circle" width="48" height="48" referrerpolicy="no-referrer">
+          {% else %}
+            <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center text-white fw-bold"
+                 style="width:48px;height:48px;font-size:1.2rem">
+              {{ u.nombre[0]|upper if u.nombre else '?' }}
+            </div>
+          {% endif %}
+          <div class="flex-grow-1 overflow-hidden">
+            <div class="fw-semibold text-truncate">{{ u.nombre or u.email }}</div>
+            <div class="text-muted small text-truncate">{{ u.email }}</div>
+          </div>
+          <div class="d-flex flex-column gap-1 align-items-end">
+            {% if u.es_admin %}
+              <span class="badge bg-danger"><i class="bi bi-shield-fill"></i> Admin</span>
+            {% endif %}
+            <span class="badge {% if u.activo %}bg-success{% else %}bg-secondary{% endif %}">
+              {% if u.activo %}Activo{% else %}Inactivo{% endif %}
+            </span>
+          </div>
+        </div>
+
+        {# Acciones rápidas #}
+        <div class="d-flex gap-2 mb-3 flex-wrap">
+          <form method="post" action="{{ url_for('admin_toggle_activo', uid=u.id) }}">
+            <button class="btn btn-sm {% if u.activo %}btn-outline-secondary{% else %}btn-outline-success{% endif %}">
+              <i class="bi bi-{% if u.activo %}person-x{% else %}person-check{% endif %}"></i>
+              {% if u.activo %}Desactivar{% else %}Activar{% endif %}
+            </button>
+          </form>
+          {% if u.id != session.get('usuario_id') %}
+          <form method="post" action="{{ url_for('admin_toggle_admin', uid=u.id) }}">
+            <button class="btn btn-sm {% if u.es_admin %}btn-outline-danger{% else %}btn-outline-primary{% endif %}">
+              <i class="bi bi-shield-{% if u.es_admin %}minus{% else %}plus{% endif %}"></i>
+              {% if u.es_admin %}Quitar admin{% else %}Hacer admin{% endif %}
+            </button>
+          </form>
+          {% endif %}
+        </div>
+
+        {# Permisos por consorcio (solo si no es admin global) #}
+        {% if not u.es_admin %}
+        <form method="post" action="{{ url_for('admin_set_permisos', uid=u.id) }}">
+          <p class="small text-muted mb-1"><i class="bi bi-building"></i> Acceso a consorcios:</p>
+          {% if todos_consorcios %}
+            {% for c in todos_consorcios %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="consorcio_ids"
+                     value="{{ c.id }}" id="perm_{{ u.id }}_{{ c.id }}"
+                     {% if c.id in u.consorcios_ids %}checked{% endif %}>
+              <label class="form-check-label small" for="perm_{{ u.id }}_{{ c.id }}">
+                {{ c.nombre }}
+              </label>
+            </div>
+            {% endfor %}
+            <button type="submit" class="btn btn-sm btn-primary mt-2">
+              <i class="bi bi-floppy"></i> Guardar permisos
+            </button>
+          {% else %}
+            <p class="text-muted small">No hay consorcios creados.</p>
+          {% endif %}
+        </form>
+        {% else %}
+        <p class="small text-muted mb-0">
+          <i class="bi bi-check-circle-fill text-success"></i> Acceso total (admin)
+        </p>
+        {% endif %}
+
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">No hay usuarios registrados aún.</div>
+{% endif %}
+{% endblock %}

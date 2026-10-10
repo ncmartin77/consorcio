@@ -103,10 +103,10 @@
       <a href="{{ url_for('backup') }}" class="btn btn-sm btn-outline-light ms-2" title="Backup base de datos">
         <i class="bi bi-cloud-download"></i> Backup
       </a>
-      {% if drive_activo %}
-      <span class="badge bg-success ms-2 opacity-75" title="Google Drive activo ({{ app_env }})" style="font-size:0.7rem">
-        <i class="bi bi-cloud-check-fill"></i> Drive
-      </span>
+      {% if es_admin %}
+      <a href="{{ url_for('admin_usuarios') }}" class="btn btn-sm btn-outline-warning ms-2" title="Gestión de usuarios">
+        <i class="bi bi-people-fill"></i>
+      </a>
       {% endif %}
       {% if checkpoint_info %}
       <a href="{{ url_for('config') }}#checkpoint"
@@ -117,6 +117,25 @@
       </a>
       {% endif %}
       <span class="badge bg-secondary ms-2 opacity-75" style="font-size:0.7rem">v{{ app_version }}</span>
+
+      {# Usuario + logout #}
+      <div class="dropdown ms-2">
+        <a href="#" class="d-flex align-items-center gap-1 text-white text-decoration-none dropdown-toggle"
+           data-bs-toggle="dropdown">
+          {% if usuario_foto %}
+            <img src="{{ usuario_foto }}" class="rounded-circle" width="28" height="28" referrerpolicy="no-referrer">
+          {% else %}
+            <i class="bi bi-person-circle fs-5"></i>
+          {% endif %}
+        </a>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><span class="dropdown-item-text small text-muted">{{ usuario_nombre }}</span></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
+            <i class="bi bi-box-arrow-right"></i> Cerrar sesión
+          </a></li>
+        </ul>
+      </div>
     </div>
   </div>
 </nav>

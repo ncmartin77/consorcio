@@ -5,14 +5,24 @@ Correr con: python app.py  o  flask run
 import os
 import re
 from datetime import date
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, session
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, session, g
 import io
+from authlib.integrations.flask_client import OAuth
 
 import pg_db as db
 from pdf_gen import generar_pdf_liquidacion, generar_pdf_resumen_edificio, generar_recibo_pago
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "edificio-brasil-secret-2024")
+
+oauth = OAuth(app)
+google = oauth.register(
+    name="google",
+    client_id=os.environ.get("GOOGLE_CLIENT_ID"),
+    client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
+    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+    client_kwargs={"scope": "openid email profile"},
+)
 
 _MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
           "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
@@ -25,11 +35,32 @@ def mes_largo(periodo):
         return periodo
 
 
+_PUBLIC_ENDPOINTS = {"static", "login", "login_google", "auth_callback", "logout", "verificar_recibo"}
+
+_ADMIN_ENDPOINTS = {"admin_usuarios", "admin_toggle_activo", "admin_toggle_admin", "admin_set_permisos"}
+
+
+@app.before_request
+def _authenticate():
+    if request.endpoint in _PUBLIC_ENDPOINTS or request.endpoint is None:
+        return
+    uid = session.get("usuario_id")
+    if not uid:
+        return redirect(url_for("login"))
+    u = db.get_usuario(uid)
+    if not u or not u["activo"]:
+        session.clear()
+        flash("Tu cuenta está desactivada. Contactá al administrador.", "warning")
+        return redirect(url_for("login"))
+    g.usuario = u
+
+
 @app.before_request
 def _set_consorcio():
     """Activa el consorcio de la sesión antes de cada request."""
-    # No activar en rutas de selección de consorcio ni en archivos estáticos
-    if request.endpoint in ("static", "consorcios", "nuevo_consorcio", "abrir_consorcio", "eliminar_consorcio"):
+    if request.endpoint in _PUBLIC_ENDPOINTS | _ADMIN_ENDPOINTS | {
+        "consorcios", "nuevo_consorcio", "abrir_consorcio", "eliminar_consorcio"
+    }:
         return
     cid = session.get("consorcio_id")
     if cid:
@@ -38,7 +69,6 @@ def _set_consorcio():
             db.set_active_consorcio(c["data_dir_abs"], c["db_path_abs"])
             db.consolidar_si_expirado()
             return
-    # Sin consorcio activo → redirigir al selector (salvo que ya estemos yendo allá)
     if request.endpoint not in (None, "consorcios", "nuevo_consorcio", "abrir_consorcio"):
         return redirect(url_for("consorcios"))
 
@@ -61,6 +91,9 @@ def inject_version():
         "consorcio_nombre": c["nombre"] if c else "",
         "consorcio_id": cid or "",
         "checkpoint_info": checkpoint_info,
+        "usuario_nombre": session.get("usuario_nombre", ""),
+        "usuario_foto": session.get("usuario_foto", ""),
+        "es_admin": session.get("es_admin", False),
     }
 
 
@@ -96,6 +129,9 @@ def index():
 @app.route("/consorcios")
 def consorcios():
     lista = db.list_consorcios()
+    if not session.get("es_admin"):
+        allowed = db.get_consorcios_usuario(session["usuario_id"])
+        lista = [c for c in lista if c["id"] in allowed]
     return render_template("consorcios.html", consorcios=lista)
 
 
@@ -114,6 +150,11 @@ def nuevo_consorcio():
 
 @app.route("/consorcios/<cid>/abrir")
 def abrir_consorcio(cid):
+    if not session.get("es_admin"):
+        allowed = db.get_consorcios_usuario(session["usuario_id"])
+        if cid not in allowed:
+            flash("No tenés acceso a ese consorcio.", "warning")
+            return redirect(url_for("consorcios"))
     c = db.get_consorcio(cid)
     if not c:
         flash("Consorcio no encontrado.", "danger")
@@ -134,6 +175,107 @@ def eliminar_consorcio(cid):
         session.pop("consorcio_id", None)
     flash(f"Consorcio «{c['nombre']}» eliminado del índice (los datos quedan en disco).", "info")
     return redirect(url_for("consorcios"))
+
+
+# ---------------------------------------------------------------------------
+# AUTH
+# ---------------------------------------------------------------------------
+
+@app.route("/login")
+def login():
+    if session.get("usuario_id"):
+        return redirect(url_for("consorcios"))
+    return render_template("login.html")
+
+
+@app.route("/login/google")
+def login_google():
+    redirect_uri = url_for("auth_callback", _external=True)
+    return google.authorize_redirect(redirect_uri)
+
+
+@app.route("/auth/callback")
+def auth_callback():
+    token = google.authorize_access_token()
+    info = token.get("userinfo")
+    if not info:
+        flash("No se pudo obtener información de Google.", "danger")
+        return redirect(url_for("login"))
+    u = db.get_or_create_usuario(
+        google_id=info["sub"],
+        email=info["email"],
+        nombre=info.get("name", info["email"]),
+        foto_url=info.get("picture", ""),
+    )
+    if not u["activo"]:
+        flash("Tu cuenta está desactivada. Contactá al administrador.", "warning")
+        return redirect(url_for("login"))
+    session["usuario_id"] = u["id"]
+    session["usuario_email"] = u["email"]
+    session["usuario_nombre"] = u["nombre"]
+    session["usuario_foto"] = u.get("foto_url", "")
+    session["es_admin"] = u["es_admin"]
+    return redirect(url_for("consorcios"))
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+# ---------------------------------------------------------------------------
+# ADMIN - Gestión de usuarios
+# ---------------------------------------------------------------------------
+
+def _require_admin():
+    if not session.get("es_admin"):
+        flash("Acceso restringido a administradores.", "danger")
+        return redirect(url_for("consorcios"))
+    return None
+
+
+@app.route("/admin/usuarios")
+def admin_usuarios():
+    block = _require_admin()
+    if block:
+        return block
+    return render_template(
+        "admin_usuarios.html",
+        usuarios=db.list_usuarios(),
+        todos_consorcios=db.list_consorcios(),
+    )
+
+
+@app.route("/admin/usuarios/<int:uid>/toggle_activo", methods=["POST"])
+def admin_toggle_activo(uid):
+    block = _require_admin()
+    if block:
+        return block
+    db.toggle_usuario_activo(uid)
+    return redirect(url_for("admin_usuarios"))
+
+
+@app.route("/admin/usuarios/<int:uid>/toggle_admin", methods=["POST"])
+def admin_toggle_admin(uid):
+    block = _require_admin()
+    if block:
+        return block
+    if uid == session.get("usuario_id"):
+        flash("No podés quitarte el rol admin a vos mismo.", "warning")
+        return redirect(url_for("admin_usuarios"))
+    db.toggle_usuario_admin(uid)
+    return redirect(url_for("admin_usuarios"))
+
+
+@app.route("/admin/usuarios/<int:uid>/permisos", methods=["POST"])
+def admin_set_permisos(uid):
+    block = _require_admin()
+    if block:
+        return block
+    db.set_permisos_consorcio(uid, request.form.getlist("consorcio_ids"))
+    flash("Permisos actualizados.", "success")
+    return redirect(url_for("admin_usuarios"))
 
 
 # ---------------------------------------------------------------------------

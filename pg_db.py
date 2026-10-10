@@ -1236,3 +1236,61 @@ def rollback_checkpoint() -> bool:
 
 def _eliminar_checkpoint():
     pass
+
+
+# ── Usuarios y permisos ───────────────────────────────────────────────────────
+
+def get_or_create_usuario(google_id: str, email: str, nombre: str, foto_url: str = "") -> dict:
+    r = _fetchone("SELECT * FROM usuarios WHERE google_id = %s", (google_id,))
+    if r:
+        _exec("UPDATE usuarios SET nombre=%s, foto_url=%s WHERE google_id=%s", (nombre, foto_url, google_id))
+        return {**dict(r), "nombre": nombre, "foto_url": foto_url}
+    count = _fetchone("SELECT COUNT(*) AS n FROM usuarios")
+    es_admin = count["n"] == 0
+    _exec(
+        "INSERT INTO usuarios (email, nombre, google_id, foto_url, es_admin, activo) VALUES (%s,%s,%s,%s,%s,TRUE)",
+        (email, nombre, google_id, foto_url, es_admin),
+    )
+    return dict(_fetchone("SELECT * FROM usuarios WHERE google_id = %s", (google_id,)))
+
+
+def get_usuario(uid: int) -> dict | None:
+    r = _fetchone("SELECT * FROM usuarios WHERE id = %s", (uid,))
+    return dict(r) if r else None
+
+
+def list_usuarios() -> list:
+    usuarios = [dict(r) for r in _fetchall("SELECT * FROM usuarios ORDER BY created_at")]
+    for u in usuarios:
+        perms = _fetchall("SELECT consorcio_id FROM permisos_consorcio WHERE usuario_id=%s", (u["id"],))
+        u["consorcios_ids"] = [r["consorcio_id"] for r in perms]
+    return usuarios
+
+
+def toggle_usuario_activo(uid: int):
+    _exec("UPDATE usuarios SET activo = NOT activo WHERE id = %s", (uid,))
+
+
+def toggle_usuario_admin(uid: int):
+    _exec("UPDATE usuarios SET es_admin = NOT es_admin WHERE id = %s", (uid,))
+
+
+def set_permisos_consorcio(uid: int, consorcio_ids: list):
+    with _conn() as c:
+        with c.cursor() as cur:
+            cur.execute("DELETE FROM permisos_consorcio WHERE usuario_id = %s", (uid,))
+            for cid in consorcio_ids:
+                cur.execute(
+                    "INSERT INTO permisos_consorcio (usuario_id, consorcio_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                    (uid, cid),
+                )
+
+
+def get_consorcios_usuario(uid: int) -> list:
+    u = get_usuario(uid)
+    if not u:
+        return []
+    if u["es_admin"]:
+        return [c["id"] for c in list_consorcios()]
+    rows = _fetchall("SELECT consorcio_id FROM permisos_consorcio WHERE usuario_id = %s", (uid,))
+    return [r["consorcio_id"] for r in rows]
