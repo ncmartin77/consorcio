@@ -375,6 +375,12 @@ def save_unidad():
         "activo": 1 if request.form.get("activo") else 0,
         "piso": request.form.get("piso", "").strip(),
         "deuda_inicial": float(deuda_ini) if deuda_ini else 0.0,
+        "propietario_mail":    request.form.get("propietario_mail", "").strip(),
+        "propietario_celular": request.form.get("propietario_celular", "").strip(),
+        "inquilino_mail":      request.form.get("inquilino_mail", "").strip(),
+        "inquilino_celular":   request.form.get("inquilino_celular", "").strip(),
+        "envio_destinatario":  request.form.get("envio_destinatario", "propietario"),
+        "envio_canal":         request.form.get("envio_canal", "mail"),
     }
     for cat in categorias:
         key = f"pct_{cat['nombre']}"
@@ -391,6 +397,14 @@ def save_unidad():
     db.save_unidad(data)
     flash("Unidad guardada.", "success")
     return redirect(url_for("unidades"))
+
+
+@app.route("/unidades/<numero>/envio", methods=["POST"])
+def save_unidad_envio(numero):
+    destinatario = request.form.get("envio_destinatario", "propietario")
+    canal = request.form.get("envio_canal", "mail")
+    db.save_unidad_envio(numero, destinatario, canal)
+    return "", 204
 
 
 @app.route("/unidades/delete/<numero>", methods=["POST"])
@@ -660,6 +674,7 @@ def liquidacion(periodo=None):
     for e in extras:
         extras_por_unidad.setdefault(str(e["unidad"]), []).append(e)
     unidades = db.get_unidades(solo_activas=True)
+    unidades_map = {str(u["numero"]): u for u in unidades}
     cfg = db.get_config()
     return render_template("liquidacion.html",
                            liq=liq,
@@ -681,7 +696,8 @@ def liquidacion(periodo=None):
                            notas=notas,
                            extras=extras,
                            extras_por_unidad=extras_por_unidad,
-                           unidades=unidades)
+                           unidades=unidades,
+                           unidades_map=unidades_map)
 
 
 @app.route("/liquidacion/generar/<periodo>", methods=["POST"])

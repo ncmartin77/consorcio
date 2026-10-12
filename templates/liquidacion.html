@@ -262,6 +262,7 @@
             <th class="text-end">TOTAL</th>
             <th class="text-end">Abonado</th>
             <th class="text-end">Saldo</th>
+            <th class="text-center">Envío</th>
             <th class="text-center">Estado</th>
             <th class="text-center">Acciones</th>
           </tr>
@@ -293,6 +294,21 @@
               {% if tipo == 'TOTAL' %}—
               {% elif r.saldo_pendiente > 0 %}$ {{ "%.2f"|format(r.saldo_pendiente)|replace(".",",") }}
               {% else %}$ {{ "%.2f"|format(r.total_a_pagar)|replace(".",",") }}{% endif %}
+            </td>
+            <td class="text-center text-nowrap">
+              {% set u = unidades_map.get(r.unidad|string, {}) %}
+              {% set dest = u.get('envio_destinatario','propietario') %}
+              {% set canal = u.get('envio_canal','mail') %}
+              <span class="badge bg-secondary" style="font-size:0.65rem">{{ {'propietario':'Prop.','inquilino':'Inq.','ambos':'P+I'}.get(dest, dest) }}</span>
+              {% if canal in ('mail','ambos') %}<i class="bi bi-envelope-fill text-primary" style="font-size:0.8rem"></i>{% endif %}
+              {% if canal in ('whatsapp','ambos') %}<i class="bi bi-whatsapp text-success" style="font-size:0.8rem"></i>{% endif %}
+              {% if not liq_cerrada %}
+              <button class="btn btn-sm p-0 ms-1" style="line-height:1"
+                      onclick='abrirModalEnvio({{ r.unidad|tojson }}, {{ dest|tojson }}, {{ canal|tojson }})'
+                      title="Editar preferencia de envío">
+                <i class="bi bi-pencil-fill" style="font-size:0.65rem;color:#6c757d"></i>
+              </button>
+              {% endif %}
             </td>
             <td class="text-center">
               {% if tipo == 'TOTAL' %}
@@ -356,7 +372,7 @@
             <td></td>
             <td class="text-end text-danger">$ {{ "%.2f"|format(total_a_pagar)|replace(".",",") }}</td>
             <td class="text-end text-success">$ {{ "%.2f"|format(total_cobrado)|replace(".",",") }}</td>
-            <td colspan="3"></td>
+            <td colspan="4"></td>
           </tr>
         </tfoot>
       </table>
@@ -399,6 +415,43 @@
 </div>
 
 {% endif %}
+
+<!-- ===== MODAL ENVÍO ===== -->
+<div class="modal fade" id="modalEnvio" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header bg-secondary text-white py-2">
+        <h6 class="modal-title"><i class="bi bi-send"></i> Preferencia de envío</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="envio_unidad">
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Enviar a</label>
+          <select class="form-select form-select-sm" id="envio_destinatario">
+            <option value="propietario">Propietario</option>
+            <option value="inquilino">Inquilino</option>
+            <option value="ambos">Propietario e Inquilino</option>
+          </select>
+        </div>
+        <div class="mb-1">
+          <label class="form-label fw-semibold small">Canal</label>
+          <select class="form-select form-select-sm" id="envio_canal">
+            <option value="mail">Mail</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="ambos">Mail y WhatsApp</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="guardarEnvio()">
+          <i class="bi bi-save"></i> Guardar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ===== MODAL PAGO COMPLETO ===== -->
 <div class="modal fade" id="modalPagoCompleto" tabindex="-1">
@@ -519,6 +572,24 @@ let _saldoActual = 0;
 
 function fmt(v) {
   return '$ ' + parseFloat(v).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function abrirModalEnvio(unidad, destinatario, canal) {
+  document.getElementById('envio_unidad').value = unidad;
+  document.getElementById('envio_destinatario').value = destinatario || 'propietario';
+  document.getElementById('envio_canal').value = canal || 'mail';
+  new bootstrap.Modal(document.getElementById('modalEnvio')).show();
+}
+
+function guardarEnvio() {
+  const unidad = document.getElementById('envio_unidad').value;
+  const dest = document.getElementById('envio_destinatario').value;
+  const canal = document.getElementById('envio_canal').value;
+  const fd = new FormData();
+  fd.append('envio_destinatario', dest);
+  fd.append('envio_canal', canal);
+  fetch('/unidades/' + encodeURIComponent(unidad) + '/envio', { method: 'POST', body: fd })
+    .then(r => { if (r.ok) location.reload(); });
 }
 
 function abrirModalPago(r, esParcial) {

@@ -27,6 +27,7 @@
             <th class="text-center">% {{ cat.nombre }}</th>
             {% endfor %}
             <th class="text-end">Deuda Inicial</th>
+            <th class="text-center">Envío</th>
             <th class="text-center">Activa</th>
             <th></th>
           </tr>
@@ -48,6 +49,13 @@
               {% if u.get('deuda_inicial') and u.get('deuda_inicial')|float > 0 %}
                 $ {{ "%.2f"|format(u.get('deuda_inicial')|float)|replace(".",",") }}
               {% else %}-{% endif %}
+            </td>
+            <td class="text-center small text-nowrap">
+              {% set dest = u.get('envio_destinatario','propietario') %}
+              {% set canal = u.get('envio_canal','mail') %}
+              <span class="badge bg-secondary">{{ {'propietario':'Prop.','inquilino':'Inq.','ambos':'Prop+Inq'}.get(dest, dest) }}</span>
+              {% if canal in ('mail','ambos') %}<i class="bi bi-envelope-fill text-primary ms-1"></i>{% endif %}
+              {% if canal in ('whatsapp','ambos') %}<i class="bi bi-whatsapp text-success ms-1"></i>{% endif %}
             </td>
             <td class="text-center">
               {% if u.activo %}
@@ -128,6 +136,40 @@
               <label class="form-label fw-semibold">Inquilino</label>
               <input type="text" class="form-control" id="form_inquilino" name="inquilino">
             </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Mail propietario</label>
+              <input type="email" class="form-control" id="form_propietario_mail" name="propietario_mail">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Celular propietario</label>
+              <input type="text" class="form-control" id="form_propietario_celular" name="propietario_celular" placeholder="549...">
+            </div>
+            <div class="col-md-4"></div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Mail inquilino</label>
+              <input type="email" class="form-control" id="form_inquilino_mail" name="inquilino_mail">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Celular inquilino</label>
+              <input type="text" class="form-control" id="form_inquilino_celular" name="inquilino_celular" placeholder="549...">
+            </div>
+            <div class="col-md-4"></div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Enviar liquidación a</label>
+              <select class="form-select" id="form_envio_destinatario" name="envio_destinatario">
+                <option value="propietario">Propietario</option>
+                <option value="inquilino">Inquilino</option>
+                <option value="ambos">Propietario e Inquilino</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Canal de envío</label>
+              <select class="form-select" id="form_envio_canal" name="envio_canal">
+                <option value="mail">Mail</option>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="ambos">Mail y WhatsApp</option>
+              </select>
+            </div>
             <div class="col-12">
               <hr>
               <label class="form-label fw-semibold">Porcentajes por Categoría</label>
@@ -183,6 +225,12 @@ function editarUnidad(u) {
   document.getElementById('form_deuda_inicial').value = u.deuda_inicial || 0;
   document.getElementById('form_propietario').value = u.propietario || '';
   document.getElementById('form_inquilino').value = u.inquilino || '';
+  document.getElementById('form_propietario_mail').value = u.propietario_mail || '';
+  document.getElementById('form_propietario_celular').value = u.propietario_celular || '';
+  document.getElementById('form_inquilino_mail').value = u.inquilino_mail || '';
+  document.getElementById('form_inquilino_celular').value = u.inquilino_celular || '';
+  document.getElementById('form_envio_destinatario').value = u.envio_destinatario || 'propietario';
+  document.getElementById('form_envio_canal').value = u.envio_canal || 'mail';
   document.getElementById('form_activo').checked = !!u.activo;
 
   {% for cat in categorias %}
@@ -205,6 +253,12 @@ document.getElementById('modalUnidad').addEventListener('hidden.bs.modal', funct
   document.getElementById('form_deuda_inicial').value = 0;
   document.getElementById('form_propietario').value = '';
   document.getElementById('form_inquilino').value = '';
+  document.getElementById('form_propietario_mail').value = '';
+  document.getElementById('form_propietario_celular').value = '';
+  document.getElementById('form_inquilino_mail').value = '';
+  document.getElementById('form_inquilino_celular').value = '';
+  document.getElementById('form_envio_destinatario').value = 'propietario';
+  document.getElementById('form_envio_canal').value = 'mail';
   document.getElementById('form_activo').checked = true;
   {% for cat in categorias %}
   if (document.getElementById('form_pct_{{ cat.nombre }}')) {

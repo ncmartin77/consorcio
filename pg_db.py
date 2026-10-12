@@ -310,15 +310,23 @@ def save_unidad(data: dict):
         with c.cursor() as cur:
             cur.execute("""
                 INSERT INTO unidades
-                    (consorcio_id, numero, descripcion, propietario, inquilino, activo, piso, deuda_inicial)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                    (consorcio_id, numero, descripcion, propietario, inquilino, activo, piso, deuda_inicial,
+                     propietario_mail, propietario_celular, inquilino_mail, inquilino_celular,
+                     envio_destinatario, envio_canal)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (consorcio_id, numero) DO UPDATE SET
-                    descripcion = EXCLUDED.descripcion,
-                    propietario = EXCLUDED.propietario,
-                    inquilino   = EXCLUDED.inquilino,
-                    activo      = EXCLUDED.activo,
-                    piso        = EXCLUDED.piso,
-                    deuda_inicial = EXCLUDED.deuda_inicial
+                    descripcion         = EXCLUDED.descripcion,
+                    propietario         = EXCLUDED.propietario,
+                    inquilino           = EXCLUDED.inquilino,
+                    activo              = EXCLUDED.activo,
+                    piso                = EXCLUDED.piso,
+                    deuda_inicial       = EXCLUDED.deuda_inicial,
+                    propietario_mail    = EXCLUDED.propietario_mail,
+                    propietario_celular = EXCLUDED.propietario_celular,
+                    inquilino_mail      = EXCLUDED.inquilino_mail,
+                    inquilino_celular   = EXCLUDED.inquilino_celular,
+                    envio_destinatario  = EXCLUDED.envio_destinatario,
+                    envio_canal         = EXCLUDED.envio_canal
             """, (
                 _cid(), numero,
                 data.get("descripcion", "") or "",
@@ -327,6 +335,12 @@ def save_unidad(data: dict):
                 bool(data.get("activo", True)),
                 data.get("piso", "") or "",
                 float(data.get("deuda_inicial", 0) or 0),
+                data.get("propietario_mail", "") or "",
+                data.get("propietario_celular", "") or "",
+                data.get("inquilino_mail", "") or "",
+                data.get("inquilino_celular", "") or "",
+                data.get("envio_destinatario", "propietario") or "propietario",
+                data.get("envio_canal", "mail") or "mail",
             ))
             for cat in get_categorias():
                 key = f"pct_{cat['nombre']}"
@@ -337,6 +351,13 @@ def save_unidad(data: dict):
                         ON CONFLICT (consorcio_id, numero, categoria)
                         DO UPDATE SET porcentaje = EXCLUDED.porcentaje
                     """, (_cid(), numero, cat["nombre"], float(data[key] or 0)))
+
+
+def save_unidad_envio(numero: str, destinatario: str, canal: str):
+    _exec(
+        "UPDATE unidades SET envio_destinatario=%s, envio_canal=%s WHERE consorcio_id=%s AND numero=%s",
+        (destinatario, canal, _cid(), str(numero))
+    )
 
 
 def delete_unidad(numero):
