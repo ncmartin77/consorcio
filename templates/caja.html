@@ -67,10 +67,17 @@
   </div>
 </div>
 
+<div class="mb-2">
+  <input type="text" class="form-control form-control-sm filtro-tabla"
+         data-target="#tablaCaja" data-conteo="#conteoCaja"
+         placeholder="&#128269; Buscar por descripción, categoría...">
+  <small class="text-muted" id="conteoCaja"></small>
+</div>
+
 <div class="card shadow-sm">
   <div class="card-body p-0">
     <div class="table-responsive">
-      <table class="table table-striped table-hover mb-0">
+      <table id="tablaCaja" class="table table-striped table-hover mb-0">
         <thead class="table-primary">
           <tr>
             <th>Fecha</th>

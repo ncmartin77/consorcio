@@ -9,10 +9,17 @@
   </button>
 </div>
 
+<div class="mb-2">
+  <input type="text" class="form-control form-control-sm filtro-tabla"
+         data-target="#tablaProveedores" data-conteo="#conteoProveedores"
+         placeholder="&#128269; Buscar proveedor...">
+  <small class="text-muted" id="conteoProveedores"></small>
+</div>
+
 <div class="card shadow-sm">
   <div class="card-body p-0">
     <div class="table-responsive">
-      <table class="table table-striped table-hover mb-0">
+      <table id="tablaProveedores" class="table table-striped table-hover mb-0">
         <thead class="table-primary">
           <tr>
             <th>Nombre</th>

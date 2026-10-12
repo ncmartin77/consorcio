@@ -171,6 +171,25 @@
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/static/sw.js');
   }
+
+  // Filtro universal de tablas — cualquier <input class="filtro-tabla" data-target="#id-tabla">
+  document.addEventListener('input', function(e) {
+    const inp = e.target;
+    if (!inp.classList.contains('filtro-tabla')) return;
+    const tabla = document.querySelector(inp.dataset.target);
+    if (!tabla) return;
+    const q = inp.value.toLowerCase().trim();
+    const filas = tabla.querySelectorAll('tbody tr');
+    let visibles = 0;
+    filas.forEach(function(tr) {
+      const coincide = !q || tr.textContent.toLowerCase().includes(q);
+      tr.style.display = coincide ? '' : 'none';
+      if (coincide) visibles++;
+    });
+    // Mostrar conteo si hay input
+    const conteoEl = document.querySelector(inp.dataset.conteo);
+    if (conteoEl) conteoEl.textContent = q ? visibles + ' resultado(s)' : '';
+  });
 </script>
 </body>
 </html>

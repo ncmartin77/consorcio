@@ -123,7 +123,6 @@ def _insert_returning(sql: str, params=()) -> int:
 # ── No-ops para compatibilidad ────────────────────────────────────────────────
 def _get_drive(): return None
 def sync_from_drive(): pass
-def consolidar_si_expirado() -> bool: return False
 
 
 # ── Consorcios ────────────────────────────────────────────────────────────────
@@ -1213,29 +1212,149 @@ def delete_gasto_extra(extra_id: int) -> bool:
     return True
 
 
-# ── Checkpoint (stub — en PG no aplica el mecanismo de archivo) ───────────────
+# ── Checkpoint ────────────────────────────────────────────────────────────────
+
+_CHECKPOINT_DIAS = 30
+
+# Tablas a snapshotear, en orden de inserción (parents antes que children)
+_CHECKPOINT_TABLES = [
+    "config", "categorias", "unidades", "unidad_porcentajes",
+    "gastos", "caja", "liquidaciones", "liquidaciones_estado",
+    "proveedores", "gastos_recurrentes", "tareas", "facturas",
+    "pedidos", "presupuestos", "notas_periodo", "gastos_extra",
+]
+
+# Tablas sin columna `id` serial (usan clave compuesta)
+_TABLES_NO_ID = {"config", "categorias", "unidades", "unidad_porcentajes", "liquidaciones_estado"}
+
+
+def _checkpoint_json_default(o):
+    if isinstance(o, (datetime, date)):
+        return o.isoformat()
+    from decimal import Decimal
+    if isinstance(o, Decimal):
+        return str(o)
+    raise TypeError(f"Object of type {type(o)} is not JSON serializable")
+
 
 def get_checkpoint_info() -> dict | None:
-    return None
-
-
-def crear_checkpoint(descripcion: str = "") -> dict:
-    from datetime import datetime as _dt
-    return {
-        "fecha_creacion": _dt.now().isoformat(),
-        "descripcion": descripcion,
-        "dias_transcurridos": 0,
-        "dias_restantes": 30,
-        "expirado": False,
-    }
-
-
-def rollback_checkpoint() -> bool:
-    return False
+    try:
+        cid = _cid()
+    except RuntimeError:
+        return None
+    row = _fetchone(
+        "SELECT consorcio_id, fecha_creacion, descripcion FROM checkpoints WHERE consorcio_id = %s",
+        (cid,),
+    )
+    if not row:
+        return None
+    info = dict(row)
+    fc = info["fecha_creacion"]
+    fc_date = fc.date() if hasattr(fc, "date") else date.fromisoformat(str(fc)[:10])
+    dias = (date.today() - fc_date).days
+    info["fecha_creacion"] = fc.isoformat() if hasattr(fc, "isoformat") else str(fc)
+    info["dias_transcurridos"] = dias
+    info["dias_restantes"] = max(0, _CHECKPOINT_DIAS - dias)
+    info["expirado"] = dias >= _CHECKPOINT_DIAS
+    return info
 
 
 def _eliminar_checkpoint():
-    pass
+    try:
+        cid = _cid()
+    except RuntimeError:
+        return
+    _exec("DELETE FROM checkpoints WHERE consorcio_id = %s", (cid,))
+
+
+def consolidar_si_expirado() -> bool:
+    try:
+        info = get_checkpoint_info()
+    except Exception:
+        return False
+    if not info:
+        return False
+    if info.get("expirado"):
+        _eliminar_checkpoint()
+        return True
+    return False
+
+
+def crear_checkpoint(descripcion: str = "") -> dict:
+    import json
+    cid = _cid()
+    snapshot = {}
+    for table in _CHECKPOINT_TABLES:
+        rows = _fetchall(f"SELECT * FROM {table} WHERE consorcio_id = %s", (cid,))
+        snapshot[table] = [dict(r) for r in rows]
+    snapshot_json = json.dumps(snapshot, default=_checkpoint_json_default)
+    _exec(
+        """
+        INSERT INTO checkpoints (consorcio_id, fecha_creacion, descripcion, snapshot)
+        VALUES (%s, NOW(), %s, %s::jsonb)
+        ON CONFLICT (consorcio_id) DO UPDATE
+            SET fecha_creacion = NOW(),
+                descripcion    = EXCLUDED.descripcion,
+                snapshot       = EXCLUDED.snapshot
+        """,
+        (cid, descripcion, snapshot_json),
+    )
+    return get_checkpoint_info()
+
+
+def rollback_checkpoint() -> bool:
+    cid = _cid()
+    row = _fetchone("SELECT snapshot FROM checkpoints WHERE consorcio_id = %s", (cid,))
+    if not row:
+        return False
+    snapshot = row["snapshot"]  # psycopg2 deserializes JSONB → dict
+
+    # Orden de borrado: children primero para respetar FKs
+    delete_order = [
+        "presupuestos", "unidad_porcentajes", "gastos_extra", "notas_periodo",
+        "facturas", "tareas", "gastos_recurrentes", "proveedores",
+        "liquidaciones_estado", "liquidaciones", "caja", "gastos",
+        "pedidos", "unidades", "categorias", "config",
+    ]
+
+    with _conn() as c:
+        with c.cursor() as cur:
+            for table in delete_order:
+                cur.execute(f"DELETE FROM {table} WHERE consorcio_id = %s", (cid,))
+
+            for table in _CHECKPOINT_TABLES:
+                rows = snapshot.get(table, [])
+                if not rows:
+                    continue
+                cols = list(rows[0].keys())
+                col_str = ", ".join(f'"{col}"' for col in cols)
+                placeholders = ", ".join(["%s"] * len(cols))
+                has_id = table not in _TABLES_NO_ID and "id" in cols
+                if has_id:
+                    sql = (
+                        f'INSERT INTO {table} ({col_str}) '
+                        f'OVERRIDING SYSTEM VALUE VALUES ({placeholders})'
+                    )
+                else:
+                    sql = f'INSERT INTO {table} ({col_str}) VALUES ({placeholders})'
+                for row_data in rows:
+                    cur.execute(sql, [row_data[col] for col in cols])
+
+            # Resetear sequences al max id restaurado
+            for table in _CHECKPOINT_TABLES:
+                if table in _TABLES_NO_ID:
+                    continue
+                rows = snapshot.get(table, [])
+                ids = [r["id"] for r in rows if r.get("id") is not None]
+                if not ids:
+                    continue
+                cur.execute("SELECT pg_get_serial_sequence(%s, 'id')", (table,))
+                seq = cur.fetchone()
+                if seq and seq[0]:
+                    cur.execute("SELECT setval(%s, %s)", (seq[0], max(ids)))
+
+    _exec("DELETE FROM checkpoints WHERE consorcio_id = %s", (cid,))
+    return True
 
 
 # ── Usuarios y permisos ───────────────────────────────────────────────────────
