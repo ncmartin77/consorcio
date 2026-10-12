@@ -853,29 +853,26 @@ function _buildWAMensaje(r, nombre) {
   const tipo = r.tipo_pago || 'PENDIENTE';
   const token = _recibo_tokens[String(r.unidad)] || '';
   const urlRecibo = token ? `${_recibo_base}/${r.unidad}/${token}` : '';
+  const diaVenc = parseInt(_WA_DIA_VENC, 10);
   let L = [];
-  L.push(`🏢 *${_WA_EDIFICIO}*`);
-  L.push(`📅 Período: ${_WA_PERIODO}`);
-  L.push('');
-  if (nombre) L.push(`Estimado/a *${nombre}*,`);
-  L.push(`Le informamos el estado de su Unidad *${r.unidad}*:`);
+  L.push(`🏢 *${_WA_EDIFICIO}*  |  Unidad *${r.unidad}*`);
+  L.push(`📅 ${_WA_PERIODO}`);
   L.push('');
   if (tipo === 'TOTAL') {
     L.push(`✅ *Pago registrado: ${fmt(r.monto_pagado)}*`);
-    L.push('¡Muchas gracias por su pago!');
+    L.push('¡Gracias por su pago!');
   } else if (tipo === 'PARCIAL') {
-    L.push(`💰 Total del período:  ${fmt(r.total_a_pagar)}`);
-    L.push(`✅ Abonado:            ${fmt(r.monto_pagado)}`);
-    L.push('─────────────────────');
     L.push(`⚠️ *Saldo pendiente: ${fmt(r.saldo_pendiente)}*`);
+    L.push(`   Abonado ${fmt(r.monto_pagado)} de ${fmt(r.total_a_pagar)}`);
+    if (diaVenc > 0) L.push(`📆 Vencimiento: día ${diaVenc}`);
+    if (_WA_ALIAS)   L.push(`🏦 ${_WA_ALIAS}`);
   }
-  L.push('');
   if (urlRecibo) {
-    L.push(`🧾 *Descargá tu recibo:*`);
-    L.push(urlRecibo);
+    L.push('');
+    L.push(`🧾 Recibo: ${urlRecibo}`);
   }
   L.push('');
-  L.push(`_Administración — ${_WA_EDIFICIO}_`);
+  L.push(`_Administración_`);
   return L.join('\n');
 }
 

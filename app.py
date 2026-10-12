@@ -37,7 +37,7 @@ def mes_largo(periodo):
         return periodo
 
 
-_PUBLIC_ENDPOINTS = {"static", "login", "login_google", "auth_callback", "logout", "verificar_recibo", "recibo_publico"}
+_PUBLIC_ENDPOINTS = {"static", "login", "login_google", "auth_callback", "logout", "verificar_recibo", "recibo_publico", "recibo_publico_pdf"}
 
 
 def _token_recibo_publico(clave: str, cid: str, periodo: str, unidad: str) -> str:
@@ -964,9 +964,8 @@ def descargar_recibo(periodo, unidad):
     )
 
 
-@app.route("/recibo/publico/<cid>/<periodo>/<unidad>/<token>")
-def recibo_publico(cid, periodo, unidad, token):
-    """Genera el recibo PDF on-the-fly sin autenticación, validado por HMAC."""
+def _recibo_publico_get_row(cid, periodo, unidad, token):
+    """Validates HMAC token and returns (row, cfg, clave, url_app) or aborts."""
     from flask import abort
     c = db.get_consorcio(cid)
     if not c:
@@ -981,11 +980,36 @@ def recibo_publico(cid, periodo, unidad, token):
     if not row or row.get("tipo_pago", "PENDIENTE") == "PENDIENTE":
         abort(404)
     cfg = db.get_config()
+    url_app = cfg.get("url_app", "http://localhost:5000").rstrip("/")
+    return row, cfg, clave, url_app
+
+
+@app.route("/recibo/publico/<cid>/<periodo>/<unidad>/<token>")
+def recibo_publico(cid, periodo, unidad, token):
+    """Página de descarga/impresión del recibo, con PDF embebido."""
+    row, cfg, clave, url_app = _recibo_publico_get_row(cid, periodo, unidad, token)
+    codigo = db.generar_codigo_verificacion(row, cfg, clave)
+    url_verificacion = f"{url_app}/verificar/{periodo}/{unidad}/{codigo}"
+    pdf_url = f"{url_app}/recibo/publico/{cid}/{periodo}/{unidad}/{token}/pdf"
+    edificio = cfg.get("edificio_nombre", "Consorcio")
+    return render_template(
+        "recibo_publico.html",
+        periodo=periodo,
+        unidad=unidad,
+        edificio=edificio,
+        pdf_url=pdf_url,
+        url_verificacion=url_verificacion,
+    )
+
+
+@app.route("/recibo/publico/<cid>/<periodo>/<unidad>/<token>/pdf")
+def recibo_publico_pdf(cid, periodo, unidad, token):
+    """Genera y sirve el PDF del recibo on-the-fly, validado por HMAC."""
+    row, cfg, clave, url_app = _recibo_publico_get_row(cid, periodo, unidad, token)
     mes_gastos = db._prev_periodo(periodo)
     gastos = db.get_gastos(mes_gastos)
     facturas_extras = db.get_facturas_extraordinarias_periodo(mes_gastos)
     codigo = db.generar_codigo_verificacion(row, cfg, clave)
-    url_app = cfg.get("url_app", "http://localhost:5000").rstrip("/")
     url_verificacion = f"{url_app}/verificar/{periodo}/{unidad}/{codigo}"
     pdf_bytes = generar_recibo_pago(
         row, cfg, periodo, gastos, facturas_extras,
