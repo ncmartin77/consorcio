@@ -116,6 +116,12 @@
           </a>
         </li>
       </ul>
+      <div class="d-flex align-items-center me-2" id="navSearchWrapper" style="display:none!important">
+        <input type="text" id="navBuscar" class="form-control form-control-sm"
+               placeholder="&#128269; Buscar..." style="width:190px"
+               data-ayuda="Buscá en la tabla de la página actual. Filtrá por cualquier texto visible.">
+        <small id="navBuscarConteo" class="text-white-50 ms-2 text-nowrap" style="font-size:0.72rem"></small>
+      </div>
       <a href="{{ url_for('consorcios') }}" class="btn btn-sm btn-outline-light ms-2"
          title="Cambiar consorcio"
          data-ayuda="Cambiá de consorcio o creá uno nuevo desde el listado de edificios.">
@@ -252,24 +258,29 @@
     });
   })();
 
-  // Filtro universal de tablas — cualquier <input class="filtro-tabla" data-target="#id-tabla">
-  document.addEventListener('input', function(e) {
-    const inp = e.target;
-    if (!inp.classList.contains('filtro-tabla')) return;
-    const tabla = document.querySelector(inp.dataset.target);
-    if (!tabla) return;
-    const q = inp.value.toLowerCase().trim();
-    const filas = tabla.querySelectorAll('tbody tr');
-    let visibles = 0;
-    filas.forEach(function(tr) {
-      const coincide = !q || tr.textContent.toLowerCase().includes(q);
-      tr.style.display = coincide ? '' : 'none';
-      if (coincide) visibles++;
+  // Buscador global en navbar
+  (function() {
+    const inp = document.getElementById('navBuscar');
+    const wrapper = document.getElementById('navSearchWrapper');
+    const conteo = document.getElementById('navBuscarConteo');
+    if (!inp) return;
+    const filasDatos = Array.from(document.querySelectorAll('table tbody tr'))
+                            .filter(tr => !tr.querySelector('td[colspan]'));
+    if (filasDatos.length === 0) return;
+    wrapper.style.removeProperty('display');
+
+    inp.addEventListener('input', function() {
+      const q = this.value.toLowerCase().trim();
+      let visibles = 0;
+      document.querySelectorAll('table tbody tr').forEach(function(tr) {
+        if (tr.querySelector('td[colspan]')) { tr.style.display = q ? 'none' : ''; return; }
+        const ok = !q || tr.textContent.toLowerCase().includes(q);
+        tr.style.display = ok ? '' : 'none';
+        if (ok) visibles++;
+      });
+      conteo.textContent = q ? visibles + '/' + filasDatos.length : '';
     });
-    // Mostrar conteo si hay input
-    const conteoEl = document.querySelector(inp.dataset.conteo);
-    if (conteoEl) conteoEl.textContent = q ? visibles + ' resultado(s)' : '';
-  });
+  })();
 </script>
 </body>
 </html>
