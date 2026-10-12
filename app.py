@@ -4,6 +4,8 @@ Correr con: python app.py  o  flask run
 """
 import os
 import re
+import hmac as _hmac_mod
+import hashlib
 from datetime import date
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, session, g
 import io
@@ -35,7 +37,13 @@ def mes_largo(periodo):
         return periodo
 
 
-_PUBLIC_ENDPOINTS = {"static", "login", "login_google", "auth_callback", "logout", "verificar_recibo"}
+_PUBLIC_ENDPOINTS = {"static", "login", "login_google", "auth_callback", "logout", "verificar_recibo", "recibo_publico"}
+
+
+def _token_recibo_publico(clave: str, cid: str, periodo: str, unidad: str) -> str:
+    key = (clave or "consorcio_fallback").encode("utf-8")
+    msg = f"{cid}|{periodo}|{unidad}".encode("utf-8")
+    return _hmac_mod.new(key, msg, hashlib.sha256).hexdigest()[:32]
 
 _ADMIN_ENDPOINTS = {"admin_usuarios", "admin_toggle_activo", "admin_toggle_admin", "admin_set_permisos"}
 
@@ -722,6 +730,14 @@ def liquidacion(periodo=None):
     unidades = db.get_unidades(solo_activas=True)
     unidades_map = {str(u["numero"]): u for u in unidades}
     cfg = db.get_config()
+    cid = session.get("consorcio_id", "")
+    clave_firma = db.get_clave_firma()
+    url_app = cfg.get("url_app", "http://localhost:5000").rstrip("/")
+    recibo_tokens = {
+        str(r["unidad"]): _token_recibo_publico(clave_firma, cid, periodo, str(r["unidad"]))
+        for r in liq if r.get("tipo_pago", "PENDIENTE") != "PENDIENTE"
+    }
+    recibo_base_url = f"{url_app}/recibo/publico/{cid}/{periodo}"
     return render_template("liquidacion.html",
                            liq=liq,
                            gastos=gastos,
@@ -743,7 +759,9 @@ def liquidacion(periodo=None):
                            extras=extras,
                            extras_por_unidad=extras_por_unidad,
                            unidades=unidades,
-                           unidades_map=unidades_map)
+                           unidades_map=unidades_map,
+                           recibo_tokens=recibo_tokens,
+                           recibo_base_url=recibo_base_url)
 
 
 @app.route("/liquidacion/generar/<periodo>", methods=["POST"])
@@ -943,6 +961,42 @@ def descargar_recibo(periodo, unidad):
         mimetype="application/pdf",
         as_attachment=True,
         download_name=f"resumen_expensas_{unidad}_{periodo}.pdf"
+    )
+
+
+@app.route("/recibo/publico/<cid>/<periodo>/<unidad>/<token>")
+def recibo_publico(cid, periodo, unidad, token):
+    """Genera el recibo PDF on-the-fly sin autenticación, validado por HMAC."""
+    from flask import abort
+    c = db.get_consorcio(cid)
+    if not c:
+        abort(404)
+    db.set_active_consorcio(c["data_dir_abs"], c["db_path_abs"])
+    clave = db.get_clave_firma()
+    expected = _token_recibo_publico(clave, cid, periodo, unidad)
+    if not _hmac_mod.compare_digest(token, expected):
+        abort(403)
+    liq = db.get_liquidacion(periodo)
+    row = next((r for r in liq if str(r["unidad"]) == str(unidad)), None)
+    if not row or row.get("tipo_pago", "PENDIENTE") == "PENDIENTE":
+        abort(404)
+    cfg = db.get_config()
+    mes_gastos = db._prev_periodo(periodo)
+    gastos = db.get_gastos(mes_gastos)
+    facturas_extras = db.get_facturas_extraordinarias_periodo(mes_gastos)
+    codigo = db.generar_codigo_verificacion(row, cfg, clave)
+    url_app = cfg.get("url_app", "http://localhost:5000").rstrip("/")
+    url_verificacion = f"{url_app}/verificar/{periodo}/{unidad}/{codigo}"
+    pdf_bytes = generar_recibo_pago(
+        row, cfg, periodo, gastos, facturas_extras,
+        codigo_verificacion=codigo,
+        url_verificacion=url_verificacion,
+    )
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=f"recibo_{periodo}_{unidad}.pdf"
     )
 
 

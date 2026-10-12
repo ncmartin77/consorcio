@@ -363,11 +363,11 @@
                 <i class="bi bi-receipt"></i>
               </a>
               {% endif %}
-              {# WhatsApp — siempre visible si la liquidación fue generada #}
-              {% if liq_generada %}
+              {# WhatsApp/mail — solo si hay pago registrado #}
+              {% if liq_generada and r.tipo_pago != 'PENDIENTE' %}
               <button class="btn btn-sm btn-outline-success"
                       onclick='enviarWA({{ r|tojson }})'
-                      title="Enviar por WhatsApp">
+                      title="Enviar recibo por WhatsApp o mail">
                 <i class="bi bi-whatsapp"></i>
               </button>
               {% endif %}
@@ -837,11 +837,13 @@ function eliminarExtra(eid, btn) {
 }
 
 // ── WhatsApp ────────────────────────────────────────────────────────────────────────────
-const _WA_EDIFICIO = {{ consorcio_nombre | tojson }};
-const _WA_PERIODO  = {{ (periodo | mes_largo) | tojson }};
-const _WA_DIA_VENC = {{ (cfg.dia_vencimiento or '15') | tojson }};
-const _WA_ALIAS    = {{ (cfg.alias_cbu or '') | tojson }};
-const _unidades_map = {{ unidades_map | tojson }};
+const _WA_EDIFICIO    = {{ consorcio_nombre | tojson }};
+const _WA_PERIODO     = {{ (periodo | mes_largo) | tojson }};
+const _WA_DIA_VENC    = {{ (cfg.dia_vencimiento or '15') | tojson }};
+const _WA_ALIAS       = {{ (cfg.alias_cbu or '') | tojson }};
+const _unidades_map   = {{ unidades_map | tojson }};
+const _recibo_tokens  = {{ recibo_tokens | tojson }};
+const _recibo_base    = {{ recibo_base_url | tojson }};
 
 function fmt(n) {
   return '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -849,6 +851,8 @@ function fmt(n) {
 
 function _buildWAMensaje(r, nombre) {
   const tipo = r.tipo_pago || 'PENDIENTE';
+  const token = _recibo_tokens[String(r.unidad)] || '';
+  const urlRecibo = token ? `${_recibo_base}/${r.unidad}/${token}` : '';
   let L = [];
   L.push(`🏢 *${_WA_EDIFICIO}*`);
   L.push(`📅 Período: ${_WA_PERIODO}`);
@@ -864,17 +868,12 @@ function _buildWAMensaje(r, nombre) {
     L.push(`✅ Abonado:            ${fmt(r.monto_pagado)}`);
     L.push('─────────────────────');
     L.push(`⚠️ *Saldo pendiente: ${fmt(r.saldo_pendiente)}*`);
-  } else {
-    if (r.expensas > 0)       L.push(`💰 Expensas del mes:   ${fmt(r.expensas)}`);
-    if (r.deuda_anterior > 0) L.push(`📋 Deuda anterior:     ${fmt(r.deuda_anterior)}`);
-    if (r.interes > 0)        L.push(`📈 Interés mora:        ${fmt(r.interes)}`);
-    if (r.extras > 0)         L.push(`➕ Cargos extra:        ${fmt(r.extras)}`);
-    L.push('─────────────────────');
-    L.push(`🔴 *Total a pagar: ${fmt(r.total_a_pagar)}*`);
   }
   L.push('');
-  if (_WA_DIA_VENC) L.push(`📆 Vencimiento: día ${_WA_DIA_VENC}`);
-  if (_WA_ALIAS)    L.push(`🏦 Transferencia: ${_WA_ALIAS}`);
+  if (urlRecibo) {
+    L.push(`🧾 *Descargá tu recibo:*`);
+    L.push(urlRecibo);
+  }
   L.push('');
   L.push(`_Administración — ${_WA_EDIFICIO}_`);
   return L.join('\n');
