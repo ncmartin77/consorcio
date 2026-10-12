@@ -1156,9 +1156,9 @@ def estado_cuenta():
 @app.route("/apertura", methods=["GET", "POST"])
 def apertura():
     if request.method == "POST":
-        saldo_inicial = request.form.get("saldo_inicial_caja", "0").replace(",", ".")
+        saldo_raw = request.form.get("saldo_inicial_caja", "0").replace(",", ".")
         try:
-            saldo_inicial = float(saldo_inicial)
+            saldo_inicial = float(saldo_raw)
         except ValueError:
             saldo_inicial = 0.0
         deudas = {}
@@ -1169,8 +1169,11 @@ def apertura():
                     deudas[numero] = float(val.replace(",", ".")) if val.strip() else 0.0
                 except ValueError:
                     deudas[numero] = 0.0
-        db.save_apertura(saldo_inicial, deudas)
-        flash("Saldos iniciales guardados.", "success")
+        try:
+            db.save_apertura(saldo_inicial, deudas)
+            flash(f"Saldos iniciales guardados. Saldo de caja: $ {saldo_inicial:,.2f}", "success")
+        except Exception as e:
+            flash(f"Error al guardar: {e}", "danger")
         return redirect(url_for("apertura"))
     saldo_inicial, unidades = db.get_apertura()
     return render_template("apertura.html", saldo_inicial=saldo_inicial, unidades=unidades)
