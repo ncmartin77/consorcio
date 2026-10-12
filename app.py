@@ -415,6 +415,52 @@ def delete_unidad(numero):
 
 
 # ---------------------------------------------------------------------------
+# NOTIFICACIONES
+# ---------------------------------------------------------------------------
+import uuid as _uuid
+
+@app.route("/notificaciones")
+def notificaciones():
+    unidades = db.get_unidades(solo_activas=True)
+    periodo = _periodo_actual()
+    liq = db.get_liquidacion(periodo)
+    liq_map = {str(r["unidad"]): r for r in liq}
+    cfg = db.get_config()
+    return render_template("notificaciones.html",
+                           unidades=unidades,
+                           liq_map=liq_map,
+                           periodo=periodo,
+                           cfg=cfg)
+
+
+@app.route("/notificaciones/upload", methods=["POST"])
+def notificaciones_upload():
+    import time
+    f = request.files.get("archivo")
+    if not f or not f.filename:
+        return {"error": "Sin archivo"}, 400
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in (".pdf", ".jpg", ".jpeg", ".png", ".gif"):
+        return {"error": "Tipo no permitido"}, 400
+    uid = _uuid.uuid4().hex[:12]
+    nombre = uid + ext
+    carpeta = os.path.join(db.get_data_dir(), "notificaciones")
+    os.makedirs(carpeta, exist_ok=True)
+    f.save(os.path.join(carpeta, nombre))
+    url = request.host_url.rstrip("/") + f"/notificaciones/ver/{nombre}"
+    return {"url": url, "nombre": f.filename}
+
+
+@app.route("/notificaciones/ver/<nombre>")
+def notificaciones_ver(nombre):
+    from flask import send_from_directory, abort
+    if not re.match(r'^[a-f0-9]{12}\.(pdf|jpg|jpeg|png|gif)$', nombre):
+        abort(404)
+    carpeta = os.path.join(db.get_data_dir(), "notificaciones")
+    return send_from_directory(carpeta, nombre)
+
+
+# ---------------------------------------------------------------------------
 # GASTOS MENSUALES
 # ---------------------------------------------------------------------------
 

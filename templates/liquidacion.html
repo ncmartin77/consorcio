@@ -45,6 +45,12 @@
       <i class="bi bi-file-earmark-pdf"></i> Resumen Edificio PDF
     </a>
     {% endif %}
+    {% if liq_generada and not liq_cerrada %}
+    <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#modalNotificarTodos"
+            data-ayuda="Enviá por WhatsApp la liquidación a todas las unidades que tienen celular configurado.">
+      <i class="bi bi-whatsapp"></i> Notificar a todos
+    </button>
+    {% endif %}
   </div>
 </div>
 
@@ -563,10 +569,64 @@
   </div>
 </div>
 
+<!-- ===== MODAL NOTIFICAR A TODOS ===== -->
+<div class="modal fade" id="modalNotificarTodos" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white py-2">
+        <h6 class="modal-title"><i class="bi bi-whatsapp"></i> Notificar a todos por WhatsApp</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-2">
+        <p class="small text-muted mb-2">Hacé click en <i class="bi bi-whatsapp text-success"></i> de cada unidad para abrir WhatsApp. Las unidades sin celular configurado aparecen en gris.</p>
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light"><tr>
+            <th>UF</th><th>Nombre</th><th>Celular</th><th class="text-end">Total</th><th class="text-center">Estado</th><th></th>
+          </tr></thead>
+          <tbody>
+          {% for r in liq %}
+          {% set u = unidades_map.get(r.unidad|string, {}) %}
+          {% set dest = u.get('envio_destinatario','propietario') %}
+          {% set celular = u.get('propietario_celular','') if dest == 'propietario' else (u.get('inquilino_celular','') if dest == 'inquilino' else (u.get('propietario_celular','') or u.get('inquilino_celular',''))) %}
+          {% set nombre = (u.get('inquilino','') or u.get('propietario','')) if dest == 'inquilino' else u.get('propietario','') %}
+          <tr class="{% if not celular %}text-muted{% endif %}">
+            <td><strong>{{ r.unidad }}</strong></td>
+            <td>{{ nombre or r.propietario }}</td>
+            <td>{{ celular or '<span class="badge bg-secondary">Sin celular</span>'|safe }}</td>
+            <td class="text-end">$ {{ "%.2f"|format(r.total_a_pagar)|replace(".",",") }}</td>
+            <td class="text-center">
+              {% if r.tipo_pago == 'TOTAL' %}<span class="badge bg-success">Pagado</span>
+              {% elif r.tipo_pago == 'PARCIAL' %}<span class="badge bg-warning text-dark">Parcial</span>
+              {% else %}<span class="badge bg-danger">Pendiente</span>{% endif %}
+            </td>
+            <td>
+              {% if celular %}
+              <button class="btn btn-sm btn-success" onclick="enviarWA({{ r|tojson }})" title="Enviar WhatsApp">
+                <i class="bi bi-whatsapp"></i>
+              </button>
+              {% else %}
+              <a href="{{ url_for('unidades') }}" class="btn btn-sm btn-outline-secondary" title="Configurar celular">
+                <i class="bi bi-pencil"></i>
+              </a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 {% block scripts %}
 <script>
 document.getElementById('periodoSelector').addEventListener('change', function() {
+  if (!this.value) return;
   window.location.href = '{{ url_for("liquidacion") }}/' + this.value;
 });
 
@@ -733,25 +793,41 @@ function eliminarExtra(eid, btn) {
     });
 }
 
-// ── WhatsApp ────────────────────────────────────────────────────────────────
+// ── WhatsApp ────────────────────────────────────────────────────────────────────────────
 const _WA_EDIFICIO = {{ consorcio_nombre | tojson }};
 const _WA_PERIODO  = {{ (periodo | mes_largo) | tojson }};
 const _WA_DIA_VENC = {{ (cfg.dia_vencimiento or '15') | tojson }};
 const _WA_ALIAS    = {{ (cfg.alias_cbu or '') | tojson }};
+const _unidades_map = {{ unidades_map | tojson }};
 
 function fmt(n) {
-  return '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  return '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
 function enviarWA(r) {
+  const u = _unidades_map[String(r.unidad)] || {};
+  const dest = u.envio_destinatario || 'propietario';
   const tipo = r.tipo_pago || 'PENDIENTE';
+
+  let numeros = [];
+  if (dest === 'propietario' || dest === 'ambos') {
+    if (u.propietario_celular) numeros.push(u.propietario_celular.replace(/\D/g,''));
+  }
+  if (dest === 'inquilino' || dest === 'ambos') {
+    if (u.inquilino_celular) numeros.push(u.inquilino_celular.replace(/\D/g,''));
+  }
+
+  if (!numeros.length) {
+    alert('⚠️ La unidad ' + r.unidad + ' no tiene celular configurado.\n\nAndá a Unidades → Editar unidad y completá el campo "Celular propietario" o "Celular inquilino".');
+    return;
+  }
+
   let lineas = [
     `*${_WA_EDIFICIO}*`,
     `📅 Liquidación ${_WA_PERIODO}`,
     `🏠 Unidad: *${r.unidad}*`,
     '',
   ];
-
   if (tipo === 'TOTAL') {
     lineas.push(`✅ Pago registrado: *${fmt(r.monto_pagado)}*`);
   } else if (tipo === 'PARCIAL') {
@@ -767,9 +843,10 @@ function enviarWA(r) {
     lineas.push(`📆 Vencimiento: día ${_WA_DIA_VENC}`);
     if (_WA_ALIAS) lineas.push(`🏦 Alias/CBU: ${_WA_ALIAS}`);
   }
-
   const texto = lineas.join('\n');
-  window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank');
+  numeros.forEach(num => {
+    window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(texto), '_blank');
+  });
 }
 </script>
 {% endblock %}

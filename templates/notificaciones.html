@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block title %}Notificaciones{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-bell"></i> Notificaciones</h4>
+</div>
+
+<div class="row g-3">
+  <!-- Columna izquierda: configuración -->
+  <div class="col-md-5">
+
+    <!-- Archivo adjunto -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-light fw-semibold py-2">
+        <i class="bi bi-paperclip"></i> Archivo (opcional)
+      </div>
+      <div class="card-body">
+        <input type="file" class="form-control form-control-sm" id="archivoInput"
+               accept=".pdf,.jpg,.jpeg,.png,.gif">
+        <div id="archivoInfo" class="mt-2 d-none">
+          <div class="alert alert-success py-2 mb-0 small">
+            <i class="bi bi-check-circle"></i> <span id="archivoNombre"></span><br>
+            <small class="text-muted">URL: <a id="archivoUrlLink" href="#" target="_blank"></a></small>
+          </div>
+        </div>
+        <small class="text-muted">El archivo se sube al servidor y se incluye un enlace de descarga en el mensaje.</small>
+      </div>
+    </div>
+
+    <!-- Mensaje -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-light fw-semibold py-2">
+        <i class="bi bi-chat-text"></i> Mensaje
+      </div>
+      <div class="card-body">
+        <textarea class="form-control" id="mensajeTexto" rows="6"
+                  placeholder="Escribí tu mensaje aquí. Podés usar {unidad}, {nombre}, {total} como variables.">Estimado/a {nombre},
+
+Le informamos la situación de su unidad {unidad} correspondiente al período {{ periodo | mes_largo }}:
+
+Total a pagar: {total}
+
+Ante cualquier consulta, no dude en comunicarse.
+
+Administración {{ cfg.get('edificio_nombre','') }}</textarea>
+        <div class="mt-2">
+          <small class="text-muted fw-semibold">Variables disponibles:</small>
+          <div class="mt-1">
+            <button class="btn btn-sm btn-outline-secondary py-0" onclick="insertVar('{unidad}')">+ {unidad}</button>
+            <button class="btn btn-sm btn-outline-secondary py-0" onclick="insertVar('{nombre}')">+ {nombre}</button>
+            <button class="btn btn-sm btn-outline-secondary py-0" onclick="insertVar('{total}')">+ {total}</button>
+            <button class="btn btn-sm btn-outline-secondary py-0" onclick="insertVar('{saldo}')">+ {saldo}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Canal -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-light fw-semibold py-2">
+        <i class="bi bi-send"></i> Canal de envío
+      </div>
+      <div class="card-body">
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" id="canalWA" value="whatsapp" checked>
+          <label class="form-check-label" for="canalWA"><i class="bi bi-whatsapp text-success"></i> WhatsApp</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" id="canalMail" value="mail">
+          <label class="form-check-label" for="canalMail"><i class="bi bi-envelope-fill text-primary"></i> Mail</label>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary w-100" onclick="prepararEnvios()">
+      <i class="bi bi-arrow-right-circle"></i> Preparar envíos
+    </button>
+  </div>
+
+  <!-- Columna derecha: destinatarios -->
+  <div class="col-md-7">
+    <div class="card shadow-sm">
+      <div class="card-header bg-light fw-semibold py-2 d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-people"></i> Destinatarios</span>
+        <div>
+          <button class="btn btn-sm btn-outline-secondary py-0" onclick="selAll(true)">Todos</button>
+          <button class="btn btn-sm btn-outline-secondary py-0" onclick="selAll(false)">Ninguno</button>
+          <button class="btn btn-sm btn-outline-warning py-0" onclick="selPendientes()">Solo pendientes</button>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light">
+            <tr><th></th><th>UF</th><th>Nombre</th><th>Celular</th><th>Mail</th><th>Estado</th></tr>
+          </thead>
+          <tbody>
+          {% for u in unidades %}
+          {% set dest = u.get('envio_destinatario','propietario') %}
+          {% set nombre = u.get('inquilino','') if dest == 'inquilino' else u.get('propietario','') %}
+          {% if not nombre %}{% set nombre = u.get('propietario','') or u.get('inquilino','') %}{% endif %}
+          {% set celular = u.get('inquilino_celular','') if dest == 'inquilino' else u.get('propietario_celular','') %}
+          {% if not celular and dest == 'ambos' %}{% set celular = u.get('propietario_celular','') or u.get('inquilino_celular','') %}{% endif %}
+          {% set mail = u.get('inquilino_mail','') if dest == 'inquilino' else u.get('propietario_mail','') %}
+          {% if not mail and dest == 'ambos' %}{% set mail = u.get('propietario_mail','') or u.get('inquilino_mail','') %}{% endif %}
+          {% set lr = liq_map.get(u.numero|string, {}) %}
+          {% set estado = lr.get('tipo_pago','—') %}
+          <tr data-unidad="{{ u.numero }}"
+              data-nombre="{{ nombre }}"
+              data-celular="{{ celular }}"
+              data-mail="{{ mail }}"
+              data-total="{{ '%.2f'|format(lr.get('total_a_pagar',0)) }}"
+              data-saldo="{{ '%.2f'|format(lr.get('saldo_pendiente',0)) }}"
+              data-estado="{{ estado }}"
+              data-dest="{{ dest }}"
+              data-canal="{{ u.get('envio_canal','mail') }}">
+            <td><input type="checkbox" class="dest-check form-check-input" checked></td>
+            <td><strong>{{ u.numero }}</strong></td>
+            <td>{{ nombre or '—' }}</td>
+            <td class="small {% if not celular %}text-muted{% endif %}">{{ celular or '—' }}</td>
+            <td class="small {% if not mail %}text-muted{% endif %}">{{ mail or '—' }}</td>
+            <td>
+              {% if estado == 'TOTAL' %}<span class="badge bg-success">Pagado</span>
+              {% elif estado == 'PARCIAL' %}<span class="badge bg-warning text-dark">Parcial</span>
+              {% elif estado == 'PENDIENTE' %}<span class="badge bg-danger">Pendiente</span>
+              {% else %}<span class="badge bg-secondary">—</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal con los enlaces generados -->
+<div class="modal fade" id="modalEnvios" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white py-2">
+        <h6 class="modal-title"><i class="bi bi-send"></i> Envíos preparados</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-2">
+        <p class="small text-muted mb-2">Hacé click en cada botón para abrir el canal correspondiente.</p>
+        <table class="table table-sm mb-0" id="tablaEnvios">
+          <thead class="table-light">
+            <tr><th>UF</th><th>Nombre</th><th class="text-center">WhatsApp</th><th class="text-center">Mail</th></tr>
+          </thead>
+          <tbody id="enviosBody"></tbody>
+        </table>
+      </div>
+      <div class="modal-footer py-2">
+        <button class="btn btn-success btn-sm" onclick="abrirTodosWA()"><i class="bi bi-whatsapp"></i> Abrir todos WA</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+const _PERIODO = {{ periodo | tojson }};
+let _archivoUrl = '';
+
+// Upload archivo
+document.getElementById('archivoInput').addEventListener('change', function() {
+  const f = this.files[0];
+  if (!f) return;
+  const fd = new FormData();
+  fd.append('archivo', f);
+  fetch('/notificaciones/upload', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { alert(data.error); return; }
+      _archivoUrl = data.url;
+      document.getElementById('archivoNombre').textContent = data.nombre;
+      document.getElementById('archivoUrlLink').href = data.url;
+      document.getElementById('archivoUrlLink').textContent = data.url;
+      document.getElementById('archivoInfo').classList.remove('d-none');
+    });
+});
+
+function insertVar(v) {
+  const ta = document.getElementById('mensajeTexto');
+  const pos = ta.selectionStart;
+  ta.value = ta.value.slice(0, pos) + v + ta.value.slice(pos);
+  ta.focus();
+}
+
+function selAll(v) {
+  document.querySelectorAll('.dest-check').forEach(c => c.checked = v);
+}
+function selPendientes() {
+  document.querySelectorAll('tr[data-unidad]').forEach(tr => {
+    const cb = tr.querySelector('.dest-check');
+    if (cb) cb.checked = tr.dataset.estado === 'PENDIENTE';
+  });
+}
+
+function buildMensaje(tr) {
+  let msg = document.getElementById('mensajeTexto').value;
+  msg = msg.replaceAll('{unidad}', tr.dataset.unidad || '');
+  msg = msg.replaceAll('{nombre}', tr.dataset.nombre || '');
+  msg = msg.replaceAll('{total}', '$ ' + (tr.dataset.total || '0'));
+  msg = msg.replaceAll('{saldo}', '$ ' + (tr.dataset.saldo || '0'));
+  if (_archivoUrl) msg += '\n\n📎 Adjunto: ' + _archivoUrl;
+  return msg;
+}
+
+let _waLinks = [];
+
+function prepararEnvios() {
+  const waCh = document.getElementById('canalWA').checked;
+  const mailCh = document.getElementById('canalMail').checked;
+  if (!waCh && !mailCh) { alert('Seleccioná al menos un canal de envío.'); return; }
+
+  const filas = Array.from(document.querySelectorAll('tr[data-unidad]'))
+                     .filter(tr => tr.querySelector('.dest-check')?.checked);
+  if (!filas.length) { alert('Seleccioná al menos un destinatario.'); return; }
+
+  _waLinks = [];
+  const tbody = document.getElementById('enviosBody');
+  tbody.innerHTML = '';
+
+  filas.forEach(tr => {
+    const msg = buildMensaje(tr);
+    const celular = (tr.dataset.celular || '').replace(/\D/g,'');
+    const mail = tr.dataset.mail || '';
+    const waUrl = celular ? 'https://wa.me/' + celular + '?text=' + encodeURIComponent(msg) : '';
+    const mailUrl = mail ? 'mailto:' + mail + '?subject=Liquidaci%C3%B3n+' + encodeURIComponent(_PERIODO) + '&body=' + encodeURIComponent(msg) : '';
+    if (waUrl) _waLinks.push(waUrl);
+
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td><strong>${tr.dataset.unidad}</strong></td>
+      <td>${tr.dataset.nombre || '—'}</td>
+      <td class="text-center">
+        ${waCh ? (waUrl
+          ? `<a href="${waUrl}" target="_blank" class="btn btn-sm btn-success"><i class="bi bi-whatsapp"></i></a>`
+          : `<span class="text-muted small">Sin celular</span>`) : '—'}
+      </td>
+      <td class="text-center">
+        ${mailCh ? (mailUrl
+          ? `<a href="${mailUrl}" class="btn btn-sm btn-primary"><i class="bi bi-envelope-fill"></i></a>`
+          : `<span class="text-muted small">Sin mail</span>`) : '—'}
+      </td>`;
+    tbody.appendChild(row);
+  });
+
+  new bootstrap.Modal(document.getElementById('modalEnvios')).show();
+}
+
+function abrirTodosWA() {
+  _waLinks.forEach((url, i) => setTimeout(() => window.open(url, '_blank'), i * 800));
+}
+</script>
+{% endblock %}

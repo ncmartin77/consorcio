@@ -49,19 +49,22 @@
             <i class="bi bi-cash-stack"></i> Caja Diaria
           </a>
         </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.endpoint == 'unidades' %}active{% endif %}"
-             href="{{ url_for('unidades') }}"
-             data-ayuda="Unidades: administrá los departamentos del edificio — propietarios, inquilinos, porcentajes de expensas y deuda inicial.">
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle {% if request.endpoint in ['unidades','plano'] %}active{% endif %}"
+             href="#" role="button" data-bs-toggle="dropdown"
+             data-ayuda="Unidades y Plano: administrá los departamentos del edificio y visualizá el estado de cada unidad.">
             <i class="bi bi-house-door"></i> Unidades
           </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.endpoint == 'plano' %}active{% endif %}"
-             href="{{ url_for('plano') }}"
-             data-ayuda="Plano: vista visual del edificio con el estado de cada unidad (al día, deuda, sin liquidar).">
-            <i class="bi bi-building"></i> Plano
-          </a>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="{{ url_for('unidades') }}"
+                   data-ayuda="Listado de unidades: propietarios, inquilinos, contactos, porcentajes y deuda inicial.">
+              <i class="bi bi-house-door"></i> Unidades Funcionales
+            </a></li>
+            <li><a class="dropdown-item" href="{{ url_for('plano') }}"
+                   data-ayuda="Plano: vista visual del edificio con el estado de cada unidad (al día, deuda, sin liquidar).">
+              <i class="bi bi-building"></i> Plano del edificio
+            </a></li>
+          </ul>
         </li>
         <li class="nav-item dropdown">
           <a class="nav-link dropdown-toggle {% if request.endpoint in ['proveedores','facturas'] %}active{% endif %}"
@@ -85,6 +88,13 @@
              href="{{ url_for('presupuestos') }}"
              data-ayuda="Presupuestos: pedidos de cotización a proveedores para trabajos del consorcio. Comparás ofertas y registrás el elegido.">
             <i class="bi bi-clipboard2-check"></i> Presupuestos
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'notificaciones' %}active{% endif %}"
+             href="{{ url_for('notificaciones') }}"
+             data-ayuda="Notificaciones: enviá mensajes y archivos a propietarios e inquilinos por WhatsApp o mail.">
+            <i class="bi bi-bell"></i> Notificaciones
           </a>
         </li>
         <li class="nav-item">
