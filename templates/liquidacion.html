@@ -365,11 +365,11 @@
               {% endif %}
               {# WhatsApp — siempre visible si la liquidación fue generada #}
               {% if liq_generada %}
-              <a href="#"
-                 onclick="event.preventDefault(); enviarWA({{ r|tojson }})"
-                 class="btn btn-sm btn-outline-success" title="Enviar por WhatsApp">
+              <button class="btn btn-sm btn-outline-success"
+                      onclick='enviarWA({{ r|tojson }})'
+                      title="Enviar por WhatsApp">
                 <i class="bi bi-whatsapp"></i>
-              </a>
+              </button>
               {% endif %}
             </td>
           </tr>
