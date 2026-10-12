@@ -569,6 +569,49 @@
   </div>
 </div>
 
+<!-- ===== MODAL SIN CELULAR ===== -->
+<div class="modal fade" id="modalSinCelular" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header bg-warning text-dark py-2">
+        <h6 class="modal-title"><i class="bi bi-exclamation-triangle-fill"></i> Sin celular configurado</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-1">La unidad <strong id="sinCelularUnidad"></strong> no tiene celular registrado.</p>
+        <p class="small text-muted mb-0">Andá a <strong>Unidades → lápiz</strong> y completá el celular del propietario o inquilino para poder enviar WhatsApp.</p>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+        <a href="{{ url_for('unidades') }}" class="btn btn-primary btn-sm">
+          <i class="bi bi-house-door"></i> Ir a Unidades
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL WHATSAPP PREVIEW ===== -->
+<div class="modal fade" id="modalWAPreview" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white py-2">
+        <h6 class="modal-title" id="waPreviewTitulo"><i class="bi bi-whatsapp"></i> Enviar por WhatsApp</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pb-2">
+        <div class="mb-2 small text-muted" id="waPreviewDestinatario"></div>
+        <textarea class="form-control" id="waPreviewTexto" rows="15"
+                  style="font-size:0.82rem;font-family:monospace;white-space:pre;resize:vertical"></textarea>
+        <small class="text-muted">Podés editar el mensaje antes de enviarlo.</small>
+      </div>
+      <div class="modal-footer py-2 gap-2" id="waPreviewBotones">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ===== MODAL NOTIFICAR A TODOS ===== -->
 <div class="modal fade" id="modalNotificarTodos" tabindex="-1">
   <div class="modal-dialog modal-lg">
@@ -804,49 +847,94 @@ function fmt(n) {
   return '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
+function _buildWAMensaje(r, nombre) {
+  const tipo = r.tipo_pago || 'PENDIENTE';
+  let L = [];
+  L.push(`🏢 *${_WA_EDIFICIO}*`);
+  L.push(`📅 Período: ${_WA_PERIODO}`);
+  L.push('');
+  if (nombre) L.push(`Estimado/a *${nombre}*,`);
+  L.push(`Le informamos el estado de su Unidad *${r.unidad}*:`);
+  L.push('');
+  if (tipo === 'TOTAL') {
+    L.push(`✅ *Pago registrado: ${fmt(r.monto_pagado)}*`);
+    L.push('¡Muchas gracias por su pago!');
+  } else if (tipo === 'PARCIAL') {
+    L.push(`💰 Total del período:  ${fmt(r.total_a_pagar)}`);
+    L.push(`✅ Abonado:            ${fmt(r.monto_pagado)}`);
+    L.push('─────────────────────');
+    L.push(`⚠️ *Saldo pendiente: ${fmt(r.saldo_pendiente)}*`);
+  } else {
+    if (r.expensas > 0)       L.push(`💰 Expensas del mes:   ${fmt(r.expensas)}`);
+    if (r.deuda_anterior > 0) L.push(`📋 Deuda anterior:     ${fmt(r.deuda_anterior)}`);
+    if (r.interes > 0)        L.push(`📈 Interés mora:        ${fmt(r.interes)}`);
+    if (r.extras > 0)         L.push(`➕ Cargos extra:        ${fmt(r.extras)}`);
+    L.push('─────────────────────');
+    L.push(`🔴 *Total a pagar: ${fmt(r.total_a_pagar)}*`);
+  }
+  L.push('');
+  if (_WA_DIA_VENC) L.push(`📆 Vencimiento: día ${_WA_DIA_VENC}`);
+  if (_WA_ALIAS)    L.push(`🏦 Transferencia: ${_WA_ALIAS}`);
+  L.push('');
+  L.push(`_Administración — ${_WA_EDIFICIO}_`);
+  return L.join('\n');
+}
+
 function enviarWA(r) {
   const u = _unidades_map[String(r.unidad)] || {};
   const dest = u.envio_destinatario || 'propietario';
-  const tipo = r.tipo_pago || 'PENDIENTE';
 
-  let numeros = [];
+  let destinatarios = [];
   if (dest === 'propietario' || dest === 'ambos') {
-    if (u.propietario_celular) numeros.push(u.propietario_celular.replace(/\D/g,''));
+    const cel = (u.propietario_celular || '').replace(/\D/g,'');
+    if (cel) destinatarios.push({ num: cel, nombre: u.propietario || 'Propietario' });
   }
   if (dest === 'inquilino' || dest === 'ambos') {
-    if (u.inquilino_celular) numeros.push(u.inquilino_celular.replace(/\D/g,''));
+    const cel = (u.inquilino_celular || '').replace(/\D/g,'');
+    if (cel) destinatarios.push({ num: cel, nombre: u.inquilino || 'Inquilino' });
   }
 
-  if (!numeros.length) {
-    alert('⚠️ La unidad ' + r.unidad + ' no tiene celular configurado.\n\nAndá a Unidades → Editar unidad y completá el campo "Celular propietario" o "Celular inquilino".');
+  if (!destinatarios.length) {
+    const sinCelular = document.getElementById('modalSinCelular');
+    if (sinCelular) {
+      document.getElementById('sinCelularUnidad').textContent = r.unidad;
+      new bootstrap.Modal(sinCelular).show();
+    } else {
+      alert('⚠️ La unidad ' + r.unidad + ' no tiene celular configurado.\nAndá a Unidades → lápiz → completá el celular del propietario o inquilino.');
+    }
     return;
   }
 
-  let lineas = [
-    `*${_WA_EDIFICIO}*`,
-    `📅 Liquidación ${_WA_PERIODO}`,
-    `🏠 Unidad: *${r.unidad}*`,
-    '',
-  ];
-  if (tipo === 'TOTAL') {
-    lineas.push(`✅ Pago registrado: *${fmt(r.monto_pagado)}*`);
-  } else if (tipo === 'PARCIAL') {
-    lineas.push(`💰 Total: ${fmt(r.total_a_pagar)}`);
-    lineas.push(`✅ Pagado: ${fmt(r.monto_pagado)}`);
-    lineas.push(`⚠️ Saldo pendiente: *${fmt(r.saldo_pendiente)}*`);
-  } else {
-    lineas.push(`💰 Expensas: ${fmt(r.expensas)}`);
-    if (r.deuda_anterior > 0) lineas.push(`⚠️ Deuda anterior: ${fmt(r.deuda_anterior)}`);
-    if (r.interes > 0)        lineas.push(`📈 Interés mora: ${fmt(r.interes)}`);
-    if (r.extras > 0)         lineas.push(`➕ Cargos extra: ${fmt(r.extras)}`);
-    lineas.push(`🔴 *Total a pagar: ${fmt(r.total_a_pagar)}*`);
-    lineas.push(`📆 Vencimiento: día ${_WA_DIA_VENC}`);
-    if (_WA_ALIAS) lineas.push(`🏦 Alias/CBU: ${_WA_ALIAS}`);
-  }
-  const texto = lineas.join('\n');
-  numeros.forEach(num => {
-    window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(texto), '_blank');
+  const nombrePrincipal = destinatarios[0].nombre;
+  const texto = _buildWAMensaje(r, nombrePrincipal);
+
+  // Título
+  document.getElementById('waPreviewTitulo').innerHTML =
+    '<i class="bi bi-whatsapp"></i> Unidad ' + r.unidad + ' — ' + destinatarios.map(d=>d.nombre).join(' / ');
+
+  // Info destinatario
+  document.getElementById('waPreviewDestinatario').innerHTML =
+    destinatarios.map(d => `<i class="bi bi-phone-fill text-success"></i> <strong>${d.nombre}</strong>: ${d.num}`).join('&nbsp;&nbsp;');
+
+  // Mensaje editable
+  document.getElementById('waPreviewTexto').value = texto;
+
+  // Botones: uno por destinatario
+  const footer = document.getElementById('waPreviewBotones');
+  footer.innerHTML = '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>';
+  destinatarios.forEach(d => {
+    const label = destinatarios.length > 1 ? d.nombre : 'Abrir WhatsApp';
+    footer.innerHTML += `<button class="btn btn-success btn-sm" onclick="abrirWA('${d.num}')">
+      <i class="bi bi-whatsapp"></i> ${label}
+    </button>`;
   });
+
+  new bootstrap.Modal(document.getElementById('modalWAPreview')).show();
+}
+
+function abrirWA(num) {
+  const texto = document.getElementById('waPreviewTexto').value;
+  window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(texto), '_blank');
 }
 </script>
 {% endblock %}
