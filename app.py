@@ -697,8 +697,13 @@ def generar_liquidacion(periodo):
             "danger"
         )
         return redirect(url_for("gastos", periodo=db._prev_periodo(periodo)))
-    db.generar_liquidacion(periodo)
-    flash(f"Liquidación generada/actualizada para {periodo}.", "success")
+    try:
+        db.generar_liquidacion(periodo)
+        flash(f"Liquidación generada/actualizada para {periodo}.", "success")
+    except Exception as e:
+        import traceback
+        flash(f"Error al generar liquidación: {type(e).__name__}: {e}", "danger")
+        app.logger.error(f"Error en generar_liquidacion({periodo}): {traceback.format_exc()}")
     return redirect(url_for("liquidacion", periodo=periodo))
 
 
