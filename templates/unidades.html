@@ -266,5 +266,15 @@ document.getElementById('modalUnidad').addEventListener('hidden.bs.modal', funct
   }
   {% endfor %}
 });
+
+// Auto-abrir modal si viene ?editar=NUMERO desde otra página
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const editarNum = params.get('editar');
+  if (!editarNum) return;
+  const todas = {{ unidades | tojson }};
+  const u = todas.find(u => String(u.numero) === editarNum);
+  if (u) setTimeout(() => editarUnidad(u), 300);
+})();
 </script>
 {% endblock %}

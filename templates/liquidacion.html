@@ -583,9 +583,9 @@
       </div>
       <div class="modal-footer py-2">
         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
-        <a href="{{ url_for('unidades') }}" class="btn btn-primary btn-sm">
-          <i class="bi bi-house-door"></i> Ir a Unidades
-        </a>
+        <button class="btn btn-primary btn-sm" onclick="irAEditarUnidad()">
+          <i class="bi bi-pencil-fill"></i> Editar contacto
+        </button>
       </div>
     </div>
   </div>
@@ -935,6 +935,11 @@ function enviarWA(r) {
 function abrirWA(num) {
   const texto = document.getElementById('waPreviewTexto').value;
   window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(texto), '_blank');
+}
+
+function irAEditarUnidad() {
+  const num = document.getElementById('sinCelularUnidad').textContent;
+  window.location.href = '{{ url_for("unidades") }}?editar=' + encodeURIComponent(num);
 }
 </script>
 {% endblock %}
