@@ -1358,18 +1358,16 @@ def rollback_checkpoint() -> bool:
                 for row_data in rows:
                     cur.execute(sql, [row_data[col] for col in cols])
 
-            # Resetear sequences al max id restaurado
+            # Resetear sequences al max id real de toda la tabla (no solo del snapshot)
             for table in _CHECKPOINT_TABLES:
                 if table in _TABLES_NO_ID:
-                    continue
-                rows = snapshot.get(table, [])
-                ids = [r["id"] for r in rows if r.get("id") is not None]
-                if not ids:
                     continue
                 cur.execute("SELECT pg_get_serial_sequence(%s, 'id')", (table,))
                 seq = cur.fetchone()
                 if seq and seq[0]:
-                    cur.execute("SELECT setval(%s, %s)", (seq[0], max(ids)))
+                    cur.execute(f"SELECT COALESCE(MAX(id), 1) FROM {table}")
+                    table_max = cur.fetchone()[0]
+                    cur.execute("SELECT setval(%s, %s)", (seq[0], table_max))
 
     _exec("DELETE FROM checkpoints WHERE consorcio_id = %s", (cid,))
     return True
