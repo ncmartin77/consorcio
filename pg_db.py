@@ -551,11 +551,13 @@ def generar_liquidacion(periodo: str):
             expensas_ya += expensas
 
         prev_row = prev_liq.get(numero)
+        es_deuda_inicial = False
         if not prev_row:
             try:
                 deuda_anterior = float(u.get("deuda_inicial") or 0)
             except (ValueError, TypeError):
                 deuda_anterior = 0.0
+            es_deuda_inicial = True  # primer mes: no aplicar interés sobre saldo inicial
         elif prev_row["pagado"] == 1:
             deuda_anterior = 0.0
         elif prev_row.get("tipo_pago") == "PARCIAL":
@@ -567,7 +569,7 @@ def generar_liquidacion(periodo: str):
         monto_pagado = float(pago.get("monto_pagado") or 0)
         fecha_pago_str = pago.get("fecha_pago", "")
 
-        interes_deuda = round(deuda_anterior * tasa_mora, 2)
+        interes_deuda = 0.0 if es_deuda_inicial else round(deuda_anterior * tasa_mora, 2)
         mora_corriente = 0.0
         if fecha_vencimiento and hoy > fecha_vencimiento and monto_pagado == 0:
             mora_corriente = round(expensas * tasa_mora, 2)
