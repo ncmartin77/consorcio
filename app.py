@@ -538,6 +538,7 @@ def caja(periodo=None):
     # Saldo acumulado total (incluye todos los períodos anteriores)
     saldo_acumulado, _, _ = db.get_saldo_caja()
     saldo_anterior = round(saldo_acumulado - saldo_mes, 2)
+    ultimo_movimiento = db.get_ultimo_movimiento_caja()
     return render_template("caja.html",
                            movimientos=movimientos,
                            periodo=periodo,
@@ -546,7 +547,8 @@ def caja(periodo=None):
                            saldo=saldo_mes,
                            saldo_anterior=saldo_anterior,
                            saldo_acumulado=saldo_acumulado,
-                           liq_cerrada=liq_cerrada)
+                           liq_cerrada=liq_cerrada,
+                           ultimo_movimiento=ultimo_movimiento)
 
 
 @app.route("/caja/save", methods=["POST"])
@@ -584,6 +586,26 @@ def delete_movimiento(row_num, periodo):
         flash("No se puede eliminar: la liquidación del período correspondiente está cerrada.", "danger")
     else:
         flash("Movimiento eliminado.", "success")
+    return redirect(url_for("caja", periodo=periodo))
+
+
+@app.route("/caja/eliminar-ultimo", methods=["POST"])
+def eliminar_ultimo_movimiento():
+    periodo = request.form.get("periodo", _periodo_actual())
+    ultimo = db.get_ultimo_movimiento_caja()
+    if not ultimo:
+        flash("No hay movimientos para eliminar.", "warning")
+        return redirect(url_for("caja", periodo=periodo))
+    ok = db.delete_movimiento(ultimo["id"])
+    if ok is False:
+        flash(f"No se puede eliminar: la liquidación del período {ultimo['fecha'][:7]} está cerrada.", "danger")
+    else:
+        signo = "+" if ultimo["tipo"] == "ENTRADA" else "-"
+        flash(
+            f"Último movimiento eliminado: {ultimo['descripcion']} "
+            f"({signo}${ultimo['importe']:,.2f})",
+            "success"
+        )
     return redirect(url_for("caja", periodo=periodo))
 
 

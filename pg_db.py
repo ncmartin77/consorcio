@@ -430,6 +430,24 @@ def delete_movimiento(row_num: int) -> bool:
     return True
 
 
+def get_ultimo_movimiento_caja() -> dict | None:
+    row = _fetchone(
+        "SELECT id, fecha, descripcion, tipo, categoria, importe FROM caja "
+        "WHERE consorcio_id=%s ORDER BY id DESC LIMIT 1",
+        (_cid(),)
+    )
+    if not row:
+        return None
+    return {
+        "id": row["id"],
+        "fecha": row["fecha"].strftime("%Y-%m-%d") if row["fecha"] else "",
+        "descripcion": row["descripcion"] or "",
+        "tipo": row["tipo"] or "",
+        "categoria": row["categoria"] or "",
+        "importe": float(row["importe"]),
+    }
+
+
 # ── Liquidaciones ─────────────────────────────────────────────────────────────
 
 def _liq_row(r) -> dict:

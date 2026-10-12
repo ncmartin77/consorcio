@@ -4,7 +4,8 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h4><i class="bi bi-receipt-cutoff"></i> Facturas de Proveedores</h4>
-  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalFac">
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalFac"
+          data-ayuda="Registrá una nueva factura de proveedor: importe, descripción, categoría y opcionalmente adjuntá el comprobante PDF.">
     <i class="bi bi-plus-circle"></i> Nueva Factura
   </button>
 </div>
@@ -85,13 +86,15 @@
               <a href="{{ url_for('ver_comprobante', fid=f.id) }}"
                  class="btn btn-sm btn-outline-info"
                  target="_blank"
-                 title="Ver comprobante PDF">
+                 title="Ver comprobante PDF"
+                 data-ayuda="Ver el comprobante PDF adjunto de esta factura en el navegador.">
                 <i class="bi bi-file-earmark-pdf"></i>
               </a>
               {% endif %}
               <button class="btn btn-sm btn-outline-secondary"
                       onclick="abrirUpload({{ f.id }})"
-                      title="{{ 'Reemplazar comprobante' if f.get('archivo_pdf') else 'Adjuntar comprobante' }}">
+                      title="{{ 'Reemplazar comprobante' if f.get('archivo_pdf') else 'Adjuntar comprobante' }}"
+                      data-ayuda="{% if f.get('archivo_pdf') %}Reemplazá el comprobante PDF adjunto a esta factura.{% else %}Adjuntá el comprobante PDF o imagen de esta factura (se convierte a PDF automáticamente).{% endif %}">
                 <i class="bi bi-upload"></i>
               </button>
             </td>
@@ -99,7 +102,8 @@
               {% if f.estado == 'PENDIENTE' %}
               <button class="btn btn-sm btn-success me-1"
                       onclick="pagarFactura({{ f.id }}, '{{ f.proveedor_nombre }}', {{ f.importe }}, '{{ f.fecha }}')"
-                      title="Marcar como pagada">
+                      title="Marcar como pagada"
+                      data-ayuda="Marcá esta factura como pagada: registrá la fecha de pago y generá el movimiento de salida en Caja Diaria.">
                 <i class="bi bi-check-circle"></i> Pagar
               </button>
               {% endif %}

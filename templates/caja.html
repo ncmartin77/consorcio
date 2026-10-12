@@ -8,11 +8,24 @@
     <input type="month" class="form-control form-control-sm" id="periodoSelector"
            value="{{ periodo }}">
     {% if not liq_cerrada %}
-    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalMov">
+    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalMov"
+            data-ayuda="Registrá una nueva entrada o salida de dinero en la caja del consorcio">
       <i class="bi bi-plus-circle"></i> Agregar
     </button>
     {% else %}
     <span class="badge bg-danger fs-6"><i class="bi bi-lock-fill"></i> Período Cerrado</span>
+    {% endif %}
+    {% if ultimo_movimiento %}
+    <form method="POST" action="{{ url_for('eliminar_ultimo_movimiento') }}"
+          onsubmit="return confirm('¿Eliminar el último movimiento?\n\n{{ ultimo_movimiento.tipo }}: {{ ultimo_movimiento.descripcion }} (${{ '%.2f'|format(ultimo_movimiento.importe) }})\nFecha: {{ ultimo_movimiento.fecha[8:10] }}/{{ ultimo_movimiento.fecha[5:7] }}/{{ ultimo_movimiento.fecha[:4] }}')"
+          class="d-inline">
+      <input type="hidden" name="periodo" value="{{ periodo }}">
+      <button type="submit" class="btn btn-outline-danger btn-sm"
+              title="Último: {{ ultimo_movimiento.descripcion }} ({{ ultimo_movimiento.tipo }})"
+              data-ayuda="Eliminá el último movimiento registrado en la caja: {{ ultimo_movimiento.descripcion }} — {{ ultimo_movimiento.tipo }} ${{ '%.2f'|format(ultimo_movimiento.importe) }} del {{ ultimo_movimiento.fecha[8:10] }}/{{ ultimo_movimiento.fecha[5:7] }}/{{ ultimo_movimiento.fecha[:4] }}">
+        <i class="bi bi-arrow-counterclockwise"></i> Deshacer último
+      </button>
+    </form>
     {% endif %}
   </div>
 </div>
