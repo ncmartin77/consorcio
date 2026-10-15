@@ -81,6 +81,68 @@ def _set_consorcio():
         return redirect(url_for("consorcios"))
 
 
+# Descripción legible de cada acción para el log de auditoría
+_DESC_AUDITORIA = {
+    "config": "Configuración: guardar",
+    "add_gasto_recurrente": "Configuración: agregar gasto recurrente",
+    "delete_gasto_recurrente": "Configuración: eliminar gasto recurrente",
+    "add_categoria": "Configuración: agregar categoría",
+    "delete_categoria": "Configuración: eliminar categoría",
+    "save_unidad": "Unidades: guardar unidad",
+    "save_unidad_envio": "Unidades: cambiar envío",
+    "delete_unidad": "Unidades: eliminar unidad",
+    "save_gasto": "Gastos: guardar gasto",
+    "delete_gasto": "Gastos: eliminar gasto",
+    "tareas_add": "Tareas: agregar",
+    "tareas_delete": "Tareas: completar/eliminar",
+    "save_movimiento": "Caja: guardar movimiento",
+    "delete_movimiento": "Caja: eliminar movimiento",
+    "eliminar_ultimo_movimiento": "Caja: eliminar último movimiento",
+    "generar_liquidacion": "Liquidación: generar",
+    "cerrar_liquidacion": "Liquidación: cerrar",
+    "pagar_todo": "Liquidación: pago completo",
+    "marcar_pagado": "Liquidación: registrar pago",
+    "notas_add": "Liquidación: agregar nota",
+    "notas_delete": "Liquidación: eliminar nota",
+    "extras_add": "Liquidación: agregar gasto extra",
+    "extras_delete": "Liquidación: eliminar gasto extra",
+    "save_proveedor": "Proveedores: guardar",
+    "delete_proveedor": "Proveedores: eliminar",
+    "save_factura": "Facturas: guardar",
+    "pagar_factura": "Facturas: pagar",
+    "delete_factura": "Facturas: eliminar",
+    "upload_comprobante": "Facturas: adjuntar comprobante",
+    "save_pedido": "Presupuestos: guardar pedido",
+    "delete_pedido": "Presupuestos: eliminar pedido",
+    "save_cotizacion": "Presupuestos: guardar cotización",
+    "seleccionar_cotizacion": "Presupuestos: seleccionar cotización",
+    "delete_cotizacion": "Presupuestos: eliminar cotización",
+    "apertura": "Apertura: guardar saldos iniciales",
+    "reset_datos": "Configuración: resetear datos",
+    "rollback_checkpoint": "Checkpoint: rollback",
+}
+
+
+@app.before_request
+def _contexto_auditoria():
+    """Agrupa todos los cambios en la BD de este request bajo una misma operación."""
+    if request.endpoint in _PUBLIC_ENDPOINTS or request.endpoint is None:
+        return
+    try:
+        db.ensure_auditoria()
+    except Exception as exc:
+        app.logger.warning(f"[Auditoría] No se pudo inicializar: {exc}")
+    desc = _DESC_AUDITORIA.get(request.endpoint, request.endpoint)
+    if request.view_args:
+        desc += " (" + ", ".join(f"{k}: {v}" for k, v in request.view_args.items()) + ")"
+    db.set_contexto_auditoria(session.get("usuario_email", ""), desc)
+
+
+@app.teardown_request
+def _fin_auditoria(exc):
+    db.limpiar_contexto_auditoria()
+
+
 @app.context_processor
 def inject_version():
     try:
@@ -284,6 +346,52 @@ def admin_set_permisos(uid):
     db.set_permisos_consorcio(uid, request.form.getlist("consorcio_ids"))
     flash("Permisos actualizados.", "success")
     return redirect(url_for("admin_usuarios"))
+
+
+# ---------------------------------------------------------------------------
+# AUDITORÍA (sólo administradores)
+# ---------------------------------------------------------------------------
+
+_AUDIT_POR_PAGINA = 50
+
+
+@app.route("/admin/auditoria")
+def auditoria():
+    block = _require_admin()
+    if block:
+        return block
+    pagina = max(request.args.get("pagina", 1, type=int), 1)
+    usuario = request.args.get("usuario", "")
+    tabla = request.args.get("tabla", "")
+    ops = db.get_operaciones_auditoria(_AUDIT_POR_PAGINA, (pagina - 1) * _AUDIT_POR_PAGINA, usuario, tabla)
+    hay_mas = len(ops) > _AUDIT_POR_PAGINA
+    return render_template(
+        "auditoria.html", ops=ops[:_AUDIT_POR_PAGINA], pagina=pagina, hay_mas=hay_mas,
+        usuario=usuario, tabla=tabla, usuarios=db.get_usuarios_auditoria(),
+        tablas=db._TABLAS_AUDITADAS,
+    )
+
+
+@app.route("/admin/auditoria/<op_id>")
+def auditoria_detalle(op_id):
+    block = _require_admin()
+    if block:
+        return block
+    cambios = db.get_detalle_operacion(op_id)
+    if not cambios:
+        flash("Operación no encontrada.", "warning")
+        return redirect(url_for("auditoria"))
+    return render_template("auditoria_detalle.html", op_id=op_id, cambios=cambios)
+
+
+@app.route("/admin/auditoria/<op_id>/revertir", methods=["POST"])
+def auditoria_revertir(op_id):
+    block = _require_admin()
+    if block:
+        return block
+    ok, msg = db.revertir_operacion(op_id, session.get("usuario_email", ""))
+    flash(msg, "success" if ok else "danger")
+    return redirect(request.referrer or url_for("auditoria"))
 
 
 # ---------------------------------------------------------------------------

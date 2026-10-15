@@ -9,11 +9,15 @@ import secrets
 import hashlib
 import hmac as _hmac
 import calendar as _calendar
+import json
+import uuid
 from contextlib import contextmanager
 from datetime import date, datetime
 
 import psycopg2
+import psycopg2.errors
 import psycopg2.extras
+from psycopg2 import sql as _sql
 from psycopg2.pool import ThreadedConnectionPool
 
 # ── Entorno ───────────────────────────────────────────────────────────────────
@@ -80,10 +84,12 @@ def _get_pool() -> ThreadedConnectionPool:
 
 
 @contextmanager
-def _conn():
+def _conn(write: bool = True):
     pool = _get_pool()
     c = pool.getconn()
     try:
+        if write:
+            _aplicar_contexto_auditoria(c)
         yield c
         c.commit()
     except Exception:
@@ -94,14 +100,14 @@ def _conn():
 
 
 def _fetchall(sql: str, params=()):
-    with _conn() as c:
+    with _conn(write=False) as c:
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, params)
             return cur.fetchall()
 
 
 def _fetchone(sql: str, params=()):
-    with _conn() as c:
+    with _conn(write=False) as c:
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, params)
             return cur.fetchone()
@@ -1452,3 +1458,265 @@ def get_consorcios_usuario(uid: int) -> list:
         return [c["id"] for c in list_consorcios()]
     rows = _fetchall("SELECT consorcio_id FROM permisos_consorcio WHERE usuario_id = %s", (uid,))
     return [r["consorcio_id"] for r in rows]
+
+
+# ── Auditoría (log de movimientos con reversión) ──────────────────────────────
+#
+# Cada INSERT/UPDATE/DELETE en las tablas de negocio queda registrado en
+# audit_log por un trigger de PostgreSQL, con la fila completa antes/después
+# (JSONB). Todos los cambios de un mismo request HTTP comparten un op_id, que
+# la app pasa a la transacción con set_config('app.audit_op', ...). Revertir
+# una operación aplica los cambios inversos en orden contrario, en una sola
+# transacción: si alguna fila fue modificada después, no se revierte nada.
+
+_TABLAS_AUDITADAS = [
+    "caja", "categorias", "config", "facturas", "gastos", "gastos_extra",
+    "gastos_recurrentes", "liquidaciones", "liquidaciones_estado", "notas_periodo",
+    "pedidos", "presupuestos", "proveedores", "tareas", "unidades", "unidad_porcentajes",
+]
+_AUDIT_DIAS_RETENCION = 180
+
+_audit_ready = False
+_audit_lock = threading.Lock()
+
+
+class ConflictoReversion(Exception):
+    pass
+
+
+def set_contexto_auditoria(usuario_email: str, descripcion: str):
+    """Inicia una operación auditable para el request actual (thread-local)."""
+    _tls.audit = {
+        "op": uuid.uuid4().hex,
+        "usuario": usuario_email or "",
+        "desc": (descripcion or "")[:300],
+    }
+
+
+def limpiar_contexto_auditoria():
+    _tls.audit = None
+
+
+def _aplicar_contexto_auditoria(c):
+    ctx = getattr(_tls, "audit", None)
+    if not ctx:
+        return
+    with c.cursor() as cur:
+        cur.execute(
+            "SELECT set_config('app.audit_op', %s, true), set_config('app.audit_usuario', %s, true), "
+            "set_config('app.audit_desc', %s, true), set_config('app.audit_consorcio', %s, true)",
+            (ctx["op"], ctx["usuario"], ctx["desc"], getattr(_tls, "consorcio_id", "") or ""),
+        )
+
+
+def ensure_auditoria():
+    """Crea (idempotente) la tabla audit_log, la función y los triggers. Una vez por proceso."""
+    global _audit_ready
+    if _audit_ready:
+        return
+    with _audit_lock:
+        if _audit_ready:
+            return
+        with _conn(write=False) as c:
+            with c.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS audit_log (
+                        id            BIGSERIAL PRIMARY KEY,
+                        op_id         TEXT NOT NULL,
+                        fecha         TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        tabla         TEXT NOT NULL,
+                        accion        TEXT NOT NULL,
+                        datos_antes   JSONB,
+                        datos_despues JSONB,
+                        usuario_email TEXT,
+                        consorcio_id  TEXT,
+                        descripcion   TEXT,
+                        revertida_en  TIMESTAMPTZ,
+                        revertida_por TEXT,
+                        revertida_op  TEXT
+                    );
+                    CREATE INDEX IF NOT EXISTS audit_log_op_idx ON audit_log (op_id);
+                    CREATE INDEX IF NOT EXISTS audit_log_cons_fecha_idx ON audit_log (consorcio_id, fecha DESC);
+                    CREATE INDEX IF NOT EXISTS audit_log_fecha_idx ON audit_log (fecha);
+
+                    CREATE OR REPLACE FUNCTION audit_registrar() RETURNS trigger
+                    LANGUAGE plpgsql AS $$
+                    DECLARE
+                        v_antes   JSONB := CASE WHEN TG_OP <> 'INSERT' THEN to_jsonb(OLD) END;
+                        v_despues JSONB := CASE WHEN TG_OP <> 'DELETE' THEN to_jsonb(NEW) END;
+                    BEGIN
+                        -- UPSERTs que no cambian nada (ej. guardar config) no se registran
+                        IF TG_OP = 'UPDATE' AND v_antes = v_despues THEN
+                            RETURN NULL;
+                        END IF;
+                        INSERT INTO audit_log (op_id, tabla, accion, datos_antes, datos_despues,
+                                               usuario_email, consorcio_id, descripcion)
+                        VALUES (
+                            COALESCE(NULLIF(current_setting('app.audit_op', true), ''), gen_random_uuid()::text),
+                            TG_TABLE_NAME, TG_OP, v_antes, v_despues,
+                            NULLIF(current_setting('app.audit_usuario', true), ''),
+                            COALESCE(COALESCE(v_despues, v_antes)->>'consorcio_id',
+                                     NULLIF(current_setting('app.audit_consorcio', true), '')),
+                            NULLIF(current_setting('app.audit_desc', true), '')
+                        );
+                        RETURN NULL;
+                    END $$;
+                """)
+                for t in _TABLAS_AUDITADAS:
+                    cur.execute("SELECT to_regclass(%s)", (f"public.{t}",))
+                    if not cur.fetchone()[0]:
+                        continue
+                    # "zz_" para que corra después de los triggers de FK (cascadas)
+                    cur.execute(_sql.SQL(
+                        "DROP TRIGGER IF EXISTS zz_auditoria ON {t}; "
+                        "CREATE TRIGGER zz_auditoria AFTER INSERT OR UPDATE OR DELETE ON {t} "
+                        "FOR EACH ROW EXECUTE FUNCTION audit_registrar()"
+                    ).format(t=_sql.Identifier(t)))
+        _audit_ready = True
+
+
+def get_operaciones_auditoria(limite: int = 50, offset: int = 0, usuario: str = "", tabla: str = "") -> list:
+    """Operaciones (agrupadas por op_id) del consorcio activo, más recientes primero."""
+    _exec("DELETE FROM audit_log WHERE fecha < now() - make_interval(days => %s)", (_AUDIT_DIAS_RETENCION,))
+    filtros, params = ["consorcio_id = %s"], [_cid()]
+    if usuario:
+        filtros.append("usuario_email = %s")
+        params.append(usuario)
+    if tabla:
+        filtros.append("op_id IN (SELECT op_id FROM audit_log WHERE tabla = %s)")
+        params.append(tabla)
+    rows = _fetchall(f"""
+        SELECT op_id, MIN(fecha) AS fecha, MAX(usuario_email) AS usuario_email,
+               MAX(descripcion) AS descripcion, COUNT(*) AS cambios,
+               ARRAY_AGG(DISTINCT tabla) AS tablas,
+               BOOL_OR(revertida_en IS NOT NULL) AS revertida,
+               MAX(revertida_en) AS revertida_en, MAX(revertida_por) AS revertida_por
+        FROM audit_log WHERE {" AND ".join(filtros)}
+        GROUP BY op_id ORDER BY MIN(fecha) DESC, MIN(id) DESC
+        LIMIT %s OFFSET %s
+    """, (*params, limite + 1, offset))
+    return [dict(r) for r in rows]
+
+
+def get_usuarios_auditoria() -> list:
+    rows = _fetchall(
+        "SELECT DISTINCT usuario_email FROM audit_log WHERE consorcio_id=%s AND usuario_email IS NOT NULL ORDER BY 1",
+        (_cid(),),
+    )
+    return [r["usuario_email"] for r in rows]
+
+
+def get_detalle_operacion(op_id: str) -> list:
+    """Cambios de una operación, con la lista de campos modificados por fila."""
+    rows = _fetchall(
+        "SELECT * FROM audit_log WHERE op_id=%s AND consorcio_id=%s ORDER BY id",
+        (op_id, _cid()),
+    )
+    detalle = []
+    for r in rows:
+        antes, despues = r["datos_antes"] or {}, r["datos_despues"] or {}
+        claves = list(dict.fromkeys([*antes.keys(), *despues.keys()]))
+        campos = [
+            {"campo": k, "antes": antes.get(k), "despues": despues.get(k),
+             "cambio": antes.get(k) != despues.get(k)}
+            for k in claves if k != "consorcio_id"
+        ]
+        detalle.append({**dict(r), "campos": campos})
+    return detalle
+
+
+def revertir_operacion(op_id: str, usuario_email: str):
+    """
+    Deshace todos los cambios de una operación. Devuelve (ok, mensaje).
+    La reversión queda registrada como una operación nueva (que a su vez se puede revertir).
+    """
+    cid = _cid()
+    rows = _fetchall("SELECT * FROM audit_log WHERE op_id=%s ORDER BY id DESC", (op_id,))
+    if not rows:
+        return False, "Operación no encontrada."
+    if any(r["consorcio_id"] != cid for r in rows):
+        return False, "La operación pertenece a otro consorcio."
+    if any(r["revertida_en"] for r in rows):
+        return False, "La operación ya fue revertida."
+
+    desc_original = next((r["descripcion"] for r in rows if r["descripcion"]), "operación")
+    nuevo_op = uuid.uuid4().hex
+    try:
+        with _conn(write=False) as c:
+            with c.cursor() as cur:
+                cur.execute(
+                    "SELECT set_config('app.audit_op', %s, true), set_config('app.audit_usuario', %s, true), "
+                    "set_config('app.audit_desc', %s, true)",
+                    (nuevo_op, usuario_email or "", f"Reversión: {desc_original}"[:300]),
+                )
+                # Orden inverso; lo que choca con una FK (ej. hijos de un borrado en
+                # cascada) se reintenta cuando ya se aplicó el resto.
+                pendientes = list(rows)
+                while pendientes:
+                    trabados = []
+                    for r in pendientes:
+                        cur.execute("SAVEPOINT rev")
+                        try:
+                            _revertir_cambio(cur, r)
+                        except psycopg2.errors.ForeignKeyViolation:
+                            cur.execute("ROLLBACK TO SAVEPOINT rev")
+                            trabados.append(r)
+                            continue
+                        except psycopg2.IntegrityError:
+                            cur.execute("ROLLBACK TO SAVEPOINT rev")
+                            raise ConflictoReversion(
+                                f"No se puede revertir: el registro de '{r['tabla']}' ya existe "
+                                "(fue recreado por otra operación)."
+                            )
+                        cur.execute("RELEASE SAVEPOINT rev")
+                    if len(trabados) == len(pendientes):
+                        raise ConflictoReversion(
+                            "No se puede revertir: hay registros relacionados que cambiaron después. "
+                            "Revertí primero las operaciones posteriores."
+                        )
+                    pendientes = trabados
+                cur.execute(
+                    "UPDATE audit_log SET revertida_en=now(), revertida_por=%s, revertida_op=%s WHERE op_id=%s",
+                    (usuario_email or "", nuevo_op, op_id),
+                )
+    except ConflictoReversion as exc:
+        return False, str(exc)
+    return True, f"Operación revertida ({len(rows)} cambio(s))."
+
+
+def _revertir_cambio(cur, r):
+    tabla = r["tabla"]
+    if tabla not in _TABLAS_AUDITADAS:
+        raise ConflictoReversion(f"La tabla {tabla} no admite reversión.")
+    t = _sql.Identifier(tabla)
+    antes, despues = r["datos_antes"], r["datos_despues"]
+    conflicto = ConflictoReversion(
+        f"No se puede revertir: un registro de '{tabla}' fue modificado después por otra operación. "
+        "Revertí primero las operaciones posteriores."
+    )
+
+    if r["accion"] == "INSERT":
+        cur.execute(_sql.SQL("DELETE FROM {t} AS x WHERE to_jsonb(x) = %s::jsonb").format(t=t),
+                    (json.dumps(despues),))
+        if cur.rowcount != 1:
+            raise conflicto
+
+    elif r["accion"] == "DELETE":
+        cur.execute(_sql.SQL(
+            "INSERT INTO {t} OVERRIDING SYSTEM VALUE "
+            "SELECT * FROM jsonb_populate_record(NULL::{t}, %s::jsonb)"
+        ).format(t=t), (json.dumps(antes),))
+
+    elif r["accion"] == "UPDATE":
+        cols = [k for k in antes if antes.get(k) != (despues or {}).get(k)]
+        if not cols:
+            return
+        asignaciones = _sql.SQL(", ").join(
+            _sql.SQL("{c} = r.{c}").format(c=_sql.Identifier(k)) for k in cols
+        )
+        cur.execute(_sql.SQL(
+            "UPDATE {t} AS x SET {a} FROM jsonb_populate_record(NULL::{t}, %s::jsonb) AS r "
+            "WHERE to_jsonb(x) = %s::jsonb"
+        ).format(t=t, a=asignaciones), (json.dumps(antes), json.dumps(despues)))
+        if cur.rowcount != 1:
+            raise conflicto
