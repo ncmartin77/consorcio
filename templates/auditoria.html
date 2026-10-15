@@ -62,7 +62,11 @@
             <a href="{{ url_for('auditoria_detalle', op_id=op.op_id) }}" class="btn btn-sm btn-outline-primary" title="Ver detalle">
               <i class="bi bi-eye"></i>
             </a>
-            {% if not op.revertida %}
+            {% if op.bloqueada and not op.revertida %}
+            <span class="btn btn-sm btn-outline-secondary disabled" title="Afecta el período {{ op.periodo_min }} (liquidación cerrada)">
+              <i class="bi bi-lock-fill"></i>
+            </span>
+            {% elif not op.revertida %}
             <form method="post" action="{{ url_for('auditoria_revertir', op_id=op.op_id) }}" class="d-inline"
                   onsubmit="return confirm('¿Revertir esta operación ({{ op.cambios }} cambio/s)? Los datos vuelven al estado anterior.')">
               <button class="btn btn-sm btn-outline-danger" title="Revertir"><i class="bi bi-arrow-counterclockwise"></i></button>
@@ -84,7 +88,10 @@
   <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('auditoria', pagina=pagina+1, usuario=usuario, tabla=tabla) }}">Más antiguas <i class="bi bi-chevron-right"></i></a>
   {% endif %}
 </nav>
-<p class="text-muted small mt-2">Se conservan los últimos 180 días.</p>
+<p class="text-muted small mt-2">
+  Se conservan los últimos 180 días.
+  <i class="bi bi-lock-fill"></i> = afecta un período con liquidación cerrada; no se puede revertir.
+</p>
 {% else %}
 <div class="alert alert-info"><i class="bi bi-info-circle"></i> No hay movimientos registrados todavía.</div>
 {% endif %}

@@ -17,7 +17,9 @@
   {{ primero.fecha.astimezone().strftime('%d/%m/%Y %H:%M:%S') }} · {{ primero.usuario_email or '—' }} · {{ cambios|length }} cambio(s)
 </p>
 
-{% if not revertida %}
+{% if bloqueo and not revertida %}
+<div class="alert alert-secondary"><i class="bi bi-lock-fill"></i> {{ bloqueo }}</div>
+{% elif not revertida %}
 <form method="post" action="{{ url_for('auditoria_revertir', op_id=op_id) }}" class="mb-3"
       onsubmit="return confirm('¿Revertir esta operación? Los datos vuelven al estado anterior.')">
   <button class="btn btn-danger"><i class="bi bi-arrow-counterclockwise"></i> Revertir operación</button>

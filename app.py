@@ -381,7 +381,8 @@ def auditoria_detalle(op_id):
     if not cambios:
         flash("Operación no encontrada.", "warning")
         return redirect(url_for("auditoria"))
-    return render_template("auditoria_detalle.html", op_id=op_id, cambios=cambios)
+    return render_template("auditoria_detalle.html", op_id=op_id, cambios=cambios,
+                           bloqueo=db.get_bloqueo_operacion(op_id))
 
 
 @app.route("/admin/auditoria/<op_id>/revertir", methods=["POST"])

@@ -1484,6 +1484,33 @@ class ConflictoReversion(Exception):
     pass
 
 
+def _sql_periodo_fila(col: str) -> str:
+    """
+    Período de liquidación al que pertenece una fila auditada (NULL si no aplica).
+    Gastos del mes P alimentan la liquidación de P+1 (mes vencido).
+    """
+    return f"""CASE
+        WHEN tabla IN ('liquidaciones','liquidaciones_estado','gastos_extra','notas_periodo')
+            THEN {col}->>'periodo'
+        WHEN tabla = 'caja' THEN LEFT({col}->>'fecha', 7)
+        WHEN tabla = 'gastos' AND {col}->>'periodo' ~ '^[0-9]{{4}}-[0-9]{{2}}$'
+            THEN to_char(to_date({col}->>'periodo', 'YYYY-MM') + interval '1 month', 'YYYY-MM')
+    END"""
+
+
+# Período más antiguo que toca cada fila (antes o después del cambio)
+_SQL_PERIODO = f"LEAST({_sql_periodo_fila('datos_antes')}, {_sql_periodo_fila('datos_despues')})"
+
+
+def get_ultima_liq_cerrada() -> str:
+    """Último período con liquidación CERRADA del consorcio activo ('' si ninguno)."""
+    row = _fetchone(
+        "SELECT MAX(periodo) AS p FROM liquidaciones_estado WHERE consorcio_id=%s AND estado='CERRADA'",
+        (_cid(),),
+    )
+    return (row and row["p"]) or ""
+
+
 def set_contexto_auditoria(usuario_email: str, descripcion: str):
     """Inicia una operación auditable para el request actual (thread-local)."""
     _tls.audit = {
@@ -1590,12 +1617,17 @@ def get_operaciones_auditoria(limite: int = 50, offset: int = 0, usuario: str = 
                MAX(descripcion) AS descripcion, COUNT(*) AS cambios,
                ARRAY_AGG(DISTINCT tabla) AS tablas,
                BOOL_OR(revertida_en IS NOT NULL) AS revertida,
-               MAX(revertida_en) AS revertida_en, MAX(revertida_por) AS revertida_por
+               MAX(revertida_en) AS revertida_en, MAX(revertida_por) AS revertida_por,
+               MIN({_SQL_PERIODO}) AS periodo_min
         FROM audit_log WHERE {" AND ".join(filtros)}
         GROUP BY op_id ORDER BY MIN(fecha) DESC, MIN(id) DESC
         LIMIT %s OFFSET %s
     """, (*params, limite + 1, offset))
-    return [dict(r) for r in rows]
+    ultima = get_ultima_liq_cerrada()
+    return [
+        {**dict(r), "bloqueada": bool(ultima and r["periodo_min"] and r["periodo_min"] <= ultima)}
+        for r in rows
+    ]
 
 
 def get_usuarios_auditoria() -> list:
@@ -1625,6 +1657,23 @@ def get_detalle_operacion(op_id: str) -> list:
     return detalle
 
 
+def get_bloqueo_operacion(op_id: str) -> str:
+    """
+    Motivo por el que la operación no se puede revertir por tocar un período con
+    liquidación cerrada ('' si se puede). Sólo se revierte lo posterior a la última cerrada.
+    """
+    ultima = get_ultima_liq_cerrada()
+    if not ultima:
+        return ""
+    p = _fetchone(f"SELECT MIN({_SQL_PERIODO}) AS p FROM audit_log WHERE op_id=%s", (op_id,))["p"]
+    if p and p <= ultima:
+        return (
+            f"No se puede revertir: afecta el período {p} y la liquidación está cerrada "
+            f"hasta {ultima}. Sólo se pueden revertir cambios posteriores a la última liquidación cerrada."
+        )
+    return ""
+
+
 def revertir_operacion(op_id: str, usuario_email: str):
     """
     Deshace todos los cambios de una operación. Devuelve (ok, mensaje).
@@ -1638,6 +1687,9 @@ def revertir_operacion(op_id: str, usuario_email: str):
         return False, "La operación pertenece a otro consorcio."
     if any(r["revertida_en"] for r in rows):
         return False, "La operación ya fue revertida."
+    bloqueo = get_bloqueo_operacion(op_id)
+    if bloqueo:
+        return False, bloqueo
 
     desc_original = next((r["descripcion"] for r in rows if r["descripcion"]), "operación")
     nuevo_op = uuid.uuid4().hex
