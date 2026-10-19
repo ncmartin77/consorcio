@@ -4,6 +4,7 @@ Misma API pública que excel_db.py — reemplaza completamente al Excel como BD.
 Requiere: psycopg2-binary, variable de entorno DATABASE_URL.
 """
 import os
+import re
 import threading
 import secrets
 import hashlib
@@ -448,11 +449,46 @@ def save_movimiento(fecha: str, descripcion: str, tipo: str, categoria: str, imp
         )
 
 
+def _revertir_pago(periodo: str, unidad: str, monto: float):
+    """Revierte un pago de expensas en liquidaciones al eliminar su movimiento de caja."""
+    row = _fetchone(
+        "SELECT total_a_pagar, monto_pagado FROM liquidaciones "
+        "WHERE consorcio_id=%s AND periodo=%s AND unidad=%s",
+        (_cid(), periodo, str(unidad))
+    )
+    if not row or not row["monto_pagado"]:
+        return
+    total_a_pagar = float(row["total_a_pagar"]) if row["total_a_pagar"] else 0.0
+    nuevo_monto = round(float(row["monto_pagado"]) - monto, 2)
+    if nuevo_monto <= 0:
+        _exec(
+            "UPDATE liquidaciones SET pagado=%s, monto_pagado=%s, tipo_pago=%s, "
+            "saldo_pendiente=%s, fecha_pago=%s "
+            "WHERE consorcio_id=%s AND periodo=%s AND unidad=%s",
+            (False, 0.0, "PENDIENTE", total_a_pagar, None, _cid(), periodo, str(unidad))
+        )
+    else:
+        _exec(
+            "UPDATE liquidaciones SET pagado=%s, monto_pagado=%s, tipo_pago=%s, saldo_pendiente=%s "
+            "WHERE consorcio_id=%s AND periodo=%s AND unidad=%s",
+            (False, nuevo_monto, "PARCIAL", round(total_a_pagar - nuevo_monto, 2),
+             _cid(), periodo, str(unidad))
+        )
+
+
 def delete_movimiento(row_num: int) -> bool:
-    row = _fetchone("SELECT fecha FROM caja WHERE id=%s AND consorcio_id=%s", (row_num, _cid()))
+    row = _fetchone(
+        "SELECT fecha, categoria, descripcion, importe FROM caja "
+        "WHERE id=%s AND consorcio_id=%s",
+        (row_num, _cid())
+    )
     if row and row["fecha"]:
         if liq_esta_cerrada(row["fecha"].strftime("%Y-%m")):
             return False
+        if row["categoria"] == "Expensas":
+            m = re.search(r"^Expensas (\d{4}-\d{2}).*UF (\d+)", row["descripcion"] or "")
+            if m:
+                _revertir_pago(m.group(1), m.group(2), float(row["importe"]))
     _exec("DELETE FROM caja WHERE id=%s AND consorcio_id=%s", (row_num, _cid()))
     return True
 
