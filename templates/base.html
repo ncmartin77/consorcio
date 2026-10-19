@@ -28,13 +28,15 @@
     </button>
     <div class="collapse navbar-collapse" id="navMenu">
       <ul class="navbar-nav me-auto">
+
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'gastos' %}active{% endif %}"
              href="{{ url_for('gastos') }}"
              data-ayuda="Gastos Mensuales: registrá los gastos del mes (luz, gas, limpieza, honorarios). Base para calcular las expensas del mes siguiente.">
-            <i class="bi bi-list-check"></i> Gastos Mensuales
+            <i class="bi bi-list-check"></i> Gastos
           </a>
         </li>
+
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'liquidacion' %}active{% endif %}"
              href="{{ url_for('liquidacion') }}"
@@ -42,142 +44,166 @@
             <i class="bi bi-receipt"></i> Liquidación
           </a>
         </li>
+
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'caja' %}active{% endif %}"
              href="{{ url_for('caja') }}"
              data-ayuda="Caja Diaria: registrá entradas y salidas de dinero del consorcio. Muestra el saldo acumulado en tiempo real.">
-            <i class="bi bi-cash-stack"></i> Caja Diaria
+            <i class="bi bi-cash-stack"></i> Caja
           </a>
         </li>
+
+        {# ── Edificio ── #}
         <li class="nav-item dropdown">
-          <a class="nav-link dropdown-toggle {% if request.endpoint in ['unidades','plano'] %}active{% endif %}"
+          <a class="nav-link dropdown-toggle {% if request.endpoint in ['unidades','plano','estado_cuenta','apertura'] %}active{% endif %}"
              href="#" role="button" data-bs-toggle="dropdown"
-             data-ayuda="Unidades y Plano: administrá los departamentos del edificio y visualizá el estado de cada unidad.">
-            <i class="bi bi-house-door"></i> Unidades
+             data-ayuda="Edificio: unidades funcionales, plano visual, estado de cuenta por unidad y apertura de período.">
+            <i class="bi bi-building"></i> Edificio
           </a>
           <ul class="dropdown-menu">
-            <li><a class="dropdown-item" href="{{ url_for('unidades') }}"
+            <li><a class="dropdown-item {% if request.endpoint == 'unidades' %}active{% endif %}"
+                   href="{{ url_for('unidades') }}"
                    data-ayuda="Listado de unidades: propietarios, inquilinos, contactos, porcentajes y deuda inicial.">
-              <i class="bi bi-house-door"></i> Unidades Funcionales
+              <i class="bi bi-house-door"></i> Unidades funcionales
             </a></li>
-            <li><a class="dropdown-item" href="{{ url_for('plano') }}"
+            <li><a class="dropdown-item {% if request.endpoint == 'plano' %}active{% endif %}"
+                   href="{{ url_for('plano') }}"
                    data-ayuda="Plano: vista visual del edificio con el estado de cada unidad (al día, deuda, sin liquidar).">
-              <i class="bi bi-building"></i> Plano del edificio
+              <i class="bi bi-grid"></i> Plano del edificio
+            </a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item {% if request.endpoint == 'estado_cuenta' %}active{% endif %}"
+                   href="{{ url_for('estado_cuenta') }}"
+                   data-ayuda="Estado de Cuenta: consultá el historial de pagos y saldos de cada unidad funcional.">
+              <i class="bi bi-journal-text"></i> Estado de cuenta
+            </a></li>
+            <li><a class="dropdown-item {% if request.endpoint == 'apertura' %}active{% endif %}"
+                   href="{{ url_for('apertura') }}"
+                   data-ayuda="Apertura: configurá el período inicial del consorcio y las deudas anteriores de cada unidad.">
+              <i class="bi bi-play-circle"></i> Apertura
             </a></li>
           </ul>
         </li>
+
+        {# ── Proveedores ── #}
         <li class="nav-item dropdown">
-          <a class="nav-link dropdown-toggle {% if request.endpoint in ['proveedores','facturas'] %}active{% endif %}"
+          <a class="nav-link dropdown-toggle {% if request.endpoint in ['proveedores','facturas','presupuestos','detalle_pedido'] %}active{% endif %}"
              href="#" role="button" data-bs-toggle="dropdown"
-             data-ayuda="Proveedores y Facturas: directorio de proveedores del consorcio y registro de facturas recibidas.">
+             data-ayuda="Proveedores: directorio, facturas recibidas y pedidos de presupuesto.">
             <i class="bi bi-truck"></i> Proveedores
           </a>
           <ul class="dropdown-menu">
-            <li><a class="dropdown-item" href="{{ url_for('proveedores') }}"
+            <li><a class="dropdown-item {% if request.endpoint == 'proveedores' %}active{% endif %}"
+                   href="{{ url_for('proveedores') }}"
                    data-ayuda="Listado de proveedores: nombre, CUIT, categoría, teléfono y email. Podés asociar gastos recurrentes a cada uno.">
               <i class="bi bi-people"></i> Proveedores
             </a></li>
-            <li><a class="dropdown-item" href="{{ url_for('facturas') }}"
+            <li><a class="dropdown-item {% if request.endpoint == 'facturas' %}active{% endif %}"
+                   href="{{ url_for('facturas') }}"
                    data-ayuda="Facturas recibidas de proveedores: registrá el importe, adjuntá el comprobante PDF y marcalas como pagadas.">
               <i class="bi bi-receipt-cutoff"></i> Facturas
             </a></li>
+            <li><a class="dropdown-item {% if request.endpoint in ['presupuestos','detalle_pedido'] %}active{% endif %}"
+                   href="{{ url_for('presupuestos') }}"
+                   data-ayuda="Presupuestos: pedidos de cotización a proveedores para trabajos del consorcio. Comparás ofertas y registrás el elegido.">
+              <i class="bi bi-clipboard2-check"></i> Presupuestos
+            </a></li>
           </ul>
         </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.endpoint in ['presupuestos','detalle_pedido'] %}active{% endif %}"
-             href="{{ url_for('presupuestos') }}"
-             data-ayuda="Presupuestos: pedidos de cotización a proveedores para trabajos del consorcio. Comparás ofertas y registrás el elegido.">
-            <i class="bi bi-clipboard2-check"></i> Presupuestos
-          </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.endpoint == 'notificaciones' %}active{% endif %}"
-             href="{{ url_for('notificaciones') }}"
-             data-ayuda="Notificaciones: enviá mensajes y archivos a propietarios e inquilinos por WhatsApp o mail.">
-            <i class="bi bi-bell"></i> Notificaciones
-          </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.endpoint == 'estado_cuenta' %}active{% endif %}"
-             href="{{ url_for('estado_cuenta') }}"
-             data-ayuda="Estado de Cuenta: consultá el historial de pagos y saldos de cada unidad funcional.">
-            <i class="bi bi-journal-text"></i> Estado de Cuenta
-          </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.endpoint == 'apertura' %}active{% endif %}"
-             href="{{ url_for('apertura') }}"
-             data-ayuda="Apertura: configurá el período inicial del consorcio y las deudas anteriores de cada unidad.">
-            <i class="bi bi-play-circle"></i> Apertura
-          </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.endpoint == 'config' %}active{% endif %}"
-             href="{{ url_for('config') }}"
-             data-ayuda="Configuración: datos del edificio, tasa de mora, día de vencimiento, URL de la app, checkpoint y más.">
-            <i class="bi bi-gear"></i> Configuración
-          </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.endpoint == 'verificar_recibo' %}active{% endif %}"
-             href="{{ url_for('verificar_recibo') }}"
-             data-ayuda="Verificar recibo: comprobá la autenticidad de un recibo de pago usando su código QR o número de verificación.">
-            <i class="bi bi-shield-check"></i> Verificar
-          </a>
-        </li>
-      </ul>
-      <div class="d-flex align-items-center me-2" id="navSearchWrapper" style="display:none!important">
-        <input type="text" id="navBuscar" class="form-control form-control-sm"
-               placeholder="&#128269; Buscar..." style="width:190px"
-               data-ayuda="Buscá en la tabla de la página actual. Filtrá por cualquier texto visible.">
-        <small id="navBuscarConteo" class="text-white-50 ms-2 text-nowrap" style="font-size:0.72rem"></small>
-      </div>
-      <a href="{{ url_for('consorcios') }}" class="btn btn-sm btn-outline-light ms-2"
-         title="Cambiar consorcio"
-         data-ayuda="Cambiá de consorcio o creá uno nuevo desde el listado de edificios.">
-        <i class="bi bi-arrow-left-right"></i>
-      </a>
-      <a href="{{ url_for('backup') }}" class="btn btn-sm btn-outline-light ms-2" title="Backup base de datos"
-         data-ayuda="Backup: descargá un ZIP con toda la base de datos del consorcio activo (datos + comprobantes PDF).">
-        <i class="bi bi-cloud-download"></i> Backup
-      </a>
-      {% if es_admin %}
-      <a href="{{ url_for('admin_usuarios') }}" class="btn btn-sm btn-outline-warning ms-2" title="Gestión de usuarios"
-         data-ayuda="Administración de usuarios: activá/desactivá cuentas, asigná rol de admin y gestioná permisos por consorcio.">
-        <i class="bi bi-people-fill"></i>
-      </a>
-      {% endif %}
-      {% if checkpoint_info %}
-      <a href="{{ url_for('config') }}#checkpoint"
-         class="badge ms-2 text-decoration-none {% if checkpoint_info.dias_restantes <= 7 %}bg-warning text-dark{% else %}bg-success{% endif %}"
-         title="Checkpoint activo — {{ checkpoint_info.dias_restantes }} día(s) para consolidación"
-         style="font-size:0.7rem"
-         data-ayuda="Checkpoint activo ({{ checkpoint_info.dias_restantes }} días restantes): tenés un snapshot guardado de la BD. Hacé click para ir a Configuración y gestionar el rollback.">
-        <i class="bi bi-bookmark-check-fill"></i> Checkpoint ({{ checkpoint_info.dias_restantes }}d)
-      </a>
-      {% endif %}
-      <span class="badge bg-secondary ms-2 opacity-75" style="font-size:0.7rem"
-            data-ayuda="Versión del sistema instalada.">v{{ app_version }}</span>
 
-      {# Usuario + logout #}
-      <div class="dropdown ms-2">
-        <a href="#" class="d-flex align-items-center gap-1 text-white text-decoration-none dropdown-toggle"
-           data-bs-toggle="dropdown"
-           data-ayuda="Tu cuenta de usuario. Hacé click para cerrar sesión.">
-          {% if usuario_foto %}
-            <img src="{{ usuario_foto }}" class="rounded-circle" width="28" height="28" referrerpolicy="no-referrer">
-          {% else %}
-            <i class="bi bi-person-circle fs-5"></i>
-          {% endif %}
+        {# ── Más ── #}
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle {% if request.endpoint in ['notificaciones','verificar_recibo','config'] %}active{% endif %}"
+             href="#" role="button" data-bs-toggle="dropdown"
+             data-ayuda="Notificaciones, verificación de recibos, backup y configuración del sistema.">
+            <i class="bi bi-three-dots"></i> Más
+          </a>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item {% if request.endpoint == 'notificaciones' %}active{% endif %}"
+                   href="{{ url_for('notificaciones') }}"
+                   data-ayuda="Notificaciones: enviá mensajes y archivos a propietarios e inquilinos por WhatsApp o mail.">
+              <i class="bi bi-bell"></i> Notificaciones
+            </a></li>
+            <li><a class="dropdown-item {% if request.endpoint == 'verificar_recibo' %}active{% endif %}"
+                   href="{{ url_for('verificar_recibo') }}"
+                   data-ayuda="Verificar recibo: comprobá la autenticidad de un recibo de pago usando su código QR o número de verificación.">
+              <i class="bi bi-shield-check"></i> Verificar recibo
+            </a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="{{ url_for('backup') }}"
+                   data-ayuda="Backup: descargá un ZIP con toda la base de datos del consorcio activo (datos + comprobantes PDF).">
+              <i class="bi bi-cloud-download"></i> Backup
+            </a></li>
+            <li><a class="dropdown-item {% if request.endpoint == 'config' %}active{% endif %}"
+                   href="{{ url_for('config') }}"
+                   data-ayuda="Configuración: datos del edificio, tasa de mora, día de vencimiento, URL de la app, checkpoint y más.">
+              <i class="bi bi-gear"></i> Configuración
+            </a></li>
+          </ul>
+        </li>
+
+      </ul>
+
+      {# ── Derecha ── #}
+      <div class="d-flex align-items-center gap-2">
+
+        <div id="navSearchWrapper" style="display:none!important">
+          <div class="input-group input-group-sm">
+            <input type="text" id="navBuscar" class="form-control"
+                   placeholder="Buscar…" style="width:160px"
+                   data-ayuda="Buscá en la tabla de la página actual. Filtrá por cualquier texto visible.">
+            <small id="navBuscarConteo" class="text-white-50 ms-1 text-nowrap align-self-center" style="font-size:0.72rem"></small>
+          </div>
+        </div>
+
+        <a href="{{ url_for('consorcios') }}" class="btn btn-sm btn-outline-light"
+           title="Cambiar consorcio"
+           data-ayuda="Cambiá de consorcio o creá uno nuevo desde el listado de edificios.">
+          <i class="bi bi-arrow-left-right"></i>
         </a>
-        <ul class="dropdown-menu dropdown-menu-end">
-          <li><span class="dropdown-item-text small text-muted">{{ usuario_nombre }}</span></li>
-          <li><hr class="dropdown-divider"></li>
-          <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}"
-                 data-ayuda="Cerrar sesión: salís de tu cuenta. Necesitarás iniciar sesión con Google nuevamente.">
-            <i class="bi bi-box-arrow-right"></i> Cerrar sesión
-          </a></li>
-        </ul>
+
+        {% if es_admin %}
+        <a href="{{ url_for('admin_usuarios') }}" class="btn btn-sm btn-outline-warning"
+           title="Gestión de usuarios"
+           data-ayuda="Administración de usuarios: activá/desactivá cuentas, asigná rol de admin y gestioná permisos por consorcio.">
+          <i class="bi bi-people-fill"></i>
+        </a>
+        {% endif %}
+
+        {% if checkpoint_info %}
+        <a href="{{ url_for('config') }}#checkpoint"
+           class="badge text-decoration-none {% if checkpoint_info.dias_restantes <= 7 %}bg-warning text-dark{% else %}bg-success{% endif %}"
+           title="Checkpoint activo — {{ checkpoint_info.dias_restantes }} día(s) para consolidación"
+           style="font-size:0.7rem"
+           data-ayuda="Checkpoint activo ({{ checkpoint_info.dias_restantes }} días restantes): tenés un snapshot guardado de la BD. Hacé click para ir a Configuración y gestionar el rollback.">
+          <i class="bi bi-bookmark-check-fill"></i> {{ checkpoint_info.dias_restantes }}d
+        </a>
+        {% endif %}
+
+        <span class="badge bg-secondary opacity-75" style="font-size:0.7rem"
+              data-ayuda="Versión del sistema instalada.">v{{ app_version }}</span>
+
+        {# Usuario + logout #}
+        <div class="dropdown">
+          <a href="#" class="d-flex align-items-center gap-1 text-white text-decoration-none dropdown-toggle"
+             data-bs-toggle="dropdown"
+             data-ayuda="Tu cuenta de usuario. Hacé click para cerrar sesión.">
+            {% if usuario_foto %}
+              <img src="{{ usuario_foto }}" class="rounded-circle" width="28" height="28" referrerpolicy="no-referrer">
+            {% else %}
+              <i class="bi bi-person-circle fs-5"></i>
+            {% endif %}
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><span class="dropdown-item-text small text-muted">{{ usuario_nombre }}</span></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}"
+                   data-ayuda="Cerrar sesión: salís de tu cuenta. Necesitarás iniciar sesión con Google nuevamente.">
+              <i class="bi bi-box-arrow-right"></i> Cerrar sesión
+            </a></li>
+          </ul>
+        </div>
+
       </div>
     </div>
   </div>
