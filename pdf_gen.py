@@ -317,6 +317,10 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         return ParagraphStyle(name, **{"fontName": "Helvetica", "fontSize": 9, **kw})
 
     edificio = config.get("edificio_nombre", "EDIFICIO")
+    admin_res = config.get("administrador", "")
+    telefono_res = config.get("telefono", "")
+    email_res = config.get("email", "")
+    direccion_cobro_res = config.get("direccion_cobro", "")
     mes_nombre = _mes_nombre(periodo).upper()
     gastos_fr     = [g for g in gastos if g.get("tipo") == "VARIABLE_FR"]
     gastos_normal = [g for g in gastos if g.get("tipo") != "VARIABLE_FR"]
@@ -550,6 +554,27 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         story.append(ex_t)
         story.append(Spacer(1, 0.3*cm))
 
+    # Pie de administración
+    res_footer_style = st("rft", fontSize=7, alignment=TA_CENTER,
+                          textColor=colors.HexColor("#4a4a4a"))
+    res_line1 = []
+    if admin_res:
+        res_line1.append(f"<b>ADMINISTRACIÓN:</b> {admin_res}")
+    if telefono_res:
+        res_line1.append(f"<b>CEL.</b> {telefono_res}")
+    res_line2 = []
+    if direccion_cobro_res:
+        res_line2.append(f"<b>DIRECCIÓN:</b> {direccion_cobro_res}")
+    if email_res:
+        res_line2.append(f"<b>MAIL:</b> {email_res}")
+    if res_line1 or res_line2:
+        story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#aaaaaa")))
+        story.append(Spacer(1, 0.1*cm))
+    if res_line1:
+        story.append(Paragraph("  |  ".join(res_line1), res_footer_style))
+    if res_line2:
+        story.append(Paragraph("  |  ".join(res_line2), res_footer_style))
+
     story.append(Paragraph(
         f"Generado el {date.today().strftime('%d/%m/%Y')} a las {__import__('datetime').datetime.now().strftime('%H:%M')}",
         st("ts", fontSize=7, fontName="Helvetica", alignment=TA_RIGHT,
@@ -591,6 +616,7 @@ def generar_recibo_pago(row: dict, config: dict, periodo: str,
     edificio = config.get("edificio_nombre", "EDIFICIO")
     admin = config.get("administrador", "")
     telefono = config.get("telefono", "")
+    email = config.get("email", "")
     dias_cobro = config.get("dias_cobro", "")
     horario_cobro = config.get("horario_cobro", "")
     direccion_cobro = config.get("direccion_cobro", "")
@@ -749,32 +775,34 @@ def generar_recibo_pago(row: dict, config: dict, periodo: str,
     story.append(HRFlowable(width="100%", thickness=1, color=c_azul))
     story.append(Spacer(1, 0.15*cm))
 
-    footer_parts = []
+    cobro_parts = []
     if dias_cobro:
-        footer_parts.append(f"<b>DÍAS DE COBRO:</b> {dias_cobro}")
+        cobro_parts.append(f"<b>DÍAS DE COBRO:</b> {dias_cobro}")
     if horario_cobro:
-        footer_parts.append(f"<b>HORARIO:</b> {horario_cobro}")
-    if direccion_cobro:
-        footer_parts.append(f"<b>DIRECCIÓN:</b> {direccion_cobro}")
+        cobro_parts.append(f"<b>HORARIO:</b> {horario_cobro}")
 
-    admin_parts = []
+    admin_line1 = []
     if admin:
-        admin_parts.append(f"<b>ADMINISTRACIÓN:</b> {admin}")
+        admin_line1.append(f"<b>ADMINISTRACIÓN:</b> {admin}")
     if telefono:
-        admin_parts.append(f"<b>CEL.</b> {telefono}")
+        admin_line1.append(f"<b>CEL.</b> {telefono}")
 
-    footer_left = "  /  ".join(footer_parts) if footer_parts else ""
-    footer_right = "  |  ".join(admin_parts) if admin_parts else ""
+    admin_line2 = []
+    if direccion_cobro:
+        admin_line2.append(f"<b>DIRECCIÓN:</b> {direccion_cobro}")
+    if email:
+        admin_line2.append(f"<b>MAIL:</b> {email}")
 
-    if footer_left or footer_right:
-        combined = []
-        if footer_left:
-            combined.append(footer_left)
-        if footer_right:
-            combined.append(footer_right)
-        story.append(Paragraph(
-            "  |  ".join(combined),
-            st("footer", fontSize=7, alignment=TA_CENTER, textColor=c_gris)))
+    footer_style = st("footer", fontSize=7, alignment=TA_CENTER, textColor=c_gris)
+    all_parts = []
+    if cobro_parts:
+        all_parts.append("  /  ".join(cobro_parts))
+    if admin_line1:
+        all_parts.append("  |  ".join(admin_line1))
+    if all_parts:
+        story.append(Paragraph("  |  ".join(all_parts), footer_style))
+    if admin_line2:
+        story.append(Paragraph("  |  ".join(admin_line2), footer_style))
 
     # ---- CÓDIGO DE VERIFICACIÓN + QR ----
     if codigo_verificacion:
