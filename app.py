@@ -4,6 +4,7 @@ Correr con: python app.py  o  flask run
 """
 import os
 import re
+import base64
 import hmac as _hmac_mod
 import hashlib
 from datetime import date
@@ -154,6 +155,7 @@ def inject_version():
     cid = session.get("consorcio_id")
     c = db.get_consorcio(cid) if cid else None
     checkpoint_info = db.get_checkpoint_info() if cid else None
+    logo_url = url_for("servir_logo") if (cid and db.get_logo()) else ""
     return {
         "app_version": _ver,
         "app_env": db._APP_ENV,
@@ -164,6 +166,7 @@ def inject_version():
         "usuario_nombre": session.get("usuario_nombre", ""),
         "usuario_foto": session.get("usuario_foto", ""),
         "es_admin": session.get("es_admin", False),
+        "logo_url": logo_url,
     }
 
 
@@ -1026,8 +1029,10 @@ def descargar_pdf(periodo):
     fondo = db.get_fondo_reserva()
     notas = db.get_notas_periodo(periodo)
     extras = db.get_gastos_extra(periodo)
+    _logo = db.get_logo()
+    _logo_bytes = base64.b64decode(_logo["b64"]) if _logo else None
     pdf_bytes = generar_pdf_resumen_edificio(liq, gastos, cfg, periodo, saldo_caja, fondo,
-                                             notas=notas, extras=extras)
+                                             notas=notas, extras=extras, logo_bytes=_logo_bytes)
     _meses_pdf = ["enero","febrero","marzo","abril","mayo","junio",
                   "julio","agosto","septiembre","octubre","noviembre","diciembre"]
     _mes_str = _meses_pdf[int(periodo[5:7]) - 1] + "_" + periodo[:4]
@@ -1060,10 +1065,13 @@ def descargar_recibo(periodo, unidad):
     url_app = cfg.get("url_app", "http://localhost:5000").rstrip("/")
     url_verificacion = f"{url_app}/verificar/{periodo}/{unidad}/{codigo}"
 
+    _logo = db.get_logo()
+    _logo_bytes = base64.b64decode(_logo["b64"]) if _logo else None
     pdf_bytes = generar_recibo_pago(
         row, cfg, periodo, gastos, facturas_extras,
         codigo_verificacion=codigo,
         url_verificacion=url_verificacion,
+        logo_bytes=_logo_bytes,
     )
     return send_file(
         io.BytesIO(pdf_bytes),
@@ -1120,10 +1128,13 @@ def recibo_publico_pdf(cid, periodo, unidad, token):
     facturas_extras = db.get_facturas_extraordinarias_periodo(mes_gastos)
     codigo = db.generar_codigo_verificacion(row, cfg, clave)
     url_verificacion = f"{url_app}/verificar/{periodo}/{unidad}/{codigo}"
+    _logo2 = db.get_logo()
+    _logo_bytes2 = base64.b64decode(_logo2["b64"]) if _logo2 else None
     pdf_bytes = generar_recibo_pago(
         row, cfg, periodo, gastos, facturas_extras,
         codigo_verificacion=codigo,
         url_verificacion=url_verificacion,
+        logo_bytes=_logo_bytes2,
     )
     return send_file(
         io.BytesIO(pdf_bytes),
@@ -1572,6 +1583,46 @@ def rollback_checkpoint():
 def eliminar_checkpoint():
     db._eliminar_checkpoint()
     flash("Checkpoint eliminado (consolidado manualmente).", "info")
+    return redirect(url_for("config"))
+
+
+# ---------------------------------------------------------------------------
+# LOGO
+# ---------------------------------------------------------------------------
+
+@app.route("/logo")
+def servir_logo():
+    logo = db.get_logo()
+    if not logo:
+        return "", 404
+    img_bytes = base64.b64decode(logo["b64"])
+    return send_file(io.BytesIO(img_bytes), mimetype=logo["mime"])
+
+
+@app.route("/config/logo/upload", methods=["POST"])
+def upload_logo():
+    f = request.files.get("logo")
+    if not f or not f.filename:
+        flash("Seleccioná un archivo de imagen.", "warning")
+        return redirect(url_for("config"))
+    allowed = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"}
+    mime = f.mimetype or "image/png"
+    if mime not in allowed:
+        flash("Formato no soportado. Usá PNG, JPG, GIF, WEBP o SVG.", "danger")
+        return redirect(url_for("config"))
+    data = f.read()
+    if len(data) > 512 * 1024:
+        flash("El logo no puede superar 512 KB.", "danger")
+        return redirect(url_for("config"))
+    db.save_logo(base64.b64encode(data).decode(), mime)
+    flash("Logo actualizado.", "success")
+    return redirect(url_for("config"))
+
+
+@app.route("/config/logo/delete", methods=["POST"])
+def delete_logo():
+    db.delete_logo()
+    flash("Logo eliminado.", "info")
     return redirect(url_for("config"))
 
 

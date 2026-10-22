@@ -222,6 +222,21 @@ def save_config(data: dict):
                 )
 
 
+def get_logo() -> dict | None:
+    cfg = get_config()
+    b64 = cfg.get("logo_b64", "")
+    mime = cfg.get("logo_mime", "image/png")
+    return {"b64": b64, "mime": mime} if b64 else None
+
+
+def save_logo(b64_data: str, mime: str):
+    save_config({"logo_b64": b64_data, "logo_mime": mime})
+
+
+def delete_logo():
+    _exec("DELETE FROM config WHERE consorcio_id=%s AND clave IN ('logo_b64','logo_mime')", (_cid(),))
+
+
 def get_clave_firma() -> str:
     clave = get_config().get("clave_firma", "")
     if clave:

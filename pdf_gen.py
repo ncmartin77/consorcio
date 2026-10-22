@@ -23,6 +23,20 @@ def _fmt(val):
         return "$ 0,00"
 
 
+def _make_logo_image(logo_bytes: bytes, max_height_cm: float = 1.8) -> RLImage | None:
+    if not logo_bytes:
+        return None
+    try:
+        img = RLImage(io.BytesIO(logo_bytes))
+        max_h = max_height_cm * cm
+        scale = max_h / img.imageHeight
+        img.drawHeight = max_h
+        img.drawWidth = img.imageWidth * scale
+        return img
+    except Exception:
+        return None
+
+
 def _mes_nombre(periodo: str):
     meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
@@ -58,7 +72,8 @@ def _mes_abrev(periodo: str):
         return periodo
 
 
-def generar_pdf_liquidacion(liquidacion_rows: list, gastos: list, config: dict, periodo: str) -> bytes:
+def generar_pdf_liquidacion(liquidacion_rows: list, gastos: list, config: dict, periodo: str,
+                            logo_bytes: bytes = None) -> bytes:
     """
     Genera un PDF con una página por unidad funcional.
     Retorna bytes del PDF.
@@ -113,7 +128,16 @@ def generar_pdf_liquidacion(liquidacion_rows: list, gastos: list, config: dict, 
         descripcion = row.get("descripcion", "")
 
         # ---- CABECERA ----
-        story.append(Paragraph(edificio.upper(), style_title))
+        logo_img = _make_logo_image(logo_bytes)
+        if logo_img:
+            logo_row = Table([[logo_img, Paragraph(edificio.upper(), style_title), ""]],
+                             colWidths=[3*cm, 12*cm, 3*cm])
+            logo_row.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+                                          ("ALIGN", (0,0), (0,-1), "LEFT"),
+                                          ("BOTTOMPADDING", (0,0), (-1,-1), 4)]))
+            story.append(logo_row)
+        else:
+            story.append(Paragraph(edificio.upper(), style_title))
         if direccion:
             story.append(Paragraph(direccion, style_subtitle))
         story.append(Spacer(1, 0.2 * cm))
@@ -272,7 +296,8 @@ def generar_pdf_liquidacion(liquidacion_rows: list, gastos: list, config: dict, 
 
 def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: dict,
                                   periodo: str, saldo_caja: float, fondo_reserva: float,
-                                  notas: list = None, extras: list = None) -> bytes:
+                                  notas: list = None, extras: list = None,
+                                  logo_bytes: bytes = None) -> bytes:
     """
     PDF único de resumen para el edificio:
     - Tabla de todas las unidades (UF, %, expensas, deuda, total, estado)
@@ -304,11 +329,27 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
     story = []
 
     # Encabezado
-    story.append(Paragraph(edificio.upper(), st("tit", fontSize=14, fontName="Helvetica-Bold",
-                                                 alignment=TA_CENTER, textColor=c_azul)))
-    story.append(Paragraph(f"LIQUIDACIÓN DE EXPENSAS — {mes_nombre}",
-                            st("sub", fontSize=10, fontName="Helvetica-Bold",
-                               alignment=TA_CENTER, textColor=c_azul, spaceAfter=6)))
+    logo_img = _make_logo_image(logo_bytes, max_height_cm=1.8)
+    if logo_img:
+        enc_t = Table(
+            [[logo_img,
+              [Paragraph(edificio.upper(), st("tit", fontSize=14, fontName="Helvetica-Bold",
+                                              alignment=TA_CENTER, textColor=c_azul)),
+               Paragraph(f"LIQUIDACIÓN DE EXPENSAS — {mes_nombre}",
+                         st("sub", fontSize=10, fontName="Helvetica-Bold",
+                            alignment=TA_CENTER, textColor=c_azul))],
+              ""]],
+            colWidths=[3*cm, 12.6*cm, 3*cm]
+        )
+        enc_t.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+                                    ("BOTTOMPADDING", (0,0), (-1,-1), 4)]))
+        story.append(enc_t)
+    else:
+        story.append(Paragraph(edificio.upper(), st("tit", fontSize=14, fontName="Helvetica-Bold",
+                                                     alignment=TA_CENTER, textColor=c_azul)))
+        story.append(Paragraph(f"LIQUIDACIÓN DE EXPENSAS — {mes_nombre}",
+                                st("sub", fontSize=10, fontName="Helvetica-Bold",
+                                   alignment=TA_CENTER, textColor=c_azul, spaceAfter=6)))
     story.append(HRFlowable(width="100%", thickness=2, color=c_azul))
     story.append(Spacer(1, 0.3*cm))
 
@@ -521,7 +562,8 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
 def generar_recibo_pago(row: dict, config: dict, periodo: str,
                         gastos: list = None, facturas_extras: list = None,
                         codigo_verificacion: str = None,
-                        url_verificacion: str = None) -> bytes:
+                        url_verificacion: str = None,
+                        logo_bytes: bytes = None) -> bytes:
     """
     Resumen de expensas por unidad funcional.
     Formato basado en referencias/3-2.pdf.
@@ -570,11 +612,19 @@ def generar_recibo_pago(row: dict, config: dict, periodo: str,
 
     story = []
 
-    # ---- TÍTULO ----
-    story.append(Paragraph(
+    # ---- TÍTULO (con logo si está disponible) ----
+    titulo_par = Paragraph(
         f"RECIBO PAGO EXPENSAS — {edificio.upper()}",
         st("titulo", fontSize=13, fontName="Helvetica-Bold",
-           alignment=TA_CENTER, textColor=c_azul, spaceAfter=4)))
+           alignment=TA_CENTER, textColor=c_azul, spaceAfter=4))
+    logo_img = _make_logo_image(logo_bytes, max_height_cm=1.5)
+    if logo_img:
+        tit_t = Table([[logo_img, titulo_par, ""]], colWidths=[2.5*cm, 13*cm, 2.5*cm])
+        tit_t.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+                                    ("BOTTOMPADDING", (0,0), (-1,-1), 4)]))
+        story.append(tit_t)
+    else:
+        story.append(titulo_par)
 
     # ---- CABECERA: EXPENSAS MES | UFN°X / DESC | PCT% ----
     header_data = [

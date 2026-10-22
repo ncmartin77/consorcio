@@ -3,6 +3,43 @@
 {% block content %}
 <div class="row">
   <div class="col-lg-7">
+
+    {# ── Logo ── #}
+    <div class="card shadow-sm mb-4">
+      <div class="card-header bg-dark text-white">
+        <i class="bi bi-image"></i> Logo del Consorcio
+      </div>
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-4 flex-wrap">
+          {% if logo_url %}
+          <img src="{{ logo_url }}" alt="Logo" style="max-height:80px; max-width:200px; object-fit:contain; border:1px solid #dee2e6; border-radius:6px; padding:6px; background:#fff;">
+          {% else %}
+          <div class="text-muted border rounded p-3 text-center" style="width:120px">
+            <i class="bi bi-image fs-2 d-block text-secondary"></i>
+            <small>Sin logo</small>
+          </div>
+          {% endif %}
+          <div class="flex-grow-1">
+            <form method="POST" action="{{ url_for('upload_logo') }}" enctype="multipart/form-data" class="d-flex gap-2 align-items-center flex-wrap">
+              <input type="file" class="form-control form-control-sm" name="logo" accept="image/*" required style="max-width:260px">
+              <button type="submit" class="btn btn-sm btn-primary">
+                <i class="bi bi-upload"></i> Subir logo
+              </button>
+            </form>
+            <small class="text-muted d-block mt-1">PNG, JPG, SVG — máx. 512 KB. Se muestra en el navbar y en los PDFs.</small>
+            {% if logo_url %}
+            <form method="POST" action="{{ url_for('delete_logo') }}" class="mt-2"
+                  onsubmit="return confirm('¿Eliminar el logo?')">
+              <button type="submit" class="btn btn-sm btn-outline-danger">
+                <i class="bi bi-trash"></i> Eliminar logo
+              </button>
+            </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="card shadow-sm mb-4">
       <div class="card-header bg-primary text-white">
         <i class="bi bi-gear-fill"></i> Datos del Edificio y Administración
