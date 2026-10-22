@@ -2,20 +2,6 @@
 {% block title %}Liquidación{% endblock %}
 {% block content %}
 
-{# ── PANEL SIMULACIÓN (temporal) ── #}
-<div class="alert alert-warning d-flex align-items-center gap-2 py-2 mb-3 flex-wrap" role="alert">
-  <i class="bi bi-flask fs-5"></i>
-  <span class="me-auto"><strong>SIMULACIÓN</strong> — Limpieza $500.000 los tres meses, todos pagados, sin deuda. Distribución igualitaria.</span>
-  <a href="{{ url_for('descargar_pdf', periodo='2026-10') }}" class="btn btn-sm btn-danger">
-    <i class="bi bi-file-earmark-pdf"></i> PDF Octubre
-  </a>
-  <a href="{{ url_for('descargar_pdf', periodo='2026-11') }}" class="btn btn-sm btn-danger">
-    <i class="bi bi-file-earmark-pdf"></i> PDF Noviembre
-  </a>
-  <a href="{{ url_for('descargar_pdf', periodo='2026-12') }}" class="btn btn-sm btn-danger">
-    <i class="bi bi-file-earmark-pdf"></i> PDF Diciembre
-  </a>
-</div>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h4><i class="bi bi-receipt"></i> Liquidación — <span class="text-primary">{{ periodo | mes_largo }}</span></h4>
