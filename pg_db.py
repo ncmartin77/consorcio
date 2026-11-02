@@ -406,6 +406,11 @@ def save_gasto(periodo: str, concepto: str, importe: float, tipo: str, row_num: 
     if row_num:
         existing = _fetchone("SELECT tipo FROM gastos WHERE id=%s AND consorcio_id=%s", (row_num, _cid()))
         if existing and existing["tipo"] == "FONDO_RESERVA":
+            # Solo permite cambiar el importe; tipo y concepto quedan fijos
+            _exec(
+                "UPDATE gastos SET importe=%s WHERE id=%s AND consorcio_id=%s",
+                (importe, row_num, _cid())
+            )
             return
         _exec(
             "UPDATE gastos SET periodo=%s, concepto=%s, importe=%s, tipo=%s WHERE id=%s AND consorcio_id=%s",
