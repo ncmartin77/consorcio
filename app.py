@@ -769,6 +769,12 @@ def caja(periodo=None):
     saldo_mes = round(entradas - salidas, 2)
     saldo_acumulado, _, _ = db.get_saldo_caja()
     saldo_anterior = round(saldo_acumulado - saldo_mes, 2)
+    # Starting saldo for the running-balance column on this page
+    offset = (page - 1) * per_page
+    saldo_pagina = saldo_anterior
+    for m in todos[:offset]:
+        saldo_pagina += m["importe"] if m["tipo"] == "ENTRADA" else -m["importe"]
+    saldo_pagina = round(saldo_pagina, 2)
     ultimo_movimiento = db.get_ultimo_movimiento_caja()
     return render_template("caja.html",
                            movimientos=movimientos,
@@ -778,6 +784,7 @@ def caja(periodo=None):
                            saldo=saldo_mes,
                            saldo_anterior=saldo_anterior,
                            saldo_acumulado=saldo_acumulado,
+                           saldo_pagina=saldo_pagina,
                            liq_cerrada=liq_cerrada,
                            ultimo_movimiento=ultimo_movimiento,
                            page=page, total_pages=total_pages, total=total)

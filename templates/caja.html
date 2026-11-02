@@ -97,7 +97,7 @@
           </tr>
         </thead>
         <tbody>
-          {% set ns = namespace(saldo=saldo_anterior) %}
+          {% set ns = namespace(saldo=saldo_pagina) %}
           {% for m in movimientos %}
           {% if m.tipo == 'ENTRADA' %}{% set ns.saldo = ns.saldo + m.importe %}{% else %}{% set ns.saldo = ns.saldo - m.importe %}{% endif %}
           <tr class="fila-caja" style="cursor:pointer"
