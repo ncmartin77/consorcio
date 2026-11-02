@@ -1231,14 +1231,16 @@ def get_apertura():
     return float(get_config().get("saldo_inicial_caja", 0) or 0), get_unidades()
 
 
-def save_apertura(saldo_inicial: float, deudas: dict):
+def save_apertura(saldo_inicial: float, deudas: dict, fechas: dict = None):
     save_config({"saldo_inicial_caja": str(saldo_inicial)})
+    fechas = fechas or {}
     with _conn() as c:
         with c.cursor() as cur:
             for numero, deuda in deudas.items():
+                fecha = fechas.get(numero) or None
                 cur.execute(
-                    "UPDATE unidades SET deuda_inicial=%s WHERE consorcio_id=%s AND numero=%s",
-                    (deuda, _cid(), str(numero))
+                    "UPDATE unidades SET deuda_inicial=%s, deuda_inicial_fecha=%s WHERE consorcio_id=%s AND numero=%s",
+                    (deuda, fecha, _cid(), str(numero))
                 )
 
 

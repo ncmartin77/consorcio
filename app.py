@@ -1458,6 +1458,7 @@ def apertura():
         except ValueError:
             saldo_inicial = 0.0
         deudas = {}
+        fechas = {}
         for key, val in request.form.items():
             if key.startswith("deuda_"):
                 numero = key[6:]
@@ -1465,8 +1466,11 @@ def apertura():
                     deudas[numero] = float(val.replace(",", ".")) if val.strip() else 0.0
                 except ValueError:
                     deudas[numero] = 0.0
+            elif key.startswith("fecha_deuda_"):
+                numero = key[12:]
+                fechas[numero] = val.strip() or None
         try:
-            db.save_apertura(saldo_inicial, deudas)
+            db.save_apertura(saldo_inicial, deudas, fechas)
             flash(f"Saldos iniciales guardados. Saldo de caja: $ {saldo_inicial:,.2f}", "success")
         except Exception as e:
             flash(f"Error al guardar: {e}", "danger")
