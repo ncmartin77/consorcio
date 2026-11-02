@@ -115,7 +115,12 @@
             <tr>
               <td>{{ g.concepto }}</td>
               <td class="text-end fw-semibold">$ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td>
-              <td><span class="text-muted small"><i class="bi bi-lock-fill"></i> fijo del mes</span></td>
+              <td>
+                <button class="btn btn-sm btn-outline-secondary"
+                        onclick='editarGasto({{ g|tojson }})'>
+                  <i class="bi bi-pencil"></i>
+                </button>
+              </td>
             </tr>
             {% endfor %}
           </tbody>
