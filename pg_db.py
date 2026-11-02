@@ -1159,11 +1159,20 @@ def delete_presupuesto(pres_id):
 def get_saldo_caja():
     cfg = get_config()
     saldo_inicial = float(cfg.get("saldo_inicial_caja", 0) or 0)
-    row = _fetchone("""
-        SELECT COALESCE(SUM(CASE WHEN tipo='ENTRADA' THEN importe ELSE 0 END),0) AS entradas,
-               COALESCE(SUM(CASE WHEN tipo='SALIDA'  THEN importe ELSE 0 END),0) AS salidas
-        FROM caja WHERE consorcio_id=%s
-    """, (_cid(),))
+    fecha_inicio = (cfg.get("saldo_inicial_caja_fecha") or "").strip()
+    if fecha_inicio:
+        # Solo movimientos desde la fecha inicial inclusive (los anteriores ya están en saldo_inicial)
+        row = _fetchone("""
+            SELECT COALESCE(SUM(CASE WHEN tipo='ENTRADA' THEN importe ELSE 0 END),0) AS entradas,
+                   COALESCE(SUM(CASE WHEN tipo='SALIDA'  THEN importe ELSE 0 END),0) AS salidas
+            FROM caja WHERE consorcio_id=%s AND fecha >= %s
+        """, (_cid(), fecha_inicio))
+    else:
+        row = _fetchone("""
+            SELECT COALESCE(SUM(CASE WHEN tipo='ENTRADA' THEN importe ELSE 0 END),0) AS entradas,
+                   COALESCE(SUM(CASE WHEN tipo='SALIDA'  THEN importe ELSE 0 END),0) AS salidas
+            FROM caja WHERE consorcio_id=%s
+        """, (_cid(),))
     entradas, salidas = float(row["entradas"]), float(row["salidas"])
     return round(saldo_inicial + entradas - salidas, 2), round(entradas, 2), round(salidas, 2)
 
@@ -1228,11 +1237,15 @@ def get_historial_unidades() -> dict:
 
 
 def get_apertura():
-    return float(get_config().get("saldo_inicial_caja", 0) or 0), get_unidades()
+    cfg = get_config()
+    saldo = float(cfg.get("saldo_inicial_caja", 0) or 0)
+    fecha_caja = cfg.get("saldo_inicial_caja_fecha", "") or ""
+    return saldo, fecha_caja, get_unidades()
 
 
-def save_apertura(saldo_inicial: float, deudas: dict, fechas: dict = None):
-    save_config({"saldo_inicial_caja": str(saldo_inicial)})
+def save_apertura(saldo_inicial: float, deudas: dict, fechas: dict = None, fecha_caja: str = ""):
+    save_config({"saldo_inicial_caja": str(saldo_inicial),
+                 "saldo_inicial_caja_fecha": fecha_caja or ""})
     fechas = fechas or {}
     with _conn() as c:
         with c.cursor() as cur:

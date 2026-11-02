@@ -1496,13 +1496,15 @@ def apertura():
                 numero = key[12:]
                 fechas[numero] = val.strip() or None
         try:
-            db.save_apertura(saldo_inicial, deudas, fechas)
+            fecha_caja = request.form.get("saldo_inicial_caja_fecha", "").strip()
+            db.save_apertura(saldo_inicial, deudas, fechas, fecha_caja)
             flash(f"Saldos iniciales guardados. Saldo de caja: $ {saldo_inicial:,.2f}", "success")
         except Exception as e:
             flash(f"Error al guardar: {e}", "danger")
         return redirect(url_for("apertura"))
-    saldo_inicial, unidades = db.get_apertura()
-    return render_template("apertura.html", saldo_inicial=saldo_inicial, unidades=unidades)
+    saldo_inicial, fecha_caja, unidades = db.get_apertura()
+    return render_template("apertura.html", saldo_inicial=saldo_inicial,
+                           fecha_caja=fecha_caja, unidades=unidades)
 
 
 # ---------------------------------------------------------------------------

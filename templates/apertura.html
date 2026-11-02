@@ -19,7 +19,7 @@
         <i class="bi bi-cash-stack"></i> Saldo Inicial de Caja
       </div>
       <div class="card-body">
-        <div class="row align-items-center">
+        <div class="row align-items-end g-3">
           <div class="col-md-4">
             <label class="form-label fw-semibold">Saldo en caja al inicio $</label>
             <div class="input-group">
@@ -27,7 +27,17 @@
               <input type="number" class="form-control" name="saldo_inicial_caja"
                      step="0.01" value="{{ saldo_inicial }}">
             </div>
-            <small class="text-muted">Este valor se suma al saldo acumulado de Caja Diaria.</small>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">Al día</label>
+            <input type="date" class="form-control" name="saldo_inicial_caja_fecha"
+                   value="{{ fecha_caja or '' }}">
+          </div>
+          <div class="col-md-5">
+            <small class="text-muted d-block">
+              Los movimientos de Caja Diaria anteriores a esta fecha no se suman al saldo acumulado
+              (ya están incluidos en el saldo inicial).
+            </small>
           </div>
         </div>
       </div>
