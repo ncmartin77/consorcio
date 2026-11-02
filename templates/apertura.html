@@ -44,11 +44,11 @@
     </div>
   </div>
 
-  <!-- Deuda inicial por unidad -->
+  <!-- Saldo inicial por unidad -->
   <div class="col-12">
     <div class="card border-warning shadow-sm">
       <div class="card-header bg-warning text-dark">
-        <i class="bi bi-house-exclamation"></i> Deuda Inicial por Unidad Funcional
+        <i class="bi bi-house-exclamation"></i> Saldo Inicial por Unidad Funcional
       </div>
       <div class="card-body p-0">
         <table class="table table-sm table-striped mb-0">
@@ -57,7 +57,7 @@
               <th>UF</th>
               <th>Descripción</th>
               <th>Propietario / Inquilino</th>
-              <th class="text-end" style="width:180px">Deuda Inicial $</th>
+              <th class="text-end" style="width:180px">Saldo Inicial $</th>
               <th style="width:160px">Al período</th>
             </tr>
           </thead>
@@ -73,7 +73,7 @@
                   <span class="input-group-text">$</span>
                   <input type="number" class="form-control text-end"
                          name="deuda_{{ u.numero }}"
-                         step="0.01" min="0"
+                         step="0.01"
                          value="{{ u.deuda_inicial or 0 }}">
                 </div>
               </td>

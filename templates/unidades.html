@@ -26,7 +26,7 @@
             {% for cat in categorias %}
             <th class="text-center">% {{ cat.nombre }}</th>
             {% endfor %}
-            <th class="text-end">Deuda Inicial</th>
+            <th class="text-end">Saldo Inicial</th>
             <th class="text-center">Envío</th>
             <th class="text-center">Activa</th>
             <th></th>
@@ -45,9 +45,16 @@
               {{ "%.2f"|format(u.get('pct_' + cat.nombre, 0)|float) }}%
             </td>
             {% endfor %}
-            <td class="text-end text-muted small">
-              {% if u.get('deuda_inicial') and u.get('deuda_inicial')|float > 0 %}
-                $ {{ "%.2f"|format(u.get('deuda_inicial')|float)|replace(".",",") }}
+            <td class="text-end small">
+              {% set si = u.get('deuda_inicial')|float %}
+              {% if si != 0 %}
+                {% if si < 0 %}
+                  <span class="text-danger fw-semibold">$ {{ "%.2f"|format(si)|replace(".",",") }}</span>
+                  <div class="text-danger" style="font-size:0.7rem">Deuda</div>
+                {% else %}
+                  <span class="text-success fw-semibold">$ {{ "%.2f"|format(si)|replace(".",",") }}</span>
+                  <div class="text-success" style="font-size:0.7rem">A favor</div>
+                {% endif %}
                 {% if u.get('deuda_inicial_fecha') %}
                   <div class="text-muted" style="font-size:0.7rem">al {{ u.deuda_inicial_fecha }}</div>
                 {% endif %}
@@ -126,10 +133,10 @@
                      placeholder="Ej: PB, 1, 2, Cochera">
             </div>
             <div class="col-md-4">
-              <label class="form-label fw-semibold">Deuda Inicial $</label>
+              <label class="form-label fw-semibold">Saldo Inicial $</label>
               <input type="number" class="form-control" id="form_deuda_inicial" name="deuda_inicial"
-                     step="0.01" min="0" value="0"
-                     title="Deuda que ya tenía la unidad al comenzar a usar la app">
+                     step="0.01" value="0"
+                     title="Negativo = deuda, positivo = saldo a favor al comenzar a usar la app">
             </div>
             <div class="col-md-4">
               <label class="form-label fw-semibold">Al período</label>
