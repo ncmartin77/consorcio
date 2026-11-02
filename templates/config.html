@@ -146,7 +146,10 @@
               <td class="text-muted">{{ gr.categoria }}</td>
               <td class="text-nowrap">
                 <button class="btn btn-sm btn-outline-secondary me-1"
-                        onclick="editarGR({{ gr.id }}, {{ gr.concepto|tojson }}, {{ (gr.categoria or '')|tojson }})">
+                        data-id="{{ gr.id }}"
+                        data-concepto="{{ gr.concepto|e }}"
+                        data-categoria="{{ (gr.categoria or '')|e }}"
+                        onclick="editarGR(this)">
                   <i class="bi bi-pencil"></i>
                 </button>
                 <button class="btn btn-sm btn-outline-danger"
@@ -493,7 +496,11 @@
 {% endblock %}
 {% block scripts %}
 <script>
-function editarGR(id, concepto, categoria) {
+function editarGR(btn) {
+  const id = btn.dataset.id;
+  const concepto = btn.dataset.concepto;
+  const categoria = btn.dataset.categoria;
+  document.getElementById('gr-concepto-' + id).value = concepto;
   document.getElementById('gr-view-' + id).style.display = 'none';
   document.getElementById('gr-edit-' + id).style.display = '';
   document.getElementById('gr-concepto-' + id).focus();
