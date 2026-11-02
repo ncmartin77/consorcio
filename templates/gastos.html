@@ -82,7 +82,7 @@
           {% if gastos %}
           <tfoot class="table-light fw-bold">
             <tr>
-              <td>TOTAL</td>
+              <td>TOTAL GASTOS</td>
               <td class="text-end text-danger fs-5">
                 $ {{ "%.2f"|format(total)|replace(".",",") }}
               </td>
@@ -94,6 +94,52 @@
       </div>
     </div>
   </div>
+
+  {% if gastos_fondo %}
+  <div class="col-lg-8 mt-3">
+    <div class="card shadow-sm border-info">
+      <div class="card-header bg-info text-white">
+        <i class="bi bi-piggy-bank-fill"></i> Fondo de Reserva
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-striped mb-0">
+          <thead class="table-info">
+            <tr>
+              <th>Concepto</th>
+              <th class="text-end">Importe</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for g in gastos_fondo %}
+            <tr>
+              <td>{{ g.concepto }}</td>
+              <td class="text-end fw-semibold">$ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td>
+              <td><span class="text-muted small"><i class="bi bi-lock-fill"></i> fijo del mes</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot class="table-light fw-bold">
+            <tr>
+              <td>TOTAL FONDO DE RESERVA</td>
+              <td class="text-end text-info fs-6">$ {{ "%.2f"|format(total_fondo)|replace(".",",") }}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if gastos or gastos_fondo %}
+  <div class="col-lg-8 mt-2">
+    <div class="alert alert-success fw-bold fs-5 mb-0 d-flex justify-content-between align-items-center">
+      <span><i class="bi bi-calculator"></i> Base para liquidación (Gastos + Fondo de Reserva)</span>
+      <span>$ {{ "%.2f"|format(total_expensas)|replace(".",",") }}</span>
+    </div>
+  </div>
+  {% endif %}
 
   {% if gastos_fr %}
   <div class="col-lg-8 mt-3">
@@ -252,8 +298,10 @@
         <p class="mb-1">Período: <strong>{{ periodo }}</strong></p>
         <p class="mb-1">Gastos cargados: <strong>{{ gastos|length }}</strong></p>
         <hr>
-        <p class="fs-5 fw-bold text-danger mb-3">
-          Total: $ {{ "%.2f"|format(total)|replace(".",",") }}
+        <p class="mb-1 text-danger">Gastos: <strong>$ {{ "%.2f"|format(total)|replace(".",",") }}</strong></p>
+        <p class="mb-1 text-info">Fondo de Reserva: <strong>$ {{ "%.2f"|format(total_fondo)|replace(".",",") }}</strong></p>
+        <p class="fs-5 fw-bold text-success mb-3">
+          Base liquidación: $ {{ "%.2f"|format(total_expensas)|replace(".",",") }}
         </p>
         {% if liq_prox_cerrada %}
         <div class="alert alert-danger py-2 small mb-0">

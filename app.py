@@ -603,10 +603,13 @@ def gastos(periodo=None):
         periodo = _periodo_actual()
     db.ensure_fondo_reserva_gasto(periodo)
     todos_gastos = db.get_gastos(periodo)
-    gastos_list = [g for g in todos_gastos if g.get("tipo") != "VARIABLE_FR"]
-    gastos_fr   = [g for g in todos_gastos if g.get("tipo") == "VARIABLE_FR"]
-    total     = sum(g["importe"] for g in gastos_list)
-    total_fr  = sum(g["importe"] for g in gastos_fr)
+    gastos_list  = [g for g in todos_gastos if g.get("tipo") not in ("VARIABLE_FR", "FONDO_RESERVA")]
+    gastos_fondo = [g for g in todos_gastos if g.get("tipo") == "FONDO_RESERVA"]
+    gastos_fr    = [g for g in todos_gastos if g.get("tipo") == "VARIABLE_FR"]
+    total        = sum(g["importe"] for g in gastos_list)
+    total_fondo  = sum(g["importe"] for g in gastos_fondo)
+    total_fr     = sum(g["importe"] for g in gastos_fr)
+    total_expensas = total + total_fondo
     prox_periodo = db._next_periodo(periodo)
     liq_prox_cerrada = db.liq_esta_cerrada(prox_periodo)
     liq_prox_existe = db.liquidacion_existe(prox_periodo)
@@ -636,7 +639,9 @@ def gastos(periodo=None):
     proveedores = db.get_proveedores()
     tareas = db.get_tareas()
     return render_template("gastos.html", gastos=gastos_list, gastos_fr=gastos_fr,
+                           gastos_fondo=gastos_fondo,
                            periodo=periodo, total=total, total_fr=total_fr,
+                           total_fondo=total_fondo, total_expensas=total_expensas,
                            prox_periodo=prox_periodo, liq_prox_cerrada=liq_prox_cerrada,
                            liq_prox_existe=liq_prox_existe,
                            liq_actual_existe=liq_actual_existe,
