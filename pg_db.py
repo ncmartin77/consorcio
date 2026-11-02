@@ -1016,7 +1016,7 @@ def factura_en_liquidacion(fid) -> bool:
             return False
         fp = f.get("fecha_pago") or ""
         if len(fp) >= 7:
-            return liquidacion_existe(_next_periodo(fp[:7]))
+            return liq_esta_cerrada(_next_periodo(fp[:7]))
     return False
 
 
