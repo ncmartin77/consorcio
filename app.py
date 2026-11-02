@@ -134,6 +134,7 @@ def _contexto_auditoria():
     try:
         db.ensure_auditoria()
         db.ensure_deuda_inicial_fecha()
+        db.ensure_caja_factura_id()
     except Exception as exc:
         app.logger.warning(f"[Auditoría] No se pudo inicializar: {exc}")
     desc = _DESC_AUDITORIA.get(request.endpoint, request.endpoint)
@@ -654,7 +655,7 @@ def gastos(periodo=None):
 
     # Estado de cada gasto recurrente en el período
     gastos_recurrentes = db.get_gastos_recurrentes()
-    todas_facturas = db.get_facturas()
+    todas_facturas, _ = db.get_facturas(per_page=10000)
     facturas_periodo = [f for f in todas_facturas
                         if str(f.get("fecha") or "")[:7] == periodo]
     recurrentes_estado = []
@@ -753,12 +754,19 @@ def caja(periodo=None):
         periodo = _get_periodo_trabajo()
     else:
         _set_periodo_trabajo(periodo)
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    per_page = 50
     liq_cerrada = db.liq_esta_cerrada(periodo)
-    movimientos = db.get_caja(periodo)
-    entradas = sum(m["importe"] for m in movimientos if m["tipo"] == "ENTRADA")
-    salidas = sum(m["importe"] for m in movimientos if m["tipo"] == "SALIDA")
+    movimientos, total = db.get_caja(periodo, page=page, per_page=per_page)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    # Summaries always over the full month (not just the page)
+    todos, _ = db.get_caja(periodo, page=1, per_page=10000)
+    entradas = sum(m["importe"] for m in todos if m["tipo"] == "ENTRADA")
+    salidas = sum(m["importe"] for m in todos if m["tipo"] == "SALIDA")
     saldo_mes = round(entradas - salidas, 2)
-    # Saldo acumulado total (incluye todos los períodos anteriores)
     saldo_acumulado, _, _ = db.get_saldo_caja()
     saldo_anterior = round(saldo_acumulado - saldo_mes, 2)
     ultimo_movimiento = db.get_ultimo_movimiento_caja()
@@ -771,7 +779,8 @@ def caja(periodo=None):
                            saldo_anterior=saldo_anterior,
                            saldo_acumulado=saldo_acumulado,
                            liq_cerrada=liq_cerrada,
-                           ultimo_movimiento=ultimo_movimiento)
+                           ultimo_movimiento=ultimo_movimiento,
+                           page=page, total_pages=total_pages, total=total)
 
 
 @app.route("/caja/save", methods=["POST"])
@@ -1354,7 +1363,7 @@ def save_factura():
 @app.route("/facturas/pagar/<int:fid>", methods=["POST"])
 def pagar_factura(fid):
     fecha_pago = request.form.get("fecha_pago") or date.today().strftime("%Y-%m-%d")
-    factura = next((f for f in db.get_facturas() if str(f["id"]) == str(fid)), None)
+    factura = db.get_factura_by_id(fid)
     if factura:
         fecha_emision = str(factura.get("fecha") or "")
         if fecha_emision and fecha_pago < fecha_emision:
@@ -1545,7 +1554,7 @@ def upload_comprobante(fid):
     if not _allowed_file(file.filename):
         flash("Tipo de archivo no permitido. Use PDF, PNG, JPG, GIF, TIFF o BMP.", "danger")
         return redirect(url_for("facturas"))
-    factura = next((f for f in db.get_facturas() if str(f["id"]) == str(fid)), None)
+    factura = db.get_factura_by_id(fid)
     if not factura:
         flash("Factura no encontrada.", "danger")
         return redirect(url_for("facturas"))
@@ -1573,7 +1582,7 @@ def upload_comprobante(fid):
 @app.route("/facturas/<int:fid>/comprobante")
 def ver_comprobante(fid):
     """Sirve el PDF adjunto de una factura directamente en el navegador."""
-    factura = next((f for f in db.get_facturas() if str(f["id"]) == str(fid)), None)
+    factura = db.get_factura_by_id(fid)
     if not factura or not factura.get("archivo_pdf"):
         flash("Esta factura no tiene comprobante adjunto.", "warning")
         return redirect(url_for("facturas"))

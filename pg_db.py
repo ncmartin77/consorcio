@@ -298,6 +298,10 @@ def ensure_deuda_inicial_fecha():
     """)
 
 
+def ensure_caja_factura_id():
+    _exec("ALTER TABLE caja ADD COLUMN IF NOT EXISTS factura_id INTEGER")
+
+
 def get_unidades(solo_activas=False) -> list:
     sql = "SELECT * FROM unidades WHERE consorcio_id = %s"
     if solo_activas:
@@ -446,11 +450,15 @@ def get_total_gastos(periodo: str) -> float:
 
 # ── Caja diaria ───────────────────────────────────────────────────────────────
 
-def get_caja(periodo: str) -> list:
+def get_caja(periodo: str, page: int = 1, per_page: int = 50):
+    base = "FROM caja WHERE consorcio_id=%s AND to_char(fecha,'YYYY-MM')=%s"
+    params = (_cid(), periodo)
+    total = (_fetchone(f"SELECT COUNT(*) AS n {base}", params) or {}).get("n", 0)
+    offset = (page - 1) * per_page
     rows = _fetchall(
-        "SELECT id, fecha, descripcion, tipo, categoria, importe FROM caja "
-        "WHERE consorcio_id=%s AND to_char(fecha,'YYYY-MM')=%s ORDER BY fecha, id",
-        (_cid(), periodo)
+        f"SELECT id, fecha, descripcion, tipo, categoria, importe, factura_id {base} "
+        f"ORDER BY fecha, id LIMIT %s OFFSET %s",
+        params + (per_page, offset)
     )
     return [{
         "row": r["id"],
@@ -459,7 +467,8 @@ def get_caja(periodo: str) -> list:
         "tipo": r["tipo"] or "",
         "categoria": r["categoria"] or "",
         "importe": float(r["importe"]),
-    } for r in rows]
+        "factura_id": r["factura_id"],
+    } for r in rows], int(total)
 
 
 def save_movimiento(fecha: str, descripcion: str, tipo: str, categoria: str, importe: float, row_num: int = None):
@@ -508,7 +517,7 @@ def _revertir_pago(periodo: str, unidad: str, monto: float):
 
 def delete_movimiento(row_num: int) -> bool:
     row = _fetchone(
-        "SELECT fecha, categoria, descripcion, importe FROM caja "
+        "SELECT fecha, categoria, descripcion, importe, factura_id FROM caja "
         "WHERE id=%s AND consorcio_id=%s",
         (row_num, _cid())
     )
@@ -519,6 +528,13 @@ def delete_movimiento(row_num: int) -> bool:
             m = re.search(r"^Expensas (\d{4}-\d{2}).*UF (\d+)", row["descripcion"] or "")
             if m:
                 _revertir_pago(m.group(1), m.group(2), float(row["importe"]))
+        # Revert linked factura to PENDIENTE
+        if row["factura_id"]:
+            _exec(
+                "UPDATE facturas SET estado='PENDIENTE', fecha_pago=NULL "
+                "WHERE id=%s AND consorcio_id=%s",
+                (row["factura_id"], _cid())
+            )
     _exec("DELETE FROM caja WHERE id=%s AND consorcio_id=%s", (row_num, _cid()))
     return True
 
@@ -946,6 +962,11 @@ def get_total_pendiente_facturas() -> float:
     return float(row["t"]) if row else 0.0
 
 
+def get_factura_by_id(fid) -> dict | None:
+    row = _fetchone("SELECT * FROM facturas WHERE id=%s AND consorcio_id=%s", (int(fid), _cid()))
+    return _fac_dict(row) if row else None
+
+
 def save_factura(data: dict) -> int:
     def _pd(v):
         if not v:
@@ -1020,6 +1041,10 @@ def pagar_factura(fid: int, fecha_pago: str) -> bool:
     importe = float(row["importe"]) if row["importe"] else 0.0
     save_movimiento(fecha=fecha_pago, descripcion=desc[:200], tipo="SALIDA",
                     categoria=row["categoria"] or "Proveedor", importe=importe)
+    # Link the caja entry back to this factura
+    last = _fetchone("SELECT id FROM caja WHERE consorcio_id=%s ORDER BY id DESC LIMIT 1", (_cid(),))
+    if last:
+        _exec("UPDATE caja SET factura_id=%s WHERE id=%s", (fid, last["id"]))
 
     concepto = row["descripcion"] or proveedor
     es_recurrente = any(gr["concepto"].strip().upper() == concepto.strip().upper()
@@ -1031,25 +1056,27 @@ def pagar_factura(fid: int, fecha_pago: str) -> bool:
 
 
 def factura_en_liquidacion(fid) -> bool:
-    for f in get_facturas():
-        if str(f["id"]) != str(fid):
-            continue
-        if f.get("estado") != "PAGADA":
-            return False
-        fp = f.get("fecha_pago") or ""
-        if len(fp) >= 7:
-            return liq_esta_cerrada(_next_periodo(fp[:7]))
-    return False
+    f = get_factura_by_id(fid)
+    if not f or f.get("estado") != "PAGADA":
+        return False
+    fp = f.get("fecha_pago") or ""
+    return liq_esta_cerrada(_next_periodo(fp[:7])) if len(fp) >= 7 else False
 
 
 def get_facturas_extraordinarias_periodo(periodo: str) -> list:
-    return [f for f in get_facturas(estado="PAGADA")
-            if f.get("extraordinario") and (f.get("fecha_pago") or "")[:7] == periodo]
+    rows = _fetchall(
+        "SELECT * FROM facturas WHERE consorcio_id=%s AND estado='PAGADA' AND extraordinario=true "
+        "AND TO_CHAR(fecha_pago,'YYYY-MM')=%s",
+        (_cid(), periodo)
+    )
+    return [_fac_dict(r) for r in rows]
 
 
 def delete_factura(fid) -> bool:
     if factura_en_liquidacion(fid):
         return False
+    # Delete linked caja entry (payment movement)
+    _exec("DELETE FROM caja WHERE factura_id=%s AND consorcio_id=%s", (fid, _cid()))
     _exec("DELETE FROM facturas WHERE id=%s AND consorcio_id=%s", (fid, _cid()))
     return True
 
