@@ -102,6 +102,7 @@ _DESC_AUDITORIA = {
     "eliminar_ultimo_movimiento": "Caja: eliminar último movimiento",
     "generar_liquidacion": "Liquidación: generar",
     "cerrar_liquidacion": "Liquidación: cerrar",
+    "reabrir_liquidacion": "Liquidación: reabrir",
     "pagar_todo": "Liquidación: pago completo",
     "marcar_pagado": "Liquidación: registrar pago",
     "notas_add": "Liquidación: agregar nota",
@@ -924,6 +925,18 @@ def cerrar_liquidacion(periodo):
     else:
         db.set_liq_estado(periodo, "CERRADA")
         flash(f"Liquidación de {periodo} cerrada. Ya no se pueden registrar pagos.", "success")
+    return redirect(url_for("liquidacion", periodo=periodo))
+
+
+@app.route("/liquidacion/reabrir/<periodo>", methods=["POST"])
+def reabrir_liquidacion(periodo):
+    if not db.liquidacion_existe(periodo):
+        flash("No hay liquidación generada para reabrir.", "warning")
+    elif not db.liq_esta_cerrada(periodo):
+        flash(f"La liquidación de {periodo} ya está abierta.", "info")
+    else:
+        db.set_liq_estado(periodo, "ABIERTA")
+        flash(f"Liquidación de {periodo} reabierta.", "success")
     return redirect(url_for("liquidacion", periodo=periodo))
 
 
