@@ -1306,13 +1306,22 @@ def delete_proveedor(pid):
 @app.route("/facturas")
 def facturas():
     estado = request.args.get("estado")
-    lista = db.get_facturas(estado=estado)
+    mes = request.args.get("mes", "")
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    per_page = 25
+    lista, total = db.get_facturas(estado=estado, mes=mes, page=page, per_page=per_page)
+    total_pages = max(1, (total + per_page - 1) // per_page)
     provs = db.get_proveedores()
-    total_pendiente = sum(f["importe"] for f in lista if f["estado"] == "PENDIENTE")
+    total_pendiente = db.get_total_pendiente_facturas()
     gastos_recurrentes = db.get_gastos_recurrentes()
     return render_template("facturas.html", facturas=lista, proveedores=provs,
-                           estado_filtro=estado, total_pendiente=total_pendiente,
-                           gastos_recurrentes=gastos_recurrentes)
+                           estado_filtro=estado, mes_filtro=mes,
+                           total_pendiente=total_pendiente,
+                           gastos_recurrentes=gastos_recurrentes,
+                           page=page, total_pages=total_pages, total=total)
 
 
 @app.route("/facturas/save", methods=["POST"])

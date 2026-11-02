@@ -920,18 +920,30 @@ def _fac_dict(r) -> dict:
     }
 
 
-def get_facturas(estado=None) -> list:
+def get_facturas(estado=None, mes=None, page=1, per_page=25):
+    conds = ["consorcio_id=%s"]
+    params = [_cid()]
     if estado:
-        rows = _fetchall(
-            "SELECT * FROM facturas WHERE consorcio_id=%s AND estado=%s ORDER BY fecha DESC NULLS LAST, id DESC",
-            (_cid(), estado)
-        )
-    else:
-        rows = _fetchall(
-            "SELECT * FROM facturas WHERE consorcio_id=%s ORDER BY fecha DESC NULLS LAST, id DESC",
-            (_cid(),)
-        )
-    return [_fac_dict(r) for r in rows]
+        conds.append("estado=%s")
+        params.append(estado)
+    if mes:
+        col = "fecha_pago" if estado == "PAGADA" else "COALESCE(fecha_pago, fecha)"
+        conds.append(f"TO_CHAR({col}, 'YYYY-MM')=%s")
+        params.append(mes)
+    where = " AND ".join(conds)
+    order = "fecha_pago DESC NULLS LAST, fecha DESC NULLS LAST, id DESC" if estado == "PAGADA" else "fecha DESC NULLS LAST, id DESC"
+    total = (_fetchone(f"SELECT COUNT(*) AS n FROM facturas WHERE {where}", params) or {}).get("n", 0)
+    offset = (page - 1) * per_page
+    rows = _fetchall(
+        f"SELECT * FROM facturas WHERE {where} ORDER BY {order} LIMIT %s OFFSET %s",
+        params + [per_page, offset]
+    )
+    return [_fac_dict(r) for r in rows], int(total)
+
+
+def get_total_pendiente_facturas() -> float:
+    row = _fetchone("SELECT COALESCE(SUM(importe),0) AS t FROM facturas WHERE consorcio_id=%s AND estado='PENDIENTE'", (_cid(),))
+    return float(row["t"]) if row else 0.0
 
 
 def save_factura(data: dict) -> int:
