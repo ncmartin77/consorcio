@@ -680,7 +680,7 @@ def generar_liquidacion(periodo: str):
 
         interes_deuda = 0.0 if es_deuda_inicial else round(deuda_anterior * tasa_mora, 2)
         mora_corriente = 0.0
-        if fecha_vencimiento and hoy > fecha_vencimiento and monto_pagado == 0:
+        if not es_deuda_inicial and fecha_vencimiento and hoy > fecha_vencimiento and monto_pagado == 0:
             mora_corriente = round(expensas * tasa_mora, 2)
         interes = round(interes_deuda + mora_corriente, 2)
 
