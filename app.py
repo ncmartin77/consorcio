@@ -133,6 +133,7 @@ def _contexto_auditoria():
         return
     try:
         db.ensure_auditoria()
+        db.ensure_deuda_inicial_fecha()
     except Exception as exc:
         app.logger.warning(f"[Auditoría] No se pudo inicializar: {exc}")
     desc = _DESC_AUDITORIA.get(request.endpoint, request.endpoint)
@@ -507,6 +508,7 @@ def save_unidad():
         "activo": 1 if request.form.get("activo") else 0,
         "piso": request.form.get("piso", "").strip(),
         "deuda_inicial": float(deuda_ini) if deuda_ini else 0.0,
+        "deuda_inicial_fecha": request.form.get("deuda_inicial_fecha", "").strip() or None,
         "propietario_mail":    request.form.get("propietario_mail", "").strip(),
         "propietario_celular": request.form.get("propietario_celular", "").strip(),
         "inquilino_mail":      request.form.get("inquilino_mail", "").strip(),

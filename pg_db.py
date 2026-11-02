@@ -291,6 +291,13 @@ def delete_categoria(nombre: str):
 
 # ── Unidades ──────────────────────────────────────────────────────────────────
 
+def ensure_deuda_inicial_fecha():
+    _exec("""
+        ALTER TABLE unidades
+        ADD COLUMN IF NOT EXISTS deuda_inicial_fecha VARCHAR(7)
+    """)
+
+
 def get_unidades(solo_activas=False) -> list:
     sql = "SELECT * FROM unidades WHERE consorcio_id = %s"
     if solo_activas:
@@ -312,6 +319,7 @@ def get_unidades(solo_activas=False) -> list:
     for u in unidades:
         row = dict(u)
         row["deuda_inicial"] = float(row["deuda_inicial"]) if row["deuda_inicial"] else 0.0
+        row["deuda_inicial_fecha"] = row.get("deuda_inicial_fecha") or ""
         row["activo"] = bool(row["activo"])
         for cat, pct in pct_map.get(row["numero"], {}).items():
             row[f"pct_{cat}"] = pct
@@ -333,9 +341,9 @@ def save_unidad(data: dict):
             cur.execute("""
                 INSERT INTO unidades
                     (consorcio_id, numero, descripcion, propietario, inquilino, activo, piso, deuda_inicial,
-                     propietario_mail, propietario_celular, inquilino_mail, inquilino_celular,
+                     deuda_inicial_fecha, propietario_mail, propietario_celular, inquilino_mail, inquilino_celular,
                      envio_destinatario, envio_canal)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (consorcio_id, numero) DO UPDATE SET
                     descripcion         = EXCLUDED.descripcion,
                     propietario         = EXCLUDED.propietario,
@@ -343,6 +351,7 @@ def save_unidad(data: dict):
                     activo              = EXCLUDED.activo,
                     piso                = EXCLUDED.piso,
                     deuda_inicial       = EXCLUDED.deuda_inicial,
+                    deuda_inicial_fecha = EXCLUDED.deuda_inicial_fecha,
                     propietario_mail    = EXCLUDED.propietario_mail,
                     propietario_celular = EXCLUDED.propietario_celular,
                     inquilino_mail      = EXCLUDED.inquilino_mail,
@@ -357,6 +366,7 @@ def save_unidad(data: dict):
                 bool(data.get("activo", True)),
                 data.get("piso", "") or "",
                 float(data.get("deuda_inicial", 0) or 0),
+                data.get("deuda_inicial_fecha", "") or None,
                 data.get("propietario_mail", "") or "",
                 data.get("propietario_celular", "") or "",
                 data.get("inquilino_mail", "") or "",

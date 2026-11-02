@@ -48,6 +48,9 @@
             <td class="text-end text-muted small">
               {% if u.get('deuda_inicial') and u.get('deuda_inicial')|float > 0 %}
                 $ {{ "%.2f"|format(u.get('deuda_inicial')|float)|replace(".",",") }}
+                {% if u.get('deuda_inicial_fecha') %}
+                  <div class="text-muted" style="font-size:0.7rem">al {{ u.deuda_inicial_fecha }}</div>
+                {% endif %}
               {% else %}-{% endif %}
             </td>
             <td class="text-center small text-nowrap">
@@ -127,6 +130,11 @@
               <input type="number" class="form-control" id="form_deuda_inicial" name="deuda_inicial"
                      step="0.01" min="0" value="0"
                      title="Deuda que ya tenía la unidad al comenzar a usar la app">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Al período</label>
+              <input type="month" class="form-control" id="form_deuda_inicial_fecha" name="deuda_inicial_fecha"
+                     title="Período al que corresponde la deuda inicial (YYYY-MM)">
             </div>
             <div class="col-md-6">
               <label class="form-label fw-semibold">Propietario</label>
@@ -223,6 +231,7 @@ function editarUnidad(u) {
   document.getElementById('form_descripcion').value = u.descripcion || '';
   document.getElementById('form_piso').value = u.piso || '';
   document.getElementById('form_deuda_inicial').value = u.deuda_inicial || 0;
+  document.getElementById('form_deuda_inicial_fecha').value = u.deuda_inicial_fecha || '';
   document.getElementById('form_propietario').value = u.propietario || '';
   document.getElementById('form_inquilino').value = u.inquilino || '';
   document.getElementById('form_propietario_mail').value = u.propietario_mail || '';
@@ -251,6 +260,7 @@ document.getElementById('modalUnidad').addEventListener('hidden.bs.modal', funct
   document.getElementById('form_descripcion').value = '';
   document.getElementById('form_piso').value = '';
   document.getElementById('form_deuda_inicial').value = 0;
+  document.getElementById('form_deuda_inicial_fecha').value = '';
   document.getElementById('form_propietario').value = '';
   document.getElementById('form_inquilino').value = '';
   document.getElementById('form_propietario_mail').value = '';
