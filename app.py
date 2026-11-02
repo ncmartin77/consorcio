@@ -170,6 +170,7 @@ def inject_version():
         "usuario_foto": session.get("usuario_foto", ""),
         "es_admin": session.get("es_admin", False),
         "logo_url": logo_url,
+        "periodo_trabajo": session.get("periodo_trabajo") or "",
     }
 
 
@@ -191,9 +192,27 @@ def _periodo_actual():
     return f"{today.year}-{today.month:02d}"
 
 
+def _get_periodo_trabajo():
+    """Período de liquidación activo en la sesión (o el mes actual si no está seteado)."""
+    return session.get("periodo_trabajo") or _periodo_actual()
+
+
+def _set_periodo_trabajo(periodo_liq: str):
+    """Guarda el período de liquidación en sesión."""
+    session["periodo_trabajo"] = periodo_liq
+
+
 # ---------------------------------------------------------------------------
 # CONSORCIOS
 # ---------------------------------------------------------------------------
+
+@app.route("/set-periodo", methods=["POST"])
+def set_periodo():
+    periodo = request.form.get("periodo", "").strip()
+    if periodo:
+        _set_periodo_trabajo(periodo)
+    return redirect(request.referrer or url_for("liquidacion", periodo=periodo))
+
 
 @app.route("/")
 def index():
@@ -614,7 +633,10 @@ def _recalcular_liq_si_posible(periodo):
 @app.route("/gastos/<periodo>")
 def gastos(periodo=None):
     if not periodo:
-        periodo = _periodo_actual()
+        # Gastos del mes anterior al período de liquidación activo
+        periodo = db._prev_periodo(_get_periodo_trabajo())
+    else:
+        _set_periodo_trabajo(db._next_periodo(periodo))
     db.ensure_fondo_reserva_gasto(periodo)
     todos_gastos = db.get_gastos(periodo)
     gastos_list  = [g for g in todos_gastos if g.get("tipo") not in ("VARIABLE_FR", "FONDO_RESERVA")]
@@ -728,7 +750,9 @@ def tareas_delete(tarea_id):
 @app.route("/caja/<periodo>")
 def caja(periodo=None):
     if not periodo:
-        periodo = _periodo_actual()
+        periodo = _get_periodo_trabajo()
+    else:
+        _set_periodo_trabajo(periodo)
     liq_cerrada = db.liq_esta_cerrada(periodo)
     movimientos = db.get_caja(periodo)
     entradas = sum(m["importe"] for m in movimientos if m["tipo"] == "ENTRADA")
@@ -816,7 +840,9 @@ def eliminar_ultimo_movimiento():
 @app.route("/liquidacion/<periodo>")
 def liquidacion(periodo=None):
     if not periodo:
-        periodo = _periodo_actual()
+        periodo = _get_periodo_trabajo()
+    else:
+        _set_periodo_trabajo(periodo)
 
     # Auto-aplicar mora si hoy superó el día de vencimiento y la liquidación está abierta
     liq_generada_check = db.liquidacion_existe(periodo)

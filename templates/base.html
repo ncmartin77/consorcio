@@ -43,7 +43,7 @@
 
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'liquidacion' %}active{% endif %}"
-             href="{{ url_for('liquidacion') }}"
+             href="{{ url_for('liquidacion', periodo=periodo_trabajo) if periodo_trabajo else url_for('liquidacion') }}"
              data-ayuda="Liquidación: generá y administrá las liquidaciones de expensas por período. Registrá pagos, cerrá el período y descargá el resumen PDF.">
             <i class="bi bi-receipt"></i> Liquidación
           </a>
@@ -51,7 +51,7 @@
 
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'caja' %}active{% endif %}"
-             href="{{ url_for('caja') }}"
+             href="{{ url_for('caja', periodo=periodo_trabajo) if periodo_trabajo else url_for('caja') }}"
              data-ayuda="Caja Diaria: registrá entradas y salidas de dinero del consorcio. Muestra el saldo acumulado en tiempo real.">
             <i class="bi bi-cash-stack"></i> Caja
           </a>
@@ -147,6 +147,18 @@
         </li>
 
       </ul>
+
+      {# ── Período de trabajo ── #}
+      {% if periodo_trabajo %}
+      <form method="POST" action="{{ url_for('set_periodo') }}" class="d-flex align-items-center gap-1 ms-3">
+        <span class="text-white-50 small text-nowrap"><i class="bi bi-calendar3"></i></span>
+        <input type="month" name="periodo" value="{{ periodo_trabajo }}"
+               class="form-control form-control-sm"
+               style="width:145px;font-size:0.8rem;padding:2px 6px"
+               title="Período de trabajo activo — cambialo para navegar a otro mes"
+               onchange="this.form.submit()">
+      </form>
+      {% endif %}
 
       {# ── Derecha ── #}
       <div class="d-flex align-items-center gap-2">
