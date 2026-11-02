@@ -86,6 +86,7 @@ def _set_consorcio():
 _DESC_AUDITORIA = {
     "config": "Configuración: guardar",
     "add_gasto_recurrente": "Configuración: agregar gasto recurrente",
+    "edit_gasto_recurrente": "Configuración: editar gasto recurrente",
     "delete_gasto_recurrente": "Configuración: eliminar gasto recurrente",
     "add_categoria": "Configuración: agregar categoría",
     "delete_categoria": "Configuración: eliminar categoría",
@@ -449,6 +450,16 @@ def add_gasto_recurrente():
 def delete_gasto_recurrente(gid):
     db.delete_gasto_recurrente(gid)
     flash("Gasto recurrente eliminado.", "success")
+    return redirect(url_for("config"))
+
+
+@app.route("/config/recurrente/edit/<int:gid>", methods=["POST"])
+def edit_gasto_recurrente(gid):
+    concepto = request.form.get("concepto", "").strip()
+    categoria = request.form.get("categoria", "").strip()
+    if concepto:
+        db.update_gasto_recurrente(gid, concepto, categoria)
+        flash("Gasto recurrente actualizado.", "success")
     return redirect(url_for("config"))
 
 

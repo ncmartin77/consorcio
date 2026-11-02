@@ -860,6 +860,13 @@ def delete_gasto_recurrente(gid: int):
     _exec("DELETE FROM gastos_recurrentes WHERE id=%s AND consorcio_id=%s", (gid, _cid()))
 
 
+def update_gasto_recurrente(gid: int, concepto: str, categoria: str):
+    _exec(
+        "UPDATE gastos_recurrentes SET concepto=%s, categoria=%s WHERE id=%s AND consorcio_id=%s",
+        (concepto.strip(), categoria.strip(), gid, _cid())
+    )
+
+
 # ── Tareas ────────────────────────────────────────────────────────────────────
 
 def get_tareas() -> list:

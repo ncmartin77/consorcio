@@ -141,21 +141,38 @@
           </thead>
           <tbody>
             {% for gr in gastos_recurrentes %}
-            <tr>
+            <tr id="gr-view-{{ gr.id }}">
               <td><strong>{{ gr.concepto }}</strong></td>
               <td class="text-muted">{{ gr.categoria }}</td>
-              <td>
-                <form method="POST" action="{{ url_for('delete_gasto_recurrente', gid=gr.id) }}"
-                      onsubmit="return confirm('¿Eliminar gasto recurrente {{ gr.concepto }}?')">
-                  <button class="btn btn-sm btn-outline-danger">
-                    <i class="bi bi-trash"></i>
-                  </button>
+              <td class="text-nowrap">
+                <button class="btn btn-sm btn-outline-secondary me-1"
+                        onclick="editarGR({{ gr.id }}, {{ gr.concepto|tojson }}, {{ (gr.categoria or '')|tojson }})">
+                  <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger"
+                        data-concepto="{{ gr.concepto|e }}"
+                        onclick="borrarGR(this, {{ gr.id }})">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </td>
+            </tr>
+            <tr id="gr-edit-{{ gr.id }}" style="display:none" class="table-warning">
+              <td colspan="3">
+                <form method="POST" action="{{ url_for('edit_gasto_recurrente', gid=gr.id) }}" class="d-flex gap-2">
+                  <input type="text" class="form-control form-control-sm" name="concepto"
+                         id="gr-concepto-{{ gr.id }}" value="{{ gr.concepto }}" required>
+                  <input type="text" class="form-control form-control-sm" name="categoria"
+                         value="{{ gr.categoria or '' }}" placeholder="Categoría">
+                  <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-check-lg"></i></button>
+                  <button type="button" class="btn btn-sm btn-secondary"
+                          onclick="cerrarEdicionGR({{ gr.id }})"><i class="bi bi-x-lg"></i></button>
                 </form>
               </td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
+        <form id="form-delete-gr" method="POST" style="display:none"></form>
         {% else %}
         <p class="text-muted small">No hay gastos recurrentes configurados.</p>
         {% endif %}
@@ -473,4 +490,24 @@
     </div>
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+function editarGR(id, concepto, categoria) {
+  document.getElementById('gr-view-' + id).style.display = 'none';
+  document.getElementById('gr-edit-' + id).style.display = '';
+  document.getElementById('gr-concepto-' + id).focus();
+}
+function cerrarEdicionGR(id) {
+  document.getElementById('gr-edit-' + id).style.display = 'none';
+  document.getElementById('gr-view-' + id).style.display = '';
+}
+function borrarGR(btn, id) {
+  const concepto = btn.dataset.concepto;
+  if (!confirm('¿Eliminar gasto recurrente "' + concepto + '"?')) return;
+  const form = document.getElementById('form-delete-gr');
+  form.action = '/config/recurrente/delete/' + id;
+  form.submit();
+}
+</script>
 {% endblock %}
