@@ -88,6 +88,14 @@
         <div class="fw-bold {% if saldo_caja >= 0 %}text-primary{% else %}text-danger{% endif %}">
           $ {{ "%.2f"|format(saldo_caja)|replace(".",",") }}
         </div>
+        <form method="GET" action="{{ url_for('liquidacion', periodo=periodo) }}" class="mt-1">
+          <input type="date" class="form-control form-control-sm text-center px-1"
+                 name="saldo_al" value="{{ saldo_al }}"
+                 max="{{ saldo_al_default }}"
+                 style="font-size:0.65rem"
+                 onchange="this.form.submit()"
+                 title="Calcular saldo al día">
+        </form>
       </div>
     </div>
   </div>
@@ -96,7 +104,7 @@
       <div class="card-body py-2 px-1">
         <div class="small text-info fw-bold">FONDO RESERVA</div>
         <div class="fw-bold text-info">$ {{ "%.2f"|format(fondo_reserva)|replace(".",",") }}</div>
-        <div class="text-muted" style="font-size:0.65rem">pendiente de cobro</div>
+        <div class="text-muted" style="font-size:0.65rem">{{ mes_gastos | mes_largo }}</div>
       </div>
     </div>
   </div>

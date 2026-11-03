@@ -7,6 +7,7 @@ import re
 import base64
 import hmac as _hmac_mod
 import hashlib
+import calendar as _cal
 from datetime import date
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, session, g
 import io
@@ -886,12 +887,17 @@ def liquidacion(periodo=None):
     total_deuda = sum(r["deuda_anterior"] for r in liq)
     pendientes = sum(1 for r in liq if r.get("tipo_pago", "PENDIENTE") not in ("TOTAL",))
     total_cobrado = sum(r.get("monto_pagado", 0) for r in liq)
-    saldo_caja, _, _ = db.get_saldo_caja()  # balance acumulado total
+    # Saldo de caja al último día del período (o fecha elegida por el usuario)
+    yp, mp = int(periodo[:4]), int(periodo[5:7])
+    ultimo_dia = _cal.monthrange(yp, mp)[1]
+    saldo_al_default = f"{periodo}-{ultimo_dia:02d}"
+    saldo_al = request.args.get("saldo_al", saldo_al_default)
+    saldo_caja, _, _ = db.get_saldo_caja(hasta_fecha=saldo_al)
     # Entradas = propietarios pagando en el período de la liquidación
     # Salidas = facturas/gastos pagados en el mes ANTERIOR (que generaron esta liquidación)
     entradas, _ = db.get_movimientos_periodo(periodo)
     _, salidas = db.get_movimientos_periodo(mes_gastos)
-    fondo = db.get_fondo_reserva()
+    fondo = db.get_fondo_reserva_periodo(mes_gastos)
     liq_cerrada = db.liq_esta_cerrada(periodo)
     liq_generada = db.liquidacion_existe(periodo)
     notas = db.get_notas_periodo(periodo)
@@ -923,6 +929,8 @@ def liquidacion(periodo=None):
                            total_cobrado=total_cobrado,
                            cfg=cfg,
                            saldo_caja=saldo_caja,
+                           saldo_al=saldo_al,
+                           saldo_al_default=saldo_al_default,
                            entradas_caja=entradas,
                            salidas_caja=salidas,
                            fondo_reserva=fondo,
@@ -1096,10 +1104,13 @@ def descargar_pdf(periodo):
     if not liq:
         flash("No hay liquidación generada para este período.", "warning")
         return redirect(url_for("liquidacion", periodo=periodo))
-    gastos = db.get_gastos(db._prev_periodo(periodo))
+    mes_gastos_pdf = db._prev_periodo(periodo)
+    gastos = db.get_gastos(mes_gastos_pdf)
     cfg = db.get_config()
-    saldo_caja, _, _ = db.get_saldo_caja()
-    fondo = db.get_fondo_reserva()
+    yp2, mp2 = int(periodo[:4]), int(periodo[5:7])
+    hasta_pdf = f"{periodo}-{_cal.monthrange(yp2, mp2)[1]:02d}"
+    saldo_caja, _, _ = db.get_saldo_caja(hasta_fecha=hasta_pdf)
+    fondo = db.get_fondo_reserva_periodo(mes_gastos_pdf)
     notas = db.get_notas_periodo(periodo)
     extras = db.get_gastos_extra(periodo)
     _logo = db.get_logo()

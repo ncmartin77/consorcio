@@ -1195,25 +1195,35 @@ def delete_presupuesto(pres_id):
 
 # ── Caja — saldos ─────────────────────────────────────────────────────────────
 
-def get_saldo_caja():
+def get_saldo_caja(hasta_fecha=None):
     cfg = get_config()
     saldo_inicial = float(cfg.get("saldo_inicial_caja", 0) or 0)
     fecha_inicio = (cfg.get("saldo_inicial_caja_fecha") or "").strip()
+    conds = ["consorcio_id=%s"]
+    params = [_cid()]
     if fecha_inicio:
-        # Solo movimientos desde la fecha inicial inclusive (los anteriores ya están en saldo_inicial)
-        row = _fetchone("""
-            SELECT COALESCE(SUM(CASE WHEN tipo='ENTRADA' THEN importe ELSE 0 END),0) AS entradas,
-                   COALESCE(SUM(CASE WHEN tipo='SALIDA'  THEN importe ELSE 0 END),0) AS salidas
-            FROM caja WHERE consorcio_id=%s AND fecha >= %s
-        """, (_cid(), fecha_inicio))
-    else:
-        row = _fetchone("""
-            SELECT COALESCE(SUM(CASE WHEN tipo='ENTRADA' THEN importe ELSE 0 END),0) AS entradas,
-                   COALESCE(SUM(CASE WHEN tipo='SALIDA'  THEN importe ELSE 0 END),0) AS salidas
-            FROM caja WHERE consorcio_id=%s
-        """, (_cid(),))
+        conds.append("fecha >= %s")
+        params.append(fecha_inicio)
+    if hasta_fecha:
+        conds.append("fecha <= %s")
+        params.append(hasta_fecha)
+    where = " AND ".join(conds)
+    row = _fetchone(f"""
+        SELECT COALESCE(SUM(CASE WHEN tipo='ENTRADA' THEN importe ELSE 0 END),0) AS entradas,
+               COALESCE(SUM(CASE WHEN tipo='SALIDA'  THEN importe ELSE 0 END),0) AS salidas
+        FROM caja WHERE {where}
+    """, params)
     entradas, salidas = float(row["entradas"]), float(row["salidas"])
     return round(saldo_inicial + entradas - salidas, 2), round(entradas, 2), round(salidas, 2)
+
+
+def get_fondo_reserva_periodo(periodo: str) -> float:
+    row = _fetchone(
+        "SELECT COALESCE(SUM(importe),0) AS total FROM gastos "
+        "WHERE consorcio_id=%s AND periodo=%s AND tipo='FONDO_RESERVA'",
+        (_cid(), periodo)
+    )
+    return round(float(row["total"]), 2)
 
 
 def get_movimientos_periodo(periodo: str):
