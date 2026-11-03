@@ -1,0 +1,66 @@
+# Entorno de desarrollo local: Postgres (copia de la base) + almacenamiento S3 (hace de Supabase Storage).
+# Solo para esta maquina; Render no lo usa.
+#
+#   docker compose -f docker-compose.local.yml up -d --wait
+#   scripts/restaurar_local.sh <backup.dump.age>
+#   scripts/correr_local.sh
+#
+# S3 local: SeaweedFS (MinIO ya no publica imagenes de Docker). Habla la misma API S3
+# que Supabase Storage, asi que el codigo de la app es el mismo en los dos.
+# Puertos altos y solo en 127.0.0.1 para no chocar con otros servicios de la maquina.
+
+name: consorcio-local
+
+services:
+  db:
+    image: postgres:${PG_MAJOR:-17}-alpine
+    environment:
+      POSTGRES_USER: consorcio
+      POSTGRES_PASSWORD: consorcio
+      POSTGRES_DB: consorcio
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - db:/var/lib/postgresql/data
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=30"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U consorcio -d consorcio"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  s3:
+    image: chrislusf/seaweedfs:3.97
+    command: >
+      server -dir=/data -ip.bind=0.0.0.0 -master.volumeSizeLimitMB=256
+             -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
+    ports:
+      - "127.0.0.1:59000:8333"
+    volumes:
+      - s3:/data
+      - ./dev/seaweedfs-s3.json:/etc/seaweedfs/s3.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8333/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Crea el bucket privado "comprobantes" (el mismo nombre que en Supabase Storage).
+  s3-init:
+    image: amazon/aws-cli:2.27.0
+    depends_on:
+      s3:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: consorcio
+      AWS_SECRET_ACCESS_KEY: consorcio-local
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["sh", "-c"]
+    command:
+      - aws --endpoint-url http://s3:8333 s3api head-bucket --bucket comprobantes 2>/dev/null
+        || aws --endpoint-url http://s3:8333 s3 mb s3://comprobantes
+    restart: "no"
+
+volumes:
+  db:
+  s3:

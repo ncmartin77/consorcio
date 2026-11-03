@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "consorcio",
+      "credentials": [{ "accessKey": "consorcio", "secretKey": "consorcio-local" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}
