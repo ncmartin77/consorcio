@@ -12,7 +12,7 @@ Secretos del repo (Settings → Secrets and variables → Actions):
 
 | Secreto | Valor |
 |---|---|
-| `SUPABASE_DB_URL` | Supabase → Connect → **Session pooler** (IPv4, puerto 5432): `postgresql://postgres.eboskmenitazzwfobwkiq:<clave>@aws-X-ca-central-1.pooler.supabase.com:5432/postgres` |
+| `SUPABASE_DB_URL` | Supabase → Connect → **Session pooler** (IPv4, puerto 5432): `postgresql://postgres.eboskxnitazzwfobwkiq:<clave>@aws-X-ca-central-1.pooler.supabase.com:5432/postgres` |
 | `AGE_RECIPIENTS` | Una o más claves públicas age (`age1...`) separadas por espacios. Cualquiera de esas claves privadas puede descifrar el backup. |
 
 Bajar el último backup:
