@@ -308,7 +308,7 @@
         <tbody>
           {% for r in liq %}
           {% set tipo = r.get('tipo_pago', 'PENDIENTE') %}
-          <tr class="{% if tipo == 'TOTAL' %}table-success{% elif tipo == 'PARCIAL' %}table-warning{% elif r.deuda_anterior > 0 %}table-danger{% endif %}"
+          <tr class="{% if tipo == 'TOTAL' %}table-success{% elif tipo == 'PARCIAL' %}table-warning{% elif tipo == 'PENDIENTE' %}table-danger{% endif %}"
               data-unidad="{{ r.unidad }}">
             <td><strong>{{ r.unidad }}</strong></td>
             <td>{{ r.descripcion }}</td>
@@ -319,7 +319,7 @@
               {% if r.deuda_anterior > 0 %}$ {{ "%.2f"|format(r.deuda_anterior)|replace(".",",") }}{% else %}—{% endif %}
             </td>
             <td class="text-center">
-              <span class="celda-interes {% if r.interes > 0 %}text-warning fw-semibold{% else %}text-muted{% endif %}">
+              <span class="celda-interes {% if r.interes > 0 %}text-danger fw-semibold{% else %}text-muted{% endif %}">
                 {% if r.interes > 0 %}$ {{ "%.2f"|format(r.interes)|replace(".",",") }}{% else %}—{% endif %}
               </span>
               {% if not liq_cerrada %}
@@ -987,7 +987,7 @@ function actualizarFila(unidad, data) {
   const celda = tr.querySelector('.celda-interes');
   if (celda) {
     celda.textContent = formatPesos(data.interes);
-    celda.className = 'celda-interes ' + (data.interes > 0 ? 'text-warning fw-semibold' : 'text-muted');
+    celda.className = 'celda-interes ' + (data.interes > 0 ? 'text-danger fw-semibold' : 'text-muted');
   }
   const tds = tr.querySelectorAll('td');
   // TOTAL col (índice 8) y Saldo (índice 10) — buscar por clase fw-bold
