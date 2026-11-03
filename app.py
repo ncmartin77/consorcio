@@ -136,6 +136,7 @@ def _contexto_auditoria():
         db.ensure_auditoria()
         db.ensure_deuda_inicial_fecha()
         db.ensure_caja_factura_id()
+        db.ensure_liq_sin_interes()
     except Exception as exc:
         app.logger.warning(f"[Auditoría] No se pudo inicializar: {exc}")
     desc = _DESC_AUDITORIA.get(request.endpoint, request.endpoint)
@@ -990,6 +991,34 @@ def reabrir_liquidacion(periodo):
         db.set_liq_estado(periodo, "ABIERTA")
         flash(f"Liquidación de {periodo} reabierta.", "success")
     return redirect(url_for("liquidacion", periodo=periodo))
+
+
+@app.route("/liquidacion/<periodo>/sin-interes/<unidad>", methods=["POST"])
+def toggle_sin_interes(periodo, unidad):
+    if db.liq_esta_cerrada(periodo):
+        return jsonify({"ok": False, "error": "Liquidación cerrada"}), 403
+    valor = request.json.get("sin_interes", False)
+    db.set_sin_interes(periodo, unidad, valor)
+    db.generar_liquidacion(periodo)
+    liq = db.get_liquidacion(periodo)
+    row = next((r for r in liq if str(r["unidad"]) == str(unidad)), None)
+    if row:
+        return jsonify({"ok": True, "interes": row["interes"], "total_a_pagar": row["total_a_pagar"],
+                        "saldo_pendiente": row["saldo_pendiente"]})
+    return jsonify({"ok": True})
+
+
+@app.route("/liquidacion/<periodo>/sin-interes-todos", methods=["POST"])
+def toggle_sin_interes_todos(periodo):
+    if db.liq_esta_cerrada(periodo):
+        return jsonify({"ok": False, "error": "Liquidación cerrada"}), 403
+    valor = request.json.get("sin_interes", False)
+    db.set_sin_interes_todos(periodo, valor)
+    db.generar_liquidacion(periodo)
+    liq = db.get_liquidacion(periodo)
+    rows = {str(r["unidad"]): {"interes": r["interes"], "total_a_pagar": r["total_a_pagar"],
+                                "saldo_pendiente": r["saldo_pendiente"]} for r in liq}
+    return jsonify({"ok": True, "rows": rows})
 
 
 @app.route("/liquidacion/pagar-todo/<periodo>", methods=["POST"])

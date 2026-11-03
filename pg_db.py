@@ -302,6 +302,10 @@ def ensure_caja_factura_id():
     _exec("ALTER TABLE caja ADD COLUMN IF NOT EXISTS factura_id INTEGER")
 
 
+def ensure_liq_sin_interes():
+    _exec("ALTER TABLE liquidaciones ADD COLUMN IF NOT EXISTS sin_interes BOOLEAN DEFAULT FALSE")
+
+
 def get_unidades(solo_activas=False) -> list:
     sql = "SELECT * FROM unidades WHERE consorcio_id = %s"
     if solo_activas:
@@ -579,6 +583,7 @@ def _liq_row(r) -> dict:
         "saldo_pendiente": float(r["saldo_pendiente"]) if r["saldo_pendiente"] else 0.0,
         "fecha_pago": fp.strftime("%Y-%m-%d") if fp else "",
         "extras": float(r["extras"]) if r["extras"] else 0.0,
+        "sin_interes": bool(r["sin_interes"]) if r.get("sin_interes") is not None else False,
     }
 
 
@@ -641,6 +646,7 @@ def generar_liquidacion(periodo: str):
 
     prev_liq = {str(r["unidad"]): r for r in get_liquidacion(_prev_periodo(periodo))}
     pagos_previos = {str(r["unidad"]): r for r in get_liquidacion(periodo)}
+    sin_interes_map = {str(r["unidad"]): r.get("sin_interes", False) for r in pagos_previos.values()}
     all_extras = get_gastos_extra(periodo)
 
     _exec("DELETE FROM liquidaciones WHERE consorcio_id=%s AND periodo=%s", (_cid(), periodo))
@@ -678,11 +684,15 @@ def generar_liquidacion(periodo: str):
         monto_pagado = float(pago.get("monto_pagado") or 0)
         fecha_pago_str = pago.get("fecha_pago", "")
 
-        interes_deuda = 0.0 if es_deuda_inicial else round(deuda_anterior * tasa_mora, 2)
-        mora_corriente = 0.0
-        if not es_deuda_inicial and fecha_vencimiento and hoy > fecha_vencimiento and monto_pagado == 0:
-            mora_corriente = round(expensas * tasa_mora, 2)
-        interes = round(interes_deuda + mora_corriente, 2)
+        sin_interes = sin_interes_map.get(numero, False)
+        if sin_interes:
+            interes = 0.0
+        else:
+            interes_deuda = 0.0 if es_deuda_inicial else round(deuda_anterior * tasa_mora, 2)
+            mora_corriente = 0.0
+            if not es_deuda_inicial and fecha_vencimiento and hoy > fecha_vencimiento and monto_pagado == 0:
+                mora_corriente = round(expensas * tasa_mora, 2)
+            interes = round(interes_deuda + mora_corriente, 2)
 
         extras_unidad = round(sum(
             float(e.get("monto") or 0)
@@ -715,6 +725,7 @@ def generar_liquidacion(periodo: str):
             saldo if monto_pagado > 0 else None,
             fecha_pago_d,
             extras_unidad if extras_unidad else None,
+            sin_interes,
         ))
 
     with _conn() as c:
@@ -723,12 +734,26 @@ def generar_liquidacion(periodo: str):
                 INSERT INTO liquidaciones
                   (consorcio_id, periodo, unidad, descripcion, propietario, inquilino,
                    pct_aplicado, expensas, deuda_anterior, interes, total_a_pagar, pagado,
-                   monto_pagado, tipo_pago, saldo_pendiente, fecha_pago, extras)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   monto_pagado, tipo_pago, saldo_pendiente, fecha_pago, extras, sin_interes)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """, new_rows)
 
     set_liq_estado(periodo, "ABIERTA")
     return get_liquidacion(periodo)
+
+
+def set_sin_interes(periodo: str, unidad: str, valor: bool):
+    _exec(
+        "UPDATE liquidaciones SET sin_interes=%s WHERE consorcio_id=%s AND periodo=%s AND unidad=%s",
+        (valor, _cid(), periodo, str(unidad))
+    )
+
+
+def set_sin_interes_todos(periodo: str, valor: bool):
+    _exec(
+        "UPDATE liquidaciones SET sin_interes=%s WHERE consorcio_id=%s AND periodo=%s",
+        (valor, _cid(), periodo)
+    )
 
 
 def marcar_pagado(periodo: str, unidad: str, monto_pagado: float, fecha_pago: str = None):

@@ -284,7 +284,18 @@
             <th class="text-center">% U.F.</th>
             <th class="text-end">Expensas</th>
             <th class="text-end">Deuda Ant.</th>
-            <th class="text-end">Interés</th>
+            <th class="text-center" style="width:120px">
+              Interés
+              {% if not liq_cerrada %}
+              <div class="d-flex align-items-center justify-content-center gap-1 mt-1">
+                <span style="font-size:0.6rem;font-weight:normal">Todos</span>
+                <div class="form-check form-switch mb-0" title="Activar/desactivar interés para todas las unidades">
+                  <input class="form-check-input" type="checkbox" id="toggleTodosInteres"
+                         style="cursor:pointer">
+                </div>
+              </div>
+              {% endif %}
+            </th>
             <th class="text-end">Extra</th>
             <th class="text-end">TOTAL</th>
             <th class="text-end">Abonado</th>
@@ -297,7 +308,8 @@
         <tbody>
           {% for r in liq %}
           {% set tipo = r.get('tipo_pago', 'PENDIENTE') %}
-          <tr class="{% if tipo == 'TOTAL' %}table-success{% elif tipo == 'PARCIAL' %}table-warning{% elif r.deuda_anterior > 0 %}table-danger{% endif %}">
+          <tr class="{% if tipo == 'TOTAL' %}table-success{% elif tipo == 'PARCIAL' %}table-warning{% elif r.deuda_anterior > 0 %}table-danger{% endif %}"
+              data-unidad="{{ r.unidad }}">
             <td><strong>{{ r.unidad }}</strong></td>
             <td>{{ r.descripcion }}</td>
             <td>{{ r.inquilino or r.propietario }}</td>
@@ -306,8 +318,19 @@
             <td class="text-end {% if r.deuda_anterior > 0 %}text-danger fw-semibold{% endif %}">
               {% if r.deuda_anterior > 0 %}$ {{ "%.2f"|format(r.deuda_anterior)|replace(".",",") }}{% else %}—{% endif %}
             </td>
-            <td class="text-end {% if r.interes > 0 %}text-warning{% endif %}">
-              {% if r.interes > 0 %}$ {{ "%.2f"|format(r.interes)|replace(".",",") }}{% else %}—{% endif %}
+            <td class="text-center">
+              <span class="celda-interes {% if r.interes > 0 %}text-warning fw-semibold{% else %}text-muted{% endif %}">
+                {% if r.interes > 0 %}$ {{ "%.2f"|format(r.interes)|replace(".",",") }}{% else %}—{% endif %}
+              </span>
+              {% if not liq_cerrada %}
+              <div class="form-check form-switch d-flex justify-content-center mb-0 mt-1">
+                <input class="form-check-input chk-sin-interes" type="checkbox"
+                       data-unidad="{{ r.unidad }}"
+                       {% if r.sin_interes %}checked{% endif %}
+                       title="{% if r.sin_interes %}Interés desactivado{% else %}Activar para omitir interés{% endif %}"
+                       style="cursor:pointer">
+              </div>
+              {% endif %}
             </td>
             <td class="text-end {% if r.extras > 0 %}text-danger fw-semibold{% endif %}"
                 title="{% for e in extras_por_unidad.get(r.unidad|string, []) %}{{ e.descripcion }}: ${{ '%.2f'|format(e.monto) }}{% if not loop.last %} | {% endif %}{% endfor %}">
@@ -951,6 +974,56 @@ function abrirWA(num) {
 function irAEditarUnidad() {
   const num = document.getElementById('sinCelularUnidad').textContent;
   window.location.href = '{{ url_for("unidades") }}?editar=' + encodeURIComponent(num);
+}
+
+// ── Sin interés ──────────────────────────────────────────────────────────────
+function formatPesos(v) {
+  return v === 0 ? '—' : '$ ' + v.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function actualizarFila(unidad, data) {
+  const tr = document.querySelector(`tr[data-unidad="${unidad}"]`);
+  if (!tr) return;
+  const celda = tr.querySelector('.celda-interes');
+  if (celda) {
+    celda.textContent = formatPesos(data.interes);
+    celda.className = 'celda-interes ' + (data.interes > 0 ? 'text-warning fw-semibold' : 'text-muted');
+  }
+  const tds = tr.querySelectorAll('td');
+  // TOTAL col (índice 8) y Saldo (índice 10) — buscar por clase fw-bold
+  tr.querySelectorAll('td.fw-bold').forEach(td => { td.textContent = '$ ' + data.total_a_pagar.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2}); });
+}
+
+document.querySelectorAll('.chk-sin-interes').forEach(chk => {
+  chk.addEventListener('change', function() {
+    const unidad = this.dataset.unidad;
+    const valor = this.checked;
+    fetch('{{ url_for("toggle_sin_interes", periodo=periodo, unidad="__U__") }}'.replace('__U__', unidad), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({sin_interes: valor})
+    })
+    .then(r => r.json())
+    .then(data => { if (data.ok) actualizarFila(unidad, data); });
+  });
+});
+
+const toggleTodos = document.getElementById('toggleTodosInteres');
+if (toggleTodos) {
+  toggleTodos.addEventListener('change', function() {
+    const valor = this.checked;
+    fetch('{{ url_for("toggle_sin_interes_todos", periodo=periodo) }}', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({sin_interes: valor})
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) return;
+      document.querySelectorAll('.chk-sin-interes').forEach(c => { c.checked = valor; });
+      Object.entries(data.rows).forEach(([u, row]) => actualizarFila(u, row));
+    });
+  });
 }
 </script>
 {% endblock %}
