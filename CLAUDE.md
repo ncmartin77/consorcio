@@ -9,6 +9,17 @@ Responde siempre en español.
 Después de cada cambio significativo, hacer commit y push a GitHub.
 Usar mensajes de commit descriptivos en español.
 
+## Versionado (`version.txt`, formato `X.Y-DDMM`)
+Actualizar `version.txt` antes de **cada** commit. `DDMM` = día y mes real del commit. Claude decide el incremento según esta regla:
+
+- **Menor (Y += 1)** — caso normal: feature nuevo, fix, cambio visual o de UX. Ej: `5.1-0311` → `5.2-0311`.
+- **Mayor (X += 1, Y vuelve a 0)** — solo ante un cambio de fondo:
+  - cambio de arquitectura o de base de datos (ej. v1 → v2: Excel → PostgreSQL);
+  - cambio en las reglas de cálculo que altera resultados (liquidación, mora, intereses, fondo de reserva) (ej. v4 → v5: mora del primer mes pasa a manual);
+  - cambio que requiere migrar datos o rompe compatibilidad con datos/flujo anteriores.
+- **Antes de subir la versión mayor, consultar al usuario** explicando por qué se propone (ej. "esto cambia la fórmula de mora, propongo 6.0"). Si no confirma, se sube solo la menor. Si el usuario indica una versión mayor explícitamente, usar esa.
+- Registrar cada versión en `docs/historial_versiones.md`.
+
 ## Running the app
 
 **Windows (normal use):**
@@ -147,7 +158,7 @@ templates/                ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 
 **Verificación de autenticidad de recibos (HMAC + QR):** cada recibo PDF incluye un código de verificación de 32 chars hex y un QR al pie. El código es un HMAC-SHA256 calculado sobre los campos clave del recibo (`periodo|unidad|descripcion|expensas|deuda_anterior|interes|total_a_pagar|tipo_pago|monto_pagado|fecha_pago|edificio_nombre`) usando una clave secreta almacenada en CONFIG (`clave_firma`). La clave se genera automáticamente con `secrets.token_hex(32)` la primera vez que se necesita (`get_clave_firma()` en `excel_db.py`). El QR codifica la URL `{url_app}/verificar/{periodo}/{unidad}/{codigo}`. La ruta `/verificar/<periodo>/<unidad>/<codigo>` recalcula el HMAC con los datos actuales del Excel y lo compara con `hmac.compare_digest`. La página `verificar.html` muestra 4 estados: `formulario` (entrada manual), `no_encontrado`, `valido`, `invalido`. La URL base se configura en CONFIG como `url_app` (default `http://localhost:5000`); si la app está en red local se configura con la IP real (ej. `http://192.168.1.100:5000`) para que el QR sea escaneable desde celulares. Campo visible en Configuración → sección "Verificación de Recibos". `migrar.py` agrega `clave_firma` y `url_app` a instalaciones existentes. **Bug conocido (corregido):** `config.html` tenía un `<input type="hidden" name="url_app">` duplicado que aparecía antes del campo visible en el mismo form; Flask tomaba el primer valor (el viejo), impidiendo guardar la nueva URL. Eliminado el hidden duplicado.
 
-**Versión del sistema:** stored in `version.txt` (e.g. `0.7-0304`, where the suffix is the release date DDMM). Read at startup via a `@app.context_processor` in `app.py` that injects `app_version` into all templates. Displayed as a badge in the navbar (`base.html`). **Increment the minor number on every push** (e.g. `0.7-0304` → `0.8-0304`). Update `version.txt` before committing.
+**Versión del sistema:** stored in `version.txt` (e.g. `0.7-0304`, where the suffix is the release date DDMM). Read at startup via a `@app.context_processor` in `app.py` that injects `app_version` into all templates. Displayed as a badge in the navbar (`base.html`). Update `version.txt` before committing; see section **Versionado** at the top for when to bump minor vs. major.
 
 **Caja Diaria — saldo acumulado:** the caja route computes `saldo_acumulado` via `db.get_saldo_caja()` (all-time total) and `saldo_anterior = saldo_acumulado - saldo_mes`. The template shows 4 summary cards: Saldo Anterior / Entradas Mes / Salidas Mes / Saldo Acumulado.
 

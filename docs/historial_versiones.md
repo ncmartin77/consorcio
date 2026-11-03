@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 5.0-0311
+**Versión actual:** 5.3-0311
 
 ---
 
@@ -265,8 +265,7 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 #### v5.0-0311 — Mora sin restricción de apertura
 
-**Lanzamiento:** 3 de noviembre  
-**Versión actual**
+**Lanzamiento:** 3 de noviembre
 
 **Cambios:**
 
@@ -275,6 +274,41 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 - **Filas PENDIENTE en fondo rojo:** Las unidades con estado PENDIENTE en la liquidación siempre se muestran con fondo rojo, independientemente de otros estados
 
 **Motivación:** La regla automática del primer mes era frágil y difícil de mantener. Darle el control explícito al administrador mediante el checkbox es más flexible y predecible.
+
+---
+
+#### v5.1-0311 — Documentación del proyecto
+
+**Lanzamiento:** 3 de noviembre
+
+**Cambios:**
+
+- Carpeta `docs/` con historial de versiones, manual de usuario, arquitectura técnica y memoria de sesión.
+
+---
+
+#### v5.2-0311 — Tilde "sin interés" rápido
+
+**Lanzamiento:** 3 de noviembre
+
+**Cambios:**
+
+- **Toggle "sin interés" sin regenerar la liquidación:** recalcula solo interés, total y saldo de las unidades afectadas en una única transacción (`aplicar_sin_interes()` en `pg_db.py`).
+- **Pantalla actualizada al instante:** interés, TOTAL, Saldo, total del pie y el monto del modal de pago se actualizan sin recargar; el tilde se deshabilita mientras espera y se revierte con aviso si hay error.
+- **Menos consultas por request:** los `ensure_*` de columnas (`ALTER TABLE`) corren una sola vez por proceso en lugar de en cada request.
+
+**Motivación:** el tilde tardaba varios segundos y la pantalla mostraba montos viejos.
+
+---
+
+#### v5.3-0311 — Regla de versionado
+
+**Lanzamiento:** 3 de noviembre  
+**Versión actual**
+
+**Cambios:**
+
+- Regla de versionado en `CLAUDE.md`: cuándo sube la versión menor y cuándo la mayor; la mayor se consulta con el usuario antes del commit.
 
 ---
 
