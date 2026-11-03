@@ -309,7 +309,7 @@
           {% for r in liq %}
           {% set tipo = r.get('tipo_pago', 'PENDIENTE') %}
           <tr class="{% if tipo == 'TOTAL' %}table-success{% elif tipo == 'PARCIAL' %}table-warning{% elif tipo == 'PENDIENTE' %}table-danger{% endif %}"
-              data-unidad="{{ r.unidad }}">
+              data-unidad="{{ r.unidad }}" data-tipo="{{ tipo }}">
             <td><strong>{{ r.unidad }}</strong></td>
             <td>{{ r.descripcion }}</td>
             <td>{{ r.inquilino or r.propietario }}</td>
@@ -336,11 +336,11 @@
                 title="{% for e in extras_por_unidad.get(r.unidad|string, []) %}{{ e.descripcion }}: ${{ '%.2f'|format(e.monto) }}{% if not loop.last %} | {% endif %}{% endfor %}">
               {% if r.extras > 0 %}$ {{ "%.2f"|format(r.extras)|replace(".",",") }}{% else %}—{% endif %}
             </td>
-            <td class="text-end fw-bold">$ {{ "%.2f"|format(r.total_a_pagar)|replace(".",",") }}</td>
+            <td class="text-end fw-bold celda-total">$ {{ "%.2f"|format(r.total_a_pagar)|replace(".",",") }}</td>
             <td class="text-end {% if tipo != 'PENDIENTE' %}text-success fw-semibold{% endif %}">
               {% if r.monto_pagado > 0 %}$ {{ "%.2f"|format(r.monto_pagado)|replace(".",",") }}{% else %}—{% endif %}
             </td>
-            <td class="text-end {% if r.saldo_pendiente > 0 %}text-danger fw-semibold{% endif %}">
+            <td class="text-end celda-saldo {% if r.saldo_pendiente > 0 %}text-danger fw-semibold{% endif %}">
               {% if tipo == 'TOTAL' %}—
               {% elif r.saldo_pendiente > 0 %}$ {{ "%.2f"|format(r.saldo_pendiente)|replace(".",",") }}
               {% else %}$ {{ "%.2f"|format(r.total_a_pagar)|replace(".",",") }}{% endif %}
@@ -420,7 +420,7 @@
             <td class="text-end">$ {{ "%.2f"|format(total_gastos)|replace(".",",") }}</td>
             <td class="text-end">$ {{ "%.2f"|format(total_deuda)|replace(".",",") }}</td>
             <td></td>
-            <td class="text-end text-danger">$ {{ "%.2f"|format(total_a_pagar)|replace(".",",") }}</td>
+            <td class="text-end text-danger" id="totAPagar">$ {{ "%.2f"|format(total_a_pagar)|replace(".",",") }}</td>
             <td class="text-end text-success">$ {{ "%.2f"|format(total_cobrado)|replace(".",",") }}</td>
             <td colspan="4"></td>
           </tr>
@@ -740,6 +740,8 @@ function guardarEnvio() {
 }
 
 function abrirModalPago(r, esParcial) {
+  // Si el interés se cambió sin recargar la página, usar los montos actualizados
+  if (_filasActualizadas[String(r.unidad)]) r = Object.assign({}, r, _filasActualizadas[String(r.unidad)]);
   const saldo = r.saldo_pendiente > 0 ? r.saldo_pendiente : r.total_a_pagar;
   _saldoActual = saldo;
 
@@ -981,30 +983,74 @@ function formatPesos(v) {
   return v === 0 ? '—' : '$ ' + v.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
+// Montos recalculados sin recargar la página (los usa abrirModalPago)
+const _filasActualizadas = {};
+
+function pesos(v) {
+  return '$ ' + v.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+// Devuelve false si la fila cambió de estado (ej. Parcial → Pagado) y hay que recargar
 function actualizarFila(unidad, data) {
   const tr = document.querySelector(`tr[data-unidad="${unidad}"]`);
-  if (!tr) return;
+  if (!tr) return true;
+  if (data.tipo_pago && tr.dataset.tipo && data.tipo_pago !== tr.dataset.tipo) return false;
+  _filasActualizadas[String(unidad)] = data;
+
   const celda = tr.querySelector('.celda-interes');
   if (celda) {
     celda.textContent = formatPesos(data.interes);
     celda.className = 'celda-interes ' + (data.interes > 0 ? 'text-danger fw-semibold' : 'text-muted');
   }
-  const tds = tr.querySelectorAll('td');
-  // TOTAL col (índice 8) y Saldo (índice 10) — buscar por clase fw-bold
-  tr.querySelectorAll('td.fw-bold').forEach(td => { td.textContent = '$ ' + data.total_a_pagar.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2}); });
+  const total = tr.querySelector('.celda-total');
+  if (total) total.textContent = pesos(data.total_a_pagar);
+
+  const saldo = tr.querySelector('.celda-saldo');
+  if (saldo && data.tipo_pago !== 'TOTAL') {
+    saldo.textContent = pesos(data.saldo_pendiente > 0 ? data.saldo_pendiente : data.total_a_pagar);
+  }
+  [total, saldo, celda].forEach(el => {
+    if (!el) return;
+    el.style.transition = 'background-color .6s';
+    el.style.backgroundColor = '#fff3cd';
+    setTimeout(() => { el.style.backgroundColor = ''; }, 700);
+  });
+  return true;
+}
+
+function actualizarTotalPeriodo(v) {
+  const el = document.getElementById('totAPagar');
+  if (el && typeof v === 'number') el.textContent = pesos(v);
+}
+
+function postSinInteres(url, valor) {
+  return fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({sin_interes: valor})
+  }).then(r => r.json().catch(() => ({ok: false, error: 'Respuesta inválida del servidor (' + r.status + ')'})));
+}
+
+function errorSinInteres(chk, valor, msg) {
+  chk.checked = !valor;
+  alert('No se pudo actualizar el interés: ' + (msg || 'error de conexión'));
 }
 
 document.querySelectorAll('.chk-sin-interes').forEach(chk => {
   chk.addEventListener('change', function() {
     const unidad = this.dataset.unidad;
     const valor = this.checked;
-    fetch('{{ url_for("toggle_sin_interes", periodo=periodo, unidad="__U__") }}'.replace('__U__', unidad), {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({sin_interes: valor})
-    })
-    .then(r => r.json())
-    .then(data => { if (data.ok) actualizarFila(unidad, data); });
+    const celda = document.querySelector(`tr[data-unidad="${unidad}"] .celda-interes`);
+    this.disabled = true;
+    if (celda) celda.style.opacity = '0.4';
+    postSinInteres('{{ url_for("toggle_sin_interes", periodo=periodo, unidad="__U__") }}'.replace('__U__', encodeURIComponent(unidad)), valor)
+      .then(data => {
+        if (!data.ok) return errorSinInteres(this, valor, data.error);
+        if (!actualizarFila(unidad, data)) return location.reload();
+        actualizarTotalPeriodo(data.total_periodo);
+      })
+      .catch(() => errorSinInteres(this, valor))
+      .finally(() => { this.disabled = false; if (celda) celda.style.opacity = ''; });
   });
 });
 
@@ -1012,17 +1058,19 @@ const toggleTodos = document.getElementById('toggleTodosInteres');
 if (toggleTodos) {
   toggleTodos.addEventListener('change', function() {
     const valor = this.checked;
-    fetch('{{ url_for("toggle_sin_interes_todos", periodo=periodo) }}', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({sin_interes: valor})
-    })
-    .then(r => r.json())
-    .then(data => {
-      if (!data.ok) return;
-      document.querySelectorAll('.chk-sin-interes').forEach(c => { c.checked = valor; });
-      Object.entries(data.rows).forEach(([u, row]) => actualizarFila(u, row));
-    });
+    const checks = document.querySelectorAll('.chk-sin-interes');
+    this.disabled = true;
+    checks.forEach(c => { c.disabled = true; });
+    postSinInteres('{{ url_for("toggle_sin_interes_todos", periodo=periodo) }}', valor)
+      .then(data => {
+        if (!data.ok) return errorSinInteres(this, valor, data.error);
+        checks.forEach(c => { c.checked = valor; });
+        const ok = Object.entries(data.rows).map(([u, row]) => actualizarFila(u, row)).every(Boolean);
+        if (!ok) return location.reload();
+        actualizarTotalPeriodo(data.total_periodo);
+      })
+      .catch(() => errorSinInteres(this, valor))
+      .finally(() => { this.disabled = false; checks.forEach(c => { c.disabled = false; }); });
   });
 }
 </script>

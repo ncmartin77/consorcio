@@ -102,6 +102,8 @@ _DESC_AUDITORIA = {
     "delete_movimiento": "Caja: eliminar movimiento",
     "eliminar_ultimo_movimiento": "Caja: eliminar último movimiento",
     "generar_liquidacion": "Liquidación: generar",
+    "toggle_sin_interes": "Liquidación: activar/desactivar interés",
+    "toggle_sin_interes_todos": "Liquidación: activar/desactivar interés (todas)",
     "cerrar_liquidacion": "Liquidación: cerrar",
     "reabrir_liquidacion": "Liquidación: reabrir",
     "pagar_todo": "Liquidación: pago completo",
@@ -997,28 +999,21 @@ def reabrir_liquidacion(periodo):
 def toggle_sin_interes(periodo, unidad):
     if db.liq_esta_cerrada(periodo):
         return jsonify({"ok": False, "error": "Liquidación cerrada"}), 403
-    valor = request.json.get("sin_interes", False)
-    db.set_sin_interes(periodo, unidad, valor)
-    db.generar_liquidacion(periodo)
-    liq = db.get_liquidacion(periodo)
-    row = next((r for r in liq if str(r["unidad"]) == str(unidad)), None)
-    if row:
-        return jsonify({"ok": True, "interes": row["interes"], "total_a_pagar": row["total_a_pagar"],
-                        "saldo_pendiente": row["saldo_pendiente"]})
-    return jsonify({"ok": True})
+    valor = bool((request.get_json(silent=True) or {}).get("sin_interes", False))
+    res = db.aplicar_sin_interes(periodo, valor, unidad=unidad)
+    row = res["rows"].get(str(unidad))
+    if not row:
+        return jsonify({"ok": False, "error": "Unidad no encontrada en la liquidación"}), 404
+    return jsonify({"ok": True, **row, "total_periodo": res["total_periodo"]})
 
 
 @app.route("/liquidacion/<periodo>/sin-interes-todos", methods=["POST"])
 def toggle_sin_interes_todos(periodo):
     if db.liq_esta_cerrada(periodo):
         return jsonify({"ok": False, "error": "Liquidación cerrada"}), 403
-    valor = request.json.get("sin_interes", False)
-    db.set_sin_interes_todos(periodo, valor)
-    db.generar_liquidacion(periodo)
-    liq = db.get_liquidacion(periodo)
-    rows = {str(r["unidad"]): {"interes": r["interes"], "total_a_pagar": r["total_a_pagar"],
-                                "saldo_pendiente": r["saldo_pendiente"]} for r in liq}
-    return jsonify({"ok": True, "rows": rows})
+    valor = bool((request.get_json(silent=True) or {}).get("sin_interes", False))
+    res = db.aplicar_sin_interes(periodo, valor)
+    return jsonify({"ok": True, "rows": res["rows"], "total_periodo": res["total_periodo"]})
 
 
 @app.route("/liquidacion/pagar-todo/<periodo>", methods=["POST"])

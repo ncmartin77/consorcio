@@ -291,19 +291,35 @@ def delete_categoria(nombre: str):
 
 # ── Unidades ──────────────────────────────────────────────────────────────────
 
+# Migraciones de columnas: se ejecutan una sola vez por proceso (antes corrían
+# un ALTER TABLE en cada request, con lock exclusivo y un round-trip a Supabase).
+_columnas_ok: set = set()
+_columnas_lock = threading.Lock()
+
+
+def _ensure_columna(clave: str, sql: str):
+    if clave in _columnas_ok:
+        return
+    with _columnas_lock:
+        if clave in _columnas_ok:
+            return
+        _exec(sql)
+        _columnas_ok.add(clave)
+
+
 def ensure_deuda_inicial_fecha():
-    _exec("""
-        ALTER TABLE unidades
-        ADD COLUMN IF NOT EXISTS deuda_inicial_fecha VARCHAR(7)
-    """)
+    _ensure_columna("unidades.deuda_inicial_fecha",
+                    "ALTER TABLE unidades ADD COLUMN IF NOT EXISTS deuda_inicial_fecha VARCHAR(7)")
 
 
 def ensure_caja_factura_id():
-    _exec("ALTER TABLE caja ADD COLUMN IF NOT EXISTS factura_id INTEGER")
+    _ensure_columna("caja.factura_id",
+                    "ALTER TABLE caja ADD COLUMN IF NOT EXISTS factura_id INTEGER")
 
 
 def ensure_liq_sin_interes():
-    _exec("ALTER TABLE liquidaciones ADD COLUMN IF NOT EXISTS sin_interes BOOLEAN DEFAULT FALSE")
+    _ensure_columna("liquidaciones.sin_interes",
+                    "ALTER TABLE liquidaciones ADD COLUMN IF NOT EXISTS sin_interes BOOLEAN DEFAULT FALSE")
 
 
 def get_unidades(solo_activas=False) -> list:
@@ -612,13 +628,8 @@ def liquidacion_existe(periodo: str) -> bool:
     ) is not None
 
 
-def generar_liquidacion(periodo: str):
-    if liq_esta_cerrada(periodo):
-        return None
-
-    mes_gastos = _prev_periodo(periodo)
-    ensure_fondo_reserva_gasto(mes_gastos)
-    cfg = get_config()
+def _params_interes(periodo: str, cfg: dict):
+    """Devuelve (tasa_mora, hoy, fecha_vencimiento) para calcular intereses del período."""
     tasa_mora = float(cfg.get("tasa_mora", 7)) / 100
 
     fs = (cfg.get("fecha_simulada") or "").strip()
@@ -638,6 +649,37 @@ def generar_liquidacion(periodo: str):
         fecha_vencimiento = date(yp, mp, dia_venc_real)
     except Exception:
         fecha_vencimiento = None
+    return tasa_mora, hoy, fecha_vencimiento
+
+
+def _calcular_interes(expensas, deuda_anterior, es_deuda_inicial, monto_pagado, sin_interes,
+                      tasa_mora, hoy, fecha_vencimiento) -> float:
+    if sin_interes:
+        return 0.0
+    interes_deuda = 0.0 if es_deuda_inicial else round(deuda_anterior * tasa_mora, 2)
+    mora_corriente = 0.0
+    if fecha_vencimiento and hoy > fecha_vencimiento and monto_pagado == 0:
+        mora_corriente = round(expensas * tasa_mora, 2)
+    return round(interes_deuda + mora_corriente, 2)
+
+
+def _estado_pago(total: float, monto_pagado: float):
+    """Devuelve (tipo_pago, saldo, pagado) según lo abonado contra el total."""
+    if monto_pagado >= total and monto_pagado > 0:
+        return "TOTAL", 0.0, True
+    if monto_pagado > 0:
+        return "PARCIAL", round(total - monto_pagado, 2), False
+    return "PENDIENTE", total, False
+
+
+def generar_liquidacion(periodo: str):
+    if liq_esta_cerrada(periodo):
+        return None
+
+    mes_gastos = _prev_periodo(periodo)
+    ensure_fondo_reserva_gasto(mes_gastos)
+    cfg = get_config()
+    tasa_mora, hoy, fecha_vencimiento = _params_interes(periodo, cfg)
 
     unidades = get_unidades(solo_activas=True)
     gastos = get_gastos(mes_gastos)
@@ -685,14 +727,8 @@ def generar_liquidacion(periodo: str):
         fecha_pago_str = pago.get("fecha_pago", "")
 
         sin_interes = sin_interes_map.get(numero, False)
-        if sin_interes:
-            interes = 0.0
-        else:
-            interes_deuda = 0.0 if es_deuda_inicial else round(deuda_anterior * tasa_mora, 2)
-            mora_corriente = 0.0
-            if fecha_vencimiento and hoy > fecha_vencimiento and monto_pagado == 0:
-                mora_corriente = round(expensas * tasa_mora, 2)
-            interes = round(interes_deuda + mora_corriente, 2)
+        interes = _calcular_interes(expensas, deuda_anterior, es_deuda_inicial, monto_pagado,
+                                    sin_interes, tasa_mora, hoy, fecha_vencimiento)
 
         extras_unidad = round(sum(
             float(e.get("monto") or 0)
@@ -702,12 +738,7 @@ def generar_liquidacion(periodo: str):
 
         total = round(expensas + deuda_anterior + interes + extras_unidad, 2)
 
-        if monto_pagado >= total and monto_pagado > 0:
-            tipo_pago, saldo, pagado_flag = "TOTAL", 0.0, True
-        elif monto_pagado > 0:
-            tipo_pago, saldo, pagado_flag = "PARCIAL", round(total - monto_pagado, 2), False
-        else:
-            tipo_pago, saldo, pagado_flag = "PENDIENTE", total, False
+        tipo_pago, saldo, pagado_flag = _estado_pago(total, monto_pagado)
 
         fecha_pago_d = None
         if fecha_pago_str:
@@ -740,6 +771,68 @@ def generar_liquidacion(periodo: str):
 
     set_liq_estado(periodo, "ABIERTA")
     return get_liquidacion(periodo)
+
+
+def aplicar_sin_interes(periodo: str, valor: bool, unidad: str = None) -> dict:
+    """Activa/desactiva el interés y recalcula SOLO interés, total y saldo de las unidades
+    afectadas (una unidad, o todas si unidad es None), en una sola transacción.
+    No regenera la liquidación: expensas, deuda anterior, extras y pagos quedan igual.
+    Devuelve {"rows": {unidad: {...}}, "total_periodo": float}."""
+    cfg = get_config()
+    tasa_mora, hoy, fecha_vencimiento = _params_interes(periodo, cfg)
+    cid = _cid()
+
+    with _conn() as c:
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            sql = """SELECT id, unidad, expensas, deuda_anterior, extras, monto_pagado
+                     FROM liquidaciones WHERE consorcio_id=%s AND periodo=%s"""
+            params = [cid, periodo]
+            if unidad is not None:
+                sql += " AND unidad=%s"
+                params.append(str(unidad))
+            cur.execute(sql, params)
+            filas = cur.fetchall()
+
+            cur.execute("SELECT unidad FROM liquidaciones WHERE consorcio_id=%s AND periodo=%s",
+                        (cid, _prev_periodo(periodo)))
+            con_liq_previa = {str(r["unidad"]) for r in cur.fetchall()}
+
+            valores, rows = [], {}
+            for f in filas:
+                numero = str(f["unidad"])
+                expensas = float(f["expensas"] or 0)
+                deuda_anterior = float(f["deuda_anterior"] or 0)
+                extras = float(f["extras"] or 0)
+                monto_pagado = float(f["monto_pagado"] or 0)
+
+                interes = _calcular_interes(expensas, deuda_anterior, numero not in con_liq_previa,
+                                            monto_pagado, valor, tasa_mora, hoy, fecha_vencimiento)
+                total = round(expensas + deuda_anterior + interes + extras, 2)
+                tipo_pago, saldo, pagado_flag = _estado_pago(total, monto_pagado)
+
+                valores.append((
+                    f["id"], bool(valor), interes, total, pagado_flag,
+                    tipo_pago if monto_pagado > 0 else None,
+                    saldo if monto_pagado > 0 else None,
+                ))
+                rows[numero] = {"interes": interes, "total_a_pagar": total,
+                                "saldo_pendiente": saldo, "tipo_pago": tipo_pago}
+
+            if valores:
+                psycopg2.extras.execute_values(cur, """
+                    UPDATE liquidaciones AS l SET
+                        sin_interes = v.si, interes = v.interes, total_a_pagar = v.total,
+                        pagado = v.pagado, tipo_pago = v.tipo_pago, saldo_pendiente = v.saldo
+                    FROM (VALUES %s) AS v(id, si, interes, total, pagado, tipo_pago, saldo)
+                    WHERE l.id = v.id
+                """, valores,
+                    template="(%s::int, %s::boolean, %s::numeric, %s::numeric, %s::boolean, %s::text, %s::numeric)")
+
+            cur.execute("SELECT COALESCE(SUM(total_a_pagar), 0) AS t FROM liquidaciones "
+                        "WHERE consorcio_id=%s AND periodo=%s", (cid, periodo))
+            total_periodo = float(cur.fetchone()["t"])
+
+    return {"rows": rows, "total_periodo": total_periodo}
 
 
 def set_sin_interes(periodo: str, unidad: str, valor: bool):
