@@ -5,6 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Idioma
 Responde siempre en español.
 
+## Contexto de sesión
+Al empezar una sesión, leer `docs/memoria_sesion_claude.md` (estado actual, pendientes, reglas y cómo continuar en otra PC). Al terminar un trabajo relevante, actualizarlo y commitearlo: es la memoria compartida entre PCs (la memoria local de Claude no viaja con el repo).
+
 ## Git
 Después de cada cambio significativo, hacer commit y push a GitHub.
 Usar mensajes de commit descriptivos en español.
