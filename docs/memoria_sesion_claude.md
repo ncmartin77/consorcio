@@ -14,7 +14,7 @@
 | **Deploy** | https://consorcio-soo4.onrender.com (Render.com free tier, auto-deploy desde master) |
 | **Directorio local** | `/home/norberto/consorcio` |
 | **Git en WSL** | `"/mnt/c/Program Files/Git/bin/git.exe"` (siempre con ruta completa) |
-| **Version actual** | `5.4-0411` (en `version.txt`) |
+| **Version actual** | `5.5-0411` (en `version.txt`) |
 | **Supabase Project ID** | `eboskmenitazzwfobwkiq` (region: ca-central-1) |
 | **MCP Supabase config** | `~/.mcp.json` (token `sb_secret_*` en `headers.Authorization`) |
 | **Consorcio activo en DB** | `consorcio_id = '28693516'` |
@@ -93,6 +93,7 @@
 ## Continuar en otra PC
 
 Todo el codigo y este contexto estan en GitHub; los datos estan en Supabase. Pasos:
+Notas de memoria de Claude de la PC original (sin claves): `docs/memoria_claude/` — pueden estar desactualizadas; este archivo manda.
 
 1. Clonar: `git clone https://github.com/ncmartin77/consorcio.git`
 2. `python -m venv venv` → activar → `pip install -r requirements.txt`

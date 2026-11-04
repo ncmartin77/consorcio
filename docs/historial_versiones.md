@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 5.4-0411
+**Versión actual:** 5.5-0411
 
 ---
 
@@ -313,13 +313,23 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 #### v5.4-0411 — Continuar en otra PC
 
-**Lanzamiento:** 4 de noviembre  
-**Versión actual**
+**Lanzamiento:** 4 de noviembre
 
 **Cambios:**
 
 - `docs/memoria_sesion_claude.md`: estado actualizado, sección "Continuar en otra PC" (clonar, `.env`, Session pooler de Supabase por IPv6, BD de producción).
 - `CLAUDE.md`: indica leer la memoria de sesión al empezar y actualizarla al terminar.
+
+---
+
+#### v5.5-0411 — Memoria de Claude en el repo (sin claves)
+
+**Lanzamiento:** 4 de noviembre  
+**Versión actual**
+
+**Cambios:**
+
+- `docs/memoria_claude/`: copia de las notas de memoria de Claude de la PC original (consorcio), con contraseñas, tokens y emails reemplazados por `***`.
 
 ---
 
