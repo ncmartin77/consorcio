@@ -12,7 +12,7 @@ Decisión tomada el 2026-10-10: migrar el sistema de consorcio de Excel como BD 
 ## Estado al 2026-10-10
 
 - [x] Decisión arquitectónica tomada: Supabase (PostgreSQL) + Render
-- [x] Cuenta Supabase creada, proyecto "Consorcio" creado (ID: eboskmenitazzwfobwkiq)
+- [x] Cuenta Supabase creada, proyecto "Consorcio" creado (ID: eboskxnitazzwfobwkiq)
 - [ ] Verificar connection string correcto desde el dashboard
 - [ ] Diseñar schema PostgreSQL
 - [ ] Escribir script de migración de datos (Excel → PostgreSQL)

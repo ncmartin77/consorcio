@@ -6,7 +6,7 @@ type: reference
 ## Obligatorias
 | Variable | Descripción | Ejemplo |
 |---|---|---|
-| `DATABASE_URL` | Connection string PostgreSQL (Supabase) | `postgresql://postgres:***@db.eboskmenitazzwfobwkiq.supabase.co:5432/postgres` |
+| `DATABASE_URL` | Connection string PostgreSQL (Supabase) | `postgresql://postgres:***@db.eboskxnitazzwfobwkiq.supabase.co:5432/postgres` |
 | `SECRET_KEY` | Clave Flask para firmar sesiones | cualquier string aleatorio largo |
 
 ## Opcionales
@@ -27,7 +27,7 @@ Estas se configuran desde la UI en Configuración → no son env vars:
 ## Para desarrollo local
 Crear `/home/norberto/consorcio/.env` (no versionado):
 ```
-DATABASE_URL=postgresql://postgres:***@db.eboskmenitazzwfobwkiq.supabase.co:5432/postgres
+DATABASE_URL=postgresql://postgres:***@db.eboskxnitazzwfobwkiq.supabase.co:5432/postgres
 SECRET_KEY=dev-secret-local
 APP_ENV=produccion
 ```

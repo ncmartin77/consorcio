@@ -37,7 +37,7 @@
                              │ psycopg2 (TLS)
 ┌────────────────────────────▼────────────────────────────────────┐
 │                  SUPABASE (ca-central-1)                         │
-│              PostgreSQL — Project: eboskmenitazzwfobwkiq         │
+│              PostgreSQL — Project: eboskxnitazzwfobwkiq         │
 │  ┌──────────────┐  ┌───────────────┐  ┌──────────────────────┐  │
 │  │ Tablas de    │  │   audit_log   │  │     checkpoints      │  │
 │  │ negocio      │  │  (JSONB diff) │  │  (snapshot JSONB)    │  │
@@ -737,7 +737,7 @@ En cada request a `/liquidacion/<periodo>`, si la liquidación existe, está ABI
 | `GOOGLE_CLIENT_SECRET` | No | OAuth Google Client Secret | — |
 
 En Render.com:
-- `DATABASE_URL`: apunta a Supabase (`postgresql://postgres.eboskmenitazzwfobwkiq:...`)
+- `DATABASE_URL`: apunta a Supabase (`postgresql://postgres.eboskxnitazzwfobwkiq:...`)
 - `SECRET_KEY`: generado por Render (`generateValue: true`)
 - `APP_ENV`: `"produccion"` (hardcodeado en `render.yaml`)
 - `APP_HOST`: no seteado (Flask se bindea a 127.0.0.1, Gunicorn maneja el bind externo)
@@ -813,7 +813,7 @@ services:
 
 ### Supabase
 
-- Project ID: `eboskmenitazzwfobwkiq`
+- Project ID: `eboskxnitazzwfobwkiq`
 - Región: `ca-central-1` (Canadá Central)
 - Conexión directa psycopg2 (no Supabase client JS)
 - Pool: mín 1, máx 10 conexiones (ajustado al free tier de Supabase)

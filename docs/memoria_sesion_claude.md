@@ -15,7 +15,7 @@
 | **Directorio local** | `/home/norberto/consorcio` |
 | **Git en WSL** | `"/mnt/c/Program Files/Git/bin/git.exe"` (siempre con ruta completa) |
 | **Version actual** | `5.5-0411` (en `version.txt`) |
-| **Supabase Project ID** | `eboskmenitazzwfobwkiq` (region: ca-central-1) |
+| **Supabase Project ID** | `eboskxnitazzwfobwkiq` (region: ca-central-1) |
 | **MCP Supabase config** | `~/.mcp.json` (token `sb_secret_*` en `headers.Authorization`) |
 | **Consorcio activo en DB** | `consorcio_id = '28693516'` |
 | **Idioma de trabajo** | Espanol (responder siempre en espanol) |

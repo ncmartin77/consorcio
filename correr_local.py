@@ -13,7 +13,7 @@ import entorno_local
 entorno_local.cargar(obligatorias=("DATABASE_URL", "SECRET_KEY"))
 
 # Protección: nunca correr las pruebas contra producción
-_prod_ref = os.environ.get("PRODUCCION_REF", "eboskmenitazzwfobwkiq").lower()
+_prod_ref = os.environ.get("PRODUCCION_REF", "eboskxnitazzwfobwkiq").lower()
 for var in ("DATABASE_URL", "SUPABASE_URL"):
     if _prod_ref and _prod_ref in os.environ.get(var, "").lower():
         raise SystemExit(f"ABORTADO: {var} apunta al proyecto de PRODUCCIÓN ({_prod_ref}). "

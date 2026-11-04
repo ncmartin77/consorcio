@@ -5,13 +5,13 @@ type: reference
 ---
 **Dashboard:** https://supabase.com (cuenta ***@***)  
 **Nombre del proyecto:** Consorcio  
-**Project ID:** `eboskmenitazzwfobwkiq`  
+**Project ID:** `eboskxnitazzwfobwkiq`  
 **Region:** ca-central-1 (Canada Central)  
 **DB Password:** `***` (ver dashboard de Supabase → Project Settings → Database)
 
 ## Connection string (DATABASE_URL)
 ```
-postgresql://postgres:***@db.eboskmenitazzwfobwkiq.supabase.co:5432/postgres
+postgresql://postgres:***@db.eboskxnitazzwfobwkiq.supabase.co:5432/postgres
 ```
 
 ## Cómo obtener el string actualizado
@@ -19,7 +19,7 @@ Dashboard → Settings → Database → Connection string → URI (usar el Trans
 
 ## Acceso MCP desde Claude Code
 El servidor MCP de Supabase está configurado — usar herramientas `mcp__supabase__*` directamente.  
-Project ID para las llamadas MCP: `eboskmenitazzwfobwkiq`
+Project ID para las llamadas MCP: `eboskxnitazzwfobwkiq`
 
 ## Estado
 - Proyecto creado 2026-10-10
