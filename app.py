@@ -41,7 +41,7 @@ def mes_largo(periodo):
         return periodo
 
 
-_PUBLIC_ENDPOINTS = {"static", "login", "login_google", "auth_callback", "logout", "verificar_recibo", "recibo_publico", "recibo_publico_pdf"}
+_PUBLIC_ENDPOINTS = {"static", "login", "login_google", "login_dev", "auth_callback", "logout", "verificar_recibo", "recibo_publico", "recibo_publico_pdf"}
 
 
 def _token_recibo_publico(clave: str, cid: str, periodo: str, unidad: str) -> str:
@@ -287,7 +287,35 @@ def eliminar_consorcio(cid):
 def login():
     if session.get("usuario_id"):
         return redirect(url_for("consorcios"))
-    return render_template("login.html")
+    return render_template("login.html", dev_login_email=os.environ.get("DEV_LOGIN_EMAIL", "")
+                           if _dev_login_habilitado() else "")
+
+
+def _dev_login_habilitado() -> bool:
+    """Login de prueba sin Google: SOLO si DEV_LOGIN_EMAIL está definida (nunca en Render)
+    y el pedido viene de la misma PC (127.0.0.1 / ::1)."""
+    return bool(os.environ.get("DEV_LOGIN_EMAIL", "").strip()) and \
+        request.remote_addr in ("127.0.0.1", "::1") and \
+        not request.headers.get("X-Forwarded-For")
+
+
+@app.route("/login/dev", methods=["POST"])
+def login_dev():
+    from flask import abort
+    if not _dev_login_habilitado():
+        abort(404)
+    email = os.environ["DEV_LOGIN_EMAIL"].strip()
+    u = db.get_usuario_por_email(email) or db.get_or_create_usuario(
+        google_id=f"dev:{email}", email=email, nombre=f"{email} (prueba local)")
+    if not u["activo"]:
+        flash("Tu cuenta está desactivada. Contactá al administrador.", "warning")
+        return redirect(url_for("login"))
+    session["usuario_id"] = u["id"]
+    session["usuario_email"] = u["email"]
+    session["usuario_nombre"] = u["nombre"]
+    session["usuario_foto"] = u.get("foto_url", "") or ""
+    session["es_admin"] = u["es_admin"]
+    return redirect(url_for("consorcios"))
 
 
 @app.route("/login/google")

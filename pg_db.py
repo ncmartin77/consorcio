@@ -1681,6 +1681,11 @@ def get_or_create_usuario(google_id: str, email: str, nombre: str, foto_url: str
     return dict(_fetchone("SELECT * FROM usuarios WHERE google_id = %s", (google_id,)))
 
 
+def get_usuario_por_email(email: str) -> dict | None:
+    r = _fetchone("SELECT * FROM usuarios WHERE lower(email) = lower(%s) ORDER BY id LIMIT 1", (email,))
+    return dict(r) if r else None
+
+
 def get_usuario(uid: int) -> dict | None:
     r = _fetchone("SELECT * FROM usuarios WHERE id = %s", (uid,))
     return dict(r) if r else None

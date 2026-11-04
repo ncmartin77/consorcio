@@ -20,3 +20,7 @@ desktop.ini
 
 # Índice de consorcios (dato por máquina, no se versiona)
 _consorcios.json
+
+# Configuración local con claves (pruebas)
+.env
+.env.local

@@ -87,6 +87,7 @@
 - Checkbox `sin_interes` disponible por unidad para manejar excepciones de interes.
 - v5.2 (03/11): toggle `sin_interes` rapido y con montos actualizados en pantalla. **Pendiente: que el usuario lo confirme en Render** (no se pudo probar contra la BD desde la PC de desarrollo).
 - Script `gen_nov.py` (fuera de git) genera la liquidacion 2026-11; no esta confirmado si ya se corrio.
+- **En curso (04/11): rama `supabase-storage`, solo local, sin push.** Comprobantes de facturas y adjuntos de notificaciones pasan a Supabase Storage (`storage.py`); antes iban al disco de Render, que se borra en cada reinicio. Incluye entorno de pruebas locales (`.env.local`, `copiar_esquema.py`, `correr_local.py`, login de prueba). Falta: crear proyecto Supabase de prueba, copiar esquema, probar en local, decidir version (¿6.0? consultar al usuario), mergear a master y cargar `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` en Render.
 
 ---
 
@@ -99,7 +100,7 @@ Notas de memoria de Claude de la PC original (sin claves): `docs/memoria_claude/
 2. `python -m venv venv` → activar → `pip install -r requirements.txt`
 3. Crear `.env` (no versionado) con `DATABASE_URL`, `SECRET_KEY` y, si se usa login con Google, `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`. Los valores se copian del dashboard de Render (consorcio → Environment) o de Supabase (Connect).
 4. **Conexion a Supabase**: el host directo `db.<id>.supabase.co` es **solo IPv6**; en PCs sin IPv6 falla con "could not translate host name". Usar el connection string del **Session pooler** (Supabase → Connect).
-5. Ojo: la BD es la de **produccion**. Para probar sin tocar datos reales, usar `APP_ENV=pruebas` o transacciones con rollback.
+5. Ojo: la BD es la de **produccion**. Para probar sin tocar datos reales usar el entorno de pruebas local (ver "Pruebas locales" en `CLAUDE.md`: `.env.local` + `correr_local.py` contra el proyecto Supabase de prueba).
 6. Abrir Claude Code en la carpeta del repo: lee `CLAUDE.md` automaticamente; pedirle que lea tambien este archivo.
 7. Opcional: MCP de Supabase → crear `~/.mcp.json` con un token `sb_secret_*` nuevo.
 

@@ -12,6 +12,14 @@ Al empezar una sesión, leer `docs/memoria_sesion_claude.md` (estado actual, pen
 Después de cada cambio significativo, hacer commit y push a GitHub.
 Usar mensajes de commit descriptivos en español.
 
+## Pruebas locales antes de subir
+Push a `master` = deploy automático en Render (producción). Para cambios a probar: trabajar en una **rama**, probar en local y recién después mergear a `master` y pushear.
+- `.env.local` (no versionado, ver `.env.local.ejemplo`): base y Storage del **proyecto Supabase de prueba**, `DEV_LOGIN_EMAIL` para el login sin Google (solo funciona desde 127.0.0.1).
+- `python copiar_esquema.py [--datos] [--reemplazar]`: copia estructura (y datos) de producción → prueba. Producción se abre en solo lectura; aborta si origen = destino.
+- `python correr_local.py`: levanta la app en http://localhost:5000; aborta si `.env.local` apunta a producción.
+- Venv de Windows: `C:\Users\Maria\.venvs\consorcio` (en WSL no hay Python).
+- Archivos (comprobantes, adjuntos): `storage.py` → Supabase Storage si hay `SUPABASE_URL` + `SUPABASE_SERVICE_KEY`; si no, disco local `data/archivos/`.
+
 ## Versionado (`version.txt`, formato `X.Y-DDMM`)
 Actualizar `version.txt` antes de **cada** commit. `DDMM` = día y mes real del commit. Claude decide el incremento según esta regla:
 

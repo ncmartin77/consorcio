@@ -10,6 +10,7 @@ Usa solo la biblioteca estándar (urllib) para no agregar dependencias.
 """
 import json
 import os
+import re
 import threading
 import urllib.error
 import urllib.parse
@@ -98,8 +99,11 @@ def _local_path(clave: str) -> str:
     return path
 
 
+_CLAVE_OK = re.compile(r"^[A-Za-z0-9_.\-]+(/[A-Za-z0-9_.\-]+)*$")
+
+
 def _validar(clave: str):
-    if not clave or clave.startswith("/") or ".." in clave.split("/") or "\\" in clave:
+    if not clave or not _CLAVE_OK.match(clave) or ".." in clave.split("/"):
         raise StorageError("Ruta de archivo inválida")
 
 
