@@ -14,6 +14,8 @@ import io
 from authlib.integrations.flask_client import OAuth
 
 import pg_db as db
+import storage
+storage.LOCAL_ROOT = os.path.join(db.DATA_DIR, "archivos")
 from pdf_gen import generar_pdf_liquidacion, generar_pdf_resumen_edificio, generar_recibo_pago
 
 app = Flask(__name__)
@@ -602,20 +604,38 @@ def notificaciones_upload():
         return {"error": "Tipo no permitido"}, 400
     uid = _uuid.uuid4().hex[:12]
     nombre = uid + ext
-    carpeta = os.path.join(db.get_data_dir(), "notificaciones")
-    os.makedirs(carpeta, exist_ok=True)
-    f.save(os.path.join(carpeta, nombre))
+    try:
+        storage.guardar(f"notificaciones/{nombre}", f.read(), _MIME_ADJUNTOS[ext])
+    except storage.StorageError as exc:
+        app.logger.error(f"[Storage] notificación: {exc}")
+        return {"error": "No se pudo guardar el archivo. Intentá de nuevo."}, 500
     url = request.host_url.rstrip("/") + f"/notificaciones/ver/{nombre}"
     return {"url": url, "nombre": f.filename}
 
 
+_MIME_ADJUNTOS = {".pdf": "application/pdf", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                  ".png": "image/png", ".gif": "image/gif"}
+
+
 @app.route("/notificaciones/ver/<nombre>")
 def notificaciones_ver(nombre):
-    from flask import send_from_directory, abort
+    from flask import abort
     if not re.match(r'^[a-f0-9]{12}\.(pdf|jpg|jpeg|png|gif)$', nombre):
         abort(404)
-    carpeta = os.path.join(db.get_data_dir(), "notificaciones")
-    return send_from_directory(carpeta, nombre)
+    try:
+        data = storage.leer(f"notificaciones/{nombre}")
+    except storage.StorageError as exc:
+        app.logger.error(f"[Storage] notificación: {exc}")
+        abort(503)
+    if data is None:
+        # Archivos anteriores a Storage: guardados en disco por consorcio
+        legacy = os.path.join(db.get_data_dir(), "notificaciones", nombre)
+        if not os.path.isfile(legacy):
+            abort(404)
+        with open(legacy, "rb") as fh:
+            data = fh.read()
+    mime = _MIME_ADJUNTOS[os.path.splitext(nombre)[1].lower()]
+    return send_file(io.BytesIO(data), mimetype=mime, download_name=nombre)
 
 
 # ---------------------------------------------------------------------------
@@ -1601,24 +1621,47 @@ def upload_comprobante(fid):
         flash("Factura no encontrada.", "danger")
         return redirect(url_for("facturas"))
     proveedor_dir = _sanitize_dirname(factura.get("proveedor_nombre") or "")
-    dest_dir = os.path.join(db.get_facturas_dir(), proveedor_dir)
-    os.makedirs(dest_dir, exist_ok=True)
     from datetime import datetime as _dt
     timestamp = _dt.now().strftime("%Y-%m-%d_%H%M%S")
-    dest_path = os.path.join(dest_dir, f"{timestamp}.pdf")
     ext = file.filename.rsplit(".", 1)[1].lower()
     if ext == "pdf":
-        file.save(dest_path)
+        datos = file.read()
     else:
         from PIL import Image
         img = Image.open(file.stream)
         if img.mode in ("RGBA", "P", "LA"):
             img = img.convert("RGB")
-        img.save(dest_path, "PDF", resolution=150)
-    ruta = os.path.join("facturas", proveedor_dir, f"{timestamp}.pdf")
+        buf = io.BytesIO()
+        img.save(buf, "PDF", resolution=150)
+        datos = buf.getvalue()
+    ruta = f"facturas/{proveedor_dir}/{timestamp}.pdf"
+    try:
+        storage.guardar(_clave_comprobante(ruta), datos, "application/pdf")
+    except storage.StorageError as exc:
+        app.logger.error(f"[Storage] comprobante factura {fid}: {exc}")
+        flash("No se pudo guardar el comprobante. Intentá de nuevo en unos minutos.", "danger")
+        return redirect(url_for("facturas"))
     db.set_factura_archivo_pdf(fid, ruta)
     flash("Comprobante adjuntado correctamente.", "success")
     return redirect(url_for("facturas"))
+
+
+def _clave_comprobante(ruta: str) -> str:
+    """Clave en Storage: <consorcio_id>/<ruta relativa guardada en facturas.archivo_pdf>."""
+    return f"{db._cid()}/{ruta.replace(chr(92), '/')}"
+
+
+def _leer_comprobante(ruta: str) -> bytes | None:
+    """Lee un comprobante desde Storage; si no está, prueba la ubicación vieja en disco."""
+    data = storage.leer(_clave_comprobante(ruta))
+    if data is not None:
+        return data
+    real_data = os.path.realpath(db.get_data_dir())
+    real_path = os.path.realpath(os.path.join(real_data, ruta))
+    if real_path.startswith(real_data + os.sep) and os.path.isfile(real_path):
+        with open(real_path, "rb") as fh:
+            return fh.read()
+    return None
 
 
 @app.route("/facturas/<int:fid>/comprobante")
@@ -1628,13 +1671,17 @@ def ver_comprobante(fid):
     if not factura or not factura.get("archivo_pdf"):
         flash("Esta factura no tiene comprobante adjunto.", "warning")
         return redirect(url_for("facturas"))
-    full_path = os.path.join(db.get_data_dir(), factura["archivo_pdf"])
-    real_path = os.path.realpath(full_path)
-    real_data = os.path.realpath(db.get_data_dir())
-    if not real_path.startswith(real_data + os.sep) or not os.path.isfile(real_path):
-        flash("El archivo del comprobante no se encontró.", "danger")
+    try:
+        data = _leer_comprobante(factura["archivo_pdf"])
+    except storage.StorageError as exc:
+        app.logger.error(f"[Storage] ver comprobante {fid}: {exc}")
+        flash("No se pudo obtener el comprobante en este momento. Intentá de nuevo.", "danger")
         return redirect(url_for("facturas"))
-    return send_file(real_path, mimetype="application/pdf")
+    if data is None:
+        flash("El archivo del comprobante no se encontró. Volvé a adjuntarlo.", "danger")
+        return redirect(url_for("facturas"))
+    return send_file(io.BytesIO(data), mimetype="application/pdf",
+                     download_name=f"comprobante_factura_{fid}.pdf")
 
 
 # ---------------------------------------------------------------------------
@@ -1649,13 +1696,15 @@ def backup():
         db_path = db.get_db_path()
         if os.path.isfile(db_path):
             zf.write(db_path, os.path.basename(db_path))
-        facturas_dir = db.get_facturas_dir()
-        if os.path.isdir(facturas_dir):
-            for root, dirs, files in os.walk(facturas_dir):
-                for fname in files:
-                    fpath = os.path.join(root, fname)
-                    arcname = os.path.relpath(fpath, os.path.dirname(facturas_dir))
-                    zf.write(fpath, arcname)
+        # Comprobantes de facturas (desde Storage o, si son viejos, desde disco)
+        for ruta in db.get_rutas_comprobantes():
+            try:
+                data = _leer_comprobante(ruta)
+            except storage.StorageError as exc:
+                app.logger.warning(f"[Backup] comprobante {ruta}: {exc}")
+                continue
+            if data is not None:
+                zf.writestr(ruta.replace(chr(92), "/"), data)
     buf.seek(0)
     fecha = _fecha_hoy().strftime("%Y%m%d_%H%M")
     cid = session.get("consorcio_id", "consorcio")

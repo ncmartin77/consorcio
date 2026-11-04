@@ -1199,6 +1199,14 @@ def delete_factura(fid) -> bool:
     return True
 
 
+def get_rutas_comprobantes() -> list:
+    """Rutas (facturas.archivo_pdf) de todos los comprobantes adjuntos del consorcio activo."""
+    rows = _fetchall(
+        "SELECT DISTINCT archivo_pdf FROM facturas WHERE consorcio_id=%s "
+        "AND archivo_pdf IS NOT NULL AND archivo_pdf <> ''", (_cid(),))
+    return [r["archivo_pdf"] for r in rows]
+
+
 def set_factura_archivo_pdf(fid: int, ruta_relativa: str) -> bool:
     _exec("UPDATE facturas SET archivo_pdf=%s WHERE id=%s AND consorcio_id=%s",
           (ruta_relativa, fid, _cid()))
