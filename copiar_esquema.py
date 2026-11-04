@@ -57,11 +57,16 @@ def leer_estructura(cur):
     enums = cur.fetchall()
 
     # Secuencias sueltas (serial), excluyendo las internas de columnas IDENTITY
+    # con la columna dueña (OWNED BY), para que pg_get_serial_sequence() las encuentre
     cur.execute("""
-        SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        SELECT c.relname, t.relname, a.attname
+        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        LEFT JOIN pg_depend d ON d.objid = c.oid AND d.deptype = 'a' AND d.classid = 'pg_class'::regclass
+        LEFT JOIN pg_class t ON t.oid = d.refobjid
+        LEFT JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = d.refobjsubid
         WHERE n.nspname = 'public' AND c.relkind = 'S'
-          AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = c.oid AND d.deptype = 'i')""")
-    secuencias = [r[0] for r in cur.fetchall()]
+          AND NOT EXISTS (SELECT 1 FROM pg_depend d2 WHERE d2.objid = c.oid AND d2.deptype = 'i')""")
+    secuencias = cur.fetchall()  # [(secuencia, tabla_dueña|None, columna_dueña|None)]
 
     estructura = []
     for oid, nombre in tablas:
@@ -148,7 +153,7 @@ def main():
             cd.execute(f"DROP TYPE IF EXISTS public.{_q(nombre)} CASCADE")
             cd.execute(f"CREATE TYPE public.{_q(nombre)} AS ENUM (" +
                        ", ".join(cd.mogrify("%s", (e,)).decode() for e in etiquetas) + ")")
-        for s in secuencias:
+        for s, _tabla, _col in secuencias:
             cd.execute(f"CREATE SEQUENCE IF NOT EXISTS public.{_q(s)}")
 
         for t in estructura:
@@ -158,6 +163,10 @@ def main():
                     cd.execute(f"ALTER TABLE public.{_q(t['nombre'])} ADD CONSTRAINT {_q(conname)} {definicion}")
             for idx in t["indices"]:
                 cd.execute(idx)
+        # Asociar cada secuencia a su columna, igual que en producción
+        for s, tabla, col in secuencias:
+            if tabla and col:
+                cd.execute(f"ALTER SEQUENCE public.{_q(s)} OWNED BY public.{_q(tabla)}.{_q(col)}")
         print("Estructura creada.")
 
         if datos:
@@ -172,16 +181,33 @@ def main():
                 cd.copy_expert(f"COPY public.{_q(t['nombre'])} ({cols}) FROM STDIN", buf)
                 cd.execute(f"SELECT COUNT(*) FROM public.{_q(t['nombre'])}")
                 print(f"  {t['nombre']}: {cd.fetchone()[0]} filas")
-            # Ajustar secuencias / identity al máximo id copiado
+            # Ajustar secuencias / identity al máximo id copiado, y verificar
+            ajustadas = 0
             for t in estructura:
                 for nombre, _tipo, _nn, default, identity, generated in t["columnas"]:
-                    if identity or (default or "").startswith("nextval("):
+                    if not (identity or (default or "").startswith("nextval(")):
+                        continue
+                    seq = None
+                    if identity:
                         cd.execute("SELECT pg_get_serial_sequence(%s, %s)",
                                    (f"public.{_q(t['nombre'])}", nombre))
                         seq = cd.fetchone()[0]
-                        if seq:
-                            cd.execute(f"SELECT setval(%s, COALESCE(MAX({_q(nombre)}), 1), MAX({_q(nombre)}) IS NOT NULL) "
-                                       f"FROM public.{_q(t['nombre'])}", (seq,))
+                    else:
+                        m = re.match(r"nextval\('([^']+)'", default)
+                        seq = m.group(1) if m else None
+                    if not seq:
+                        raise SystemExit(f"ERROR: no encontré la secuencia de {t['nombre']}.{nombre}; "
+                                         "no se confirmó nada en la base de prueba.")
+                    cd.execute(f"SELECT setval(%s, COALESCE(MAX({_q(nombre)}), 1), MAX({_q(nombre)}) IS NOT NULL) "
+                               f"FROM public.{_q(t['nombre'])}", (seq,))
+                    cd.execute(f"SELECT nextval(%s) > COALESCE(MAX({_q(nombre)}), 0) FROM public.{_q(t['nombre'])}", (seq,))
+                    if not cd.fetchone()[0]:
+                        raise SystemExit(f"ERROR: la secuencia de {t['nombre']}.{nombre} quedó atrasada.")
+                    # volver a dejarla en el máximo (el nextval de control consumió un número)
+                    cd.execute(f"SELECT setval(%s, COALESCE(MAX({_q(nombre)}), 1), MAX({_q(nombre)}) IS NOT NULL) "
+                               f"FROM public.{_q(t['nombre'])}", (seq,))
+                    ajustadas += 1
+            print(f"Secuencias de ids ajustadas y verificadas: {ajustadas}")
 
         # Claves foráneas al final (así el orden de copia no importa)
         for t in estructura:
