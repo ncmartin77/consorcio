@@ -20,3 +20,13 @@ desktop.ini
 
 # Índice de consorcios (dato por máquina, no se versiona)
 _consorcios.json
+
+# Secretos y backups (el repo es público)
+.env
+.env.*
+!.env.example
+!.env.local.example
+!.env.*.ejemplo
+backups/
+*.dump
+*.dump.age
