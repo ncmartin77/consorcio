@@ -1,6 +1,6 @@
 // Worker de tareas asíncronas (PDF, tareas programadas, notificaciones).
 //
-// Esqueleto: por ahora solo verifica la conexión en cada ciclo. La cola persistida en
+// Por ahora: verifica la conexión y borra las sesiones vencidas en cada ciclo. La cola persistida en
 // PostgreSQL (tabla trabajos_pendientes con SELECT ... FOR UPDATE SKIP LOCKED) llega
 // con la primera tarea real.
 package main
@@ -13,8 +13,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ncmartin77/consorcio/plataforma/internal/platform/auth"
 	"github.com/ncmartin77/consorcio/plataforma/internal/platform/config"
 	"github.com/ncmartin77/consorcio/plataforma/internal/platform/database"
+	"github.com/ncmartin77/consorcio/plataforma/internal/platform/dbq"
 )
 
 func main() {
@@ -45,6 +47,13 @@ func main() {
 		case <-ciclo.C:
 			if err := pool.Ping(ctx); err != nil {
 				slog.Warn("worker sin base de datos", "error", err)
+				continue
+			}
+			n, err := dbq.New(pool).BorrarSesionesVencidas(ctx, time.Now().Add(-auth.DuracionInactiva))
+			if err != nil {
+				slog.Warn("borrar sesiones vencidas", "error", err)
+			} else if n > 0 {
+				slog.Info("sesiones vencidas borradas", "cantidad", n)
 			}
 		}
 	}

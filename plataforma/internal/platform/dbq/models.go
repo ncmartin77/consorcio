@@ -18,6 +18,16 @@ type Administracion struct {
 	CreadoEn time.Time `json:"creado_en"`
 }
 
+type Auditoria struct {
+	ID               int64      `json:"id"`
+	CreadoEn         time.Time  `json:"creado_en"`
+	AdministracionID *uuid.UUID `json:"administracion_id"`
+	UsuarioID        *uuid.UUID `json:"usuario_id"`
+	Accion           string     `json:"accion"`
+	Detalle          []byte     `json:"detalle"`
+	Ip               *string    `json:"ip"`
+}
+
 type Consorcio struct {
 	ID               uuid.UUID `json:"id"`
 	AdministracionID uuid.UUID `json:"administracion_id"`
@@ -32,6 +42,16 @@ type Membresia struct {
 	AdministracionID uuid.UUID `json:"administracion_id"`
 	Rol              string    `json:"rol"`
 	CreadoEn         time.Time `json:"creado_en"`
+}
+
+type Sesion struct {
+	TokenHash []byte    `json:"token_hash"`
+	UsuarioID uuid.UUID `json:"usuario_id"`
+	CreadaEn  time.Time `json:"creada_en"`
+	VenceEn   time.Time `json:"vence_en"`
+	UltimoUso time.Time `json:"ultimo_uso"`
+	Ip        *string   `json:"ip"`
+	UserAgent *string   `json:"user_agent"`
 }
 
 type Usuario struct {

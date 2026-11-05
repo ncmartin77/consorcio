@@ -7,7 +7,7 @@ import (
 )
 
 type Config struct {
-	Entorno     string // local | pruebas | produccion
+	Entorno       string // local | pruebas | produccion
 	DireccionHTTP string
 	// DatabaseURL conecta con el rol de la aplicación (consorcios_app): sin BYPASSRLS
 	// ni propiedad de tablas, así RLS se aplica siempre.

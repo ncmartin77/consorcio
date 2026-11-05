@@ -10,7 +10,7 @@ S3_LOCAL := -e S3_ENDPOINT=http://127.0.0.1:59001 -e S3_BUCKET=plataforma -e S3_
             -e S3_SECRET_ACCESS_KEY=local -e S3_CREAR_BUCKET=1
 SUPABASE_ENV := deploy/.env.supabase
 
-.PHONY: up up-supabase down reset logs sqlc build vet test test-supabase web
+.PHONY: up up-supabase usuario down reset logs sqlc build vet test test-supabase web
 
 up:            ## levanta db, s3, migraciones, api y worker
 	$(COMPOSE) up -d --build --wait db s3 api worker
@@ -18,6 +18,11 @@ up:            ## levanta db, s3, migraciones, api y worker
 up-supabase:   ## igual que up, pero los archivos van a Supabase Storage ($(SUPABASE_ENV))
 	@test -f $(SUPABASE_ENV) || { echo "Falta $(SUPABASE_ENV): copiar deploy/.env.supabase.ejemplo y completar"; exit 1; }
 	$(COMPOSE) --env-file $(SUPABASE_ENV) up -d --build --wait db s3 api worker
+
+usuario:       ## crea un usuario: make usuario EMAIL=a@b.com NOMBRE="Ana" [ADMINISTRACION="Adm. Centro" ROL=admin]
+	@test -n "$(EMAIL)" -a -n "$(NOMBRE)" || { echo 'Uso: make usuario EMAIL=a@b.com NOMBRE="Ana" [ADMINISTRACION="..." ROL=admin]'; exit 1; }
+	$(COMPOSE) run --rm api usuarios crear --email "$(EMAIL)" --nombre "$(NOMBRE)" \
+	  $(if $(ADMINISTRACION),--administracion "$(ADMINISTRACION)" --rol "$(or $(ROL),admin)")
 
 down:
 	$(COMPOSE) down

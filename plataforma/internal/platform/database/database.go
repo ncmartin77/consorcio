@@ -16,7 +16,6 @@ import (
 	"github.com/ncmartin77/consorcio/plataforma/db"
 )
 
-
 func Conectar(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	if url == "" {
 		return nil, errors.New("DATABASE_URL no configurado")
