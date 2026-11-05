@@ -1,0 +1,71 @@
+# Entorno de desarrollo de la plataforma nueva (Go + Vue). Independiente del sistema
+# actual: otro proyecto de Compose, otros puertos (todos solo en 127.0.0.1).
+#
+#   make up        # db + s3 + migraciones + api + worker
+#   make web       # frontend Vue en http://127.0.0.1:5173 (proxy /api → :18080)
+#
+# Credenciales de desarrollo, no secretas. En un servidor real van en un .env fuera del repo.
+# Archivos: SeaweedFS hace de S3 (las imágenes de MinIO ya no se publican en Docker Hub);
+# el código habla S3, así que se puede cambiar por MinIO o Supabase Storage sin tocarlo.
+
+name: consorcios-plataforma
+
+x-app: &app
+  build: ..
+  environment: &app-env
+    APP_ENV: local
+    DATABASE_URL: postgres://consorcios_app:app-local@db:5432/consorcios
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: consorcios_owner
+      POSTGRES_PASSWORD: owner-local
+      POSTGRES_DB: consorcios
+      APP_DB_PASSWORD: app-local
+    ports:
+      - "127.0.0.1:55433:5432"
+    volumes:
+      - db:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U consorcios_owner -d consorcios"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  s3:
+    image: chrislusf/seaweedfs:3.97
+    command: server -dir=/data -ip.bind=0.0.0.0 -master.volumeSizeLimitMB=256 -s3 -s3.port=8333
+    ports:
+      - "127.0.0.1:59001:8333"
+    volumes:
+      - s3:/data
+
+  migrate:
+    build: ..
+    command: ["migrate"]
+    environment:
+      APP_ENV: local
+      DATABASE_URL_OWNER: postgres://consorcios_owner:owner-local@db:5432/consorcios
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    command: ["api"]
+    ports:
+      - "127.0.0.1:18080:8080"   # 8080 lo usa glpi-chat-app en esta PC
+
+  worker:
+    <<: *app
+    command: ["worker"]
+
+volumes:
+  db:
+  s3:

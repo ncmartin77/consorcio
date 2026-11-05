@@ -1,0 +1,4 @@
+# Salidas de compilación y dependencias del frontend
+bin/
+web/dist/
+node_modules/
