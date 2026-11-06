@@ -72,6 +72,18 @@ def _mes_abrev(periodo: str):
         return periodo
 
 
+def _fecha_generacion(config: dict) -> str:
+    """'DD/MM/YYYY a las HH:MM' usando la fecha del sistema (config fecha_simulada) si está fijada."""
+    from datetime import datetime
+    ahora = datetime.now()
+    fs = (config or {}).get("fecha_simulada", "") or ""
+    try:
+        dia = datetime.strptime(fs.strip(), "%Y-%m-%d").date() if fs.strip() else ahora.date()
+    except ValueError:
+        dia = ahora.date()
+    return f"{dia.strftime('%d/%m/%Y')} a las {ahora.strftime('%H:%M')}"
+
+
 def generar_pdf_liquidacion(liquidacion_rows: list, gastos: list, config: dict, periodo: str,
                             logo_bytes: bytes = None) -> bytes:
     """
@@ -286,7 +298,7 @@ def generar_pdf_liquidacion(liquidacion_rows: list, gastos: list, config: dict, 
     # Timestamp al pie de la última página
     story.append(Spacer(1, 0.3 * cm))
     story.append(Paragraph(
-        f"Generado el {date.today().strftime('%d/%m/%Y')} a las {__import__('datetime').datetime.now().strftime('%H:%M')}",
+        f"Generado el {_fecha_generacion(config)}",
         ParagraphStyle("ts", fontSize=7, fontName="Helvetica", alignment=TA_RIGHT,
                        textColor=colors.HexColor("#888888"))))
 
@@ -576,7 +588,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         story.append(Paragraph("  |  ".join(res_line2), res_footer_style))
 
     story.append(Paragraph(
-        f"Generado el {date.today().strftime('%d/%m/%Y')} a las {__import__('datetime').datetime.now().strftime('%H:%M')}",
+        f"Generado el {_fecha_generacion(config)}",
         st("ts", fontSize=7, fontName="Helvetica", alignment=TA_RIGHT,
            textColor=colors.HexColor("#888888"))))
 

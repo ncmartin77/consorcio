@@ -196,6 +196,14 @@
         </a>
         {% endif %}
 
+        {% if fecha_sistema_fijada %}
+        <a href="{{ url_for('config') }}#fecha-sistema" class="badge bg-warning text-dark text-decoration-none"
+           style="font-size:0.75rem" title="Fecha del sistema fijada"
+           data-ayuda="El sistema está trabajando con una fecha fijada (no la real). Hacé click para cambiarla.">
+          <i class="bi bi-calendar-event-fill"></i> {{ fecha_sistema_fijada.strftime('%d/%m/%Y') }}
+        </a>
+        {% endif %}
+
         <span class="badge bg-secondary opacity-75" style="font-size:0.7rem"
               data-ayuda="Versión del sistema instalada.">v{{ app_version }}</span>
 
@@ -224,6 +232,14 @@
     </div>
   </div>
 </nav>
+{% if fecha_sistema_fijada %}
+<div class="text-center mb-0 py-2 fw-bold rounded-0 text-dark" role="alert"
+     style="background: repeating-linear-gradient(45deg, #ffc107, #ffc107 14px, #ffcd38 14px, #ffcd38 28px); border-bottom: 3px solid #dc3545;">
+  <i class="bi bi-calendar-event-fill"></i>&nbsp;
+  FECHA DEL SISTEMA FIJADA: {{ fecha_sistema_fijada.strftime('%d/%m/%Y') }} — intereses, mora y fechas se calculan como si hoy fuera ese día.
+  <a href="{{ url_for('config') }}#fecha-sistema" class="btn btn-sm btn-dark ms-2 py-0">Cambiar</a>
+</div>
+{% endif %}
 {% if app_env == 'pruebas' %}
 <div class="alert alert-warning text-center mb-0 py-2 fw-bold rounded-0" role="alert">
   <i class="bi bi-flask"></i>&nbsp; MODO PRUEBAS — Los datos NO corresponden a producción

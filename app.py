@@ -134,6 +134,7 @@ _DESC_AUDITORIA = {
     "delete_cotizacion": "Presupuestos: eliminar cotización",
     "apertura": "Apertura: guardar saldos iniciales",
     "reset_datos": "Configuración: resetear datos",
+    "fijar_fecha_sistema": "Configuración: fecha del sistema",
     "rollback_checkpoint": "Checkpoint: rollback",
 }
 
@@ -174,6 +175,10 @@ def inject_version():
     c = db.get_consorcio(cid) if cid else None
     checkpoint_info = db.get_checkpoint_info() if cid else None
     logo_url = url_for("servir_logo") if (cid and db.get_logo()) else ""
+    try:
+        fecha_fijada = db.get_fecha_simulada() if cid else None
+    except Exception:  # páginas públicas sin consorcio activo
+        fecha_fijada = None
     return {
         "app_version": _ver,
         "app_env": db._APP_ENV,
@@ -186,20 +191,13 @@ def inject_version():
         "es_admin": session.get("es_admin", False),
         "logo_url": logo_url,
         "periodo_trabajo": session.get("periodo_trabajo") or "",
+        "fecha_sistema_fijada": fecha_fijada,
     }
 
 
 def _fecha_hoy():
-    """Returns today's date, using simulated date from config if set."""
-    cfg = db.get_config()
-    fs = cfg.get("fecha_simulada", "").strip()
-    if fs:
-        try:
-            from datetime import datetime as _dt
-            return _dt.strptime(fs, "%Y-%m-%d").date()
-        except ValueError:
-            pass
-    return date.today()
+    """'Hoy' de la app: la fecha del sistema fijada en Configuración o la fecha real."""
+    return db.fecha_sistema()
 
 
 def _periodo_actual():
@@ -454,13 +452,14 @@ def config():
             "tasa_mora": request.form.get("tasa_mora", "7"),
             "dia_vencimiento": request.form.get("dia_vencimiento", "15"),
             "fondo_reserva_mensual": request.form.get("fondo_reserva_mensual", "0"),
-            "fecha_simulada": request.form.get("fecha_simulada", ""),
             "dias_cobro": request.form.get("dias_cobro", ""),
             "horario_cobro": request.form.get("horario_cobro", ""),
             "direccion_cobro": request.form.get("direccion_cobro", ""),
             "texto_anuncio": request.form.get("texto_anuncio", ""),
             "url_app": request.form.get("url_app", "http://localhost:5000"),
         }
+        # Cada form de Configuración manda solo sus campos: no pisar los que no vienen
+        data = {k: v for k, v in data.items() if k in request.form}
         # Solo lo envía el form del resumen: si no viene, no se pisa el valor guardado
         if "libre_deuda_validez_dias" in request.form:
             try:
@@ -476,6 +475,27 @@ def config():
     gastos_recurrentes = db.get_gastos_recurrentes()
     return render_template("config.html", cfg=cfg, categorias=categorias,
                            gastos_recurrentes=gastos_recurrentes)
+
+
+@app.route("/config/fecha-sistema", methods=["POST"])
+def fijar_fecha_sistema():
+    """Fija (o quita) la fecha del sistema y recalcula los intereses de las liquidaciones abiertas."""
+    valor = "" if request.form.get("accion") == "quitar" else request.form.get("fecha_sistema", "").strip()
+    if valor:
+        try:
+            from datetime import datetime as _dt
+            _dt.strptime(valor, "%Y-%m-%d")
+        except ValueError:
+            flash("Fecha inválida.", "danger")
+            return redirect(url_for("config") + "#fecha-sistema")
+    db.save_config({"fecha_simulada": valor})
+    periodos = db.recalcular_intereses_abiertas()
+    recalc = f" Intereses recalculados en {len(periodos)} liquidación(es) abierta(s)." if periodos else ""
+    if valor:
+        flash(f"El sistema trabaja ahora con la fecha {fecha_ar(valor)}.{recalc}", "warning")
+    else:
+        flash(f"El sistema volvió a la fecha real.{recalc}", "success")
+    return redirect(url_for("config") + "#fecha-sistema")
 
 
 @app.route("/config/recurrente/add", methods=["POST"])
@@ -1513,7 +1533,7 @@ def save_factura():
 
 @app.route("/facturas/pagar/<int:fid>", methods=["POST"])
 def pagar_factura(fid):
-    fecha_pago = request.form.get("fecha_pago") or date.today().strftime("%Y-%m-%d")
+    fecha_pago = request.form.get("fecha_pago") or _fecha_hoy().strftime("%Y-%m-%d")
     factura = db.get_factura_by_id(fid)
     if factura:
         fecha_emision = str(factura.get("fecha") or "")
@@ -1559,7 +1579,7 @@ def presupuestos():
 def save_pedido():
     data = {
         "id": request.form.get("id") or None,
-        "fecha": request.form.get("fecha", date.today().strftime("%Y-%m-%d")),
+        "fecha": request.form.get("fecha", _fecha_hoy().strftime("%Y-%m-%d")),
         "descripcion": request.form.get("descripcion", "").strip(),
         "categoria": request.form.get("categoria", "").strip(),
         "estado": request.form.get("estado", "ABIERTO"),
@@ -1605,7 +1625,7 @@ def save_cotizacion():
         "pedido_id": pedido_id,
         "proveedor_id": prov_id,
         "proveedor_nombre": prov["nombre"] if prov else request.form.get("proveedor_nombre_libre", "").strip(),
-        "fecha": request.form.get("fecha", date.today().strftime("%Y-%m-%d")),
+        "fecha": request.form.get("fecha", _fecha_hoy().strftime("%Y-%m-%d")),
         "importe": float(importe) if importe else 0.0,
         "notas": request.form.get("notas", "").strip(),
         "seleccionado": 0,

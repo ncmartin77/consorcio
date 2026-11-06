@@ -222,6 +222,24 @@ def save_config(data: dict):
                 )
 
 
+def get_fecha_simulada(cfg: dict = None) -> date | None:
+    """Fecha del sistema fijada en Configuración (config 'fecha_simulada'), o None si no hay."""
+    fs = ((cfg if cfg is not None else get_config()).get("fecha_simulada") or "").strip()
+    try:
+        return datetime.strptime(fs, "%Y-%m-%d").date() if fs else None
+    except ValueError:
+        return None
+
+
+def fecha_sistema(cfg: dict = None) -> date:
+    """
+    'Hoy' para toda la app: la fecha del sistema fijada en Configuración o, si no hay,
+    la fecha real. Se usa para intereses/vencimientos, período actual y fechas por defecto.
+    (El vencimiento de checkpoints sigue usando la fecha real: borra archivos.)
+    """
+    return get_fecha_simulada(cfg) or date.today()
+
+
 def get_logo() -> dict | None:
     cfg = get_config()
     b64 = cfg.get("logo_b64", "")
@@ -632,14 +650,7 @@ def _params_interes(periodo: str, cfg: dict):
     """Devuelve (tasa_mora, hoy, fecha_vencimiento) para calcular intereses del período."""
     tasa_mora = float(cfg.get("tasa_mora", 7)) / 100
 
-    fs = (cfg.get("fecha_simulada") or "").strip()
-    if fs:
-        try:
-            hoy = datetime.strptime(fs, "%Y-%m-%d").date()
-        except ValueError:
-            hoy = date.today()
-    else:
-        hoy = date.today()
+    hoy = fecha_sistema(cfg)
 
     try:
         dia_venc = int(cfg.get("dia_vencimiento", 15) or 15)
@@ -773,18 +784,19 @@ def generar_liquidacion(periodo: str):
     return get_liquidacion(periodo)
 
 
-def aplicar_sin_interes(periodo: str, valor: bool, unidad: str = None) -> dict:
+def aplicar_sin_interes(periodo: str, valor, unidad: str = None) -> dict:
     """Activa/desactiva el interés y recalcula SOLO interés, total y saldo de las unidades
     afectadas (una unidad, o todas si unidad es None), en una sola transacción.
     No regenera la liquidación: expensas, deuda anterior, extras y pagos quedan igual.
-    Devuelve {"rows": {unidad: {...}}, "total_periodo": float}."""
+    valor=None: no cambia el switch de cada unidad, solo recalcula (ej. al cambiar la
+    fecha del sistema). Devuelve {"rows": {unidad: {...}}, "total_periodo": float}."""
     cfg = get_config()
     tasa_mora, hoy, fecha_vencimiento = _params_interes(periodo, cfg)
     cid = _cid()
 
     with _conn() as c:
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            sql = """SELECT id, unidad, expensas, deuda_anterior, extras, monto_pagado
+            sql = """SELECT id, unidad, expensas, deuda_anterior, extras, monto_pagado, sin_interes
                      FROM liquidaciones WHERE consorcio_id=%s AND periodo=%s"""
             params = [cid, periodo]
             if unidad is not None:
@@ -804,14 +816,15 @@ def aplicar_sin_interes(periodo: str, valor: bool, unidad: str = None) -> dict:
                 deuda_anterior = float(f["deuda_anterior"] or 0)
                 extras = float(f["extras"] or 0)
                 monto_pagado = float(f["monto_pagado"] or 0)
+                sin_int = bool(f["sin_interes"]) if valor is None else bool(valor)
 
                 interes = _calcular_interes(expensas, deuda_anterior, numero not in con_liq_previa,
-                                            monto_pagado, valor, tasa_mora, hoy, fecha_vencimiento)
+                                            monto_pagado, sin_int, tasa_mora, hoy, fecha_vencimiento)
                 total = round(expensas + deuda_anterior + interes + extras, 2)
                 tipo_pago, saldo, pagado_flag = _estado_pago(total, monto_pagado)
 
                 valores.append((
-                    f["id"], bool(valor), interes, total, pagado_flag,
+                    f["id"], sin_int, interes, total, pagado_flag,
                     tipo_pago if monto_pagado > 0 else None,
                     saldo if monto_pagado > 0 else None,
                 ))
@@ -835,6 +848,23 @@ def aplicar_sin_interes(periodo: str, valor: bool, unidad: str = None) -> dict:
     return {"rows": rows, "total_periodo": total_periodo}
 
 
+def recalcular_intereses_abiertas() -> list:
+    """
+    Recalcula interés/total/saldo de todas las liquidaciones NO cerradas con la fecha del
+    sistema actual, respetando el switch de cada unidad. Devuelve los períodos recalculados.
+    """
+    periodos = [r["periodo"] for r in _fetchall("""
+        SELECT DISTINCT l.periodo FROM liquidaciones l
+        WHERE l.consorcio_id = %s AND NOT EXISTS (
+            SELECT 1 FROM liquidaciones_estado e
+            WHERE e.consorcio_id = l.consorcio_id AND e.periodo = l.periodo AND e.estado = 'CERRADA')
+        ORDER BY l.periodo
+    """, (_cid(),))]
+    for p in periodos:
+        aplicar_sin_interes(p, None)
+    return periodos
+
+
 def set_sin_interes(periodo: str, unidad: str, valor: bool):
     _exec(
         "UPDATE liquidaciones SET sin_interes=%s WHERE consorcio_id=%s AND periodo=%s AND unidad=%s",
@@ -853,7 +883,7 @@ def marcar_pagado(periodo: str, unidad: str, monto_pagado: float, fecha_pago: st
     if liq_esta_cerrada(periodo):
         return {"tipo": "CERRADA", "saldo": 0}
     if not fecha_pago:
-        fecha_pago = date.today().strftime("%Y-%m-%d")
+        fecha_pago = fecha_sistema().strftime("%Y-%m-%d")
 
     row = _fetchone(
         "SELECT * FROM liquidaciones WHERE consorcio_id=%s AND periodo=%s AND unidad=%s",
@@ -881,7 +911,7 @@ def marcar_pagado(periodo: str, unidad: str, monto_pagado: float, fecha_pago: st
     try:
         fecha_dt = datetime.strptime(fecha_pago, "%Y-%m-%d").date()
     except (ValueError, TypeError):
-        fecha_dt = date.today()
+        fecha_dt = fecha_sistema()
 
     _exec("""
         UPDATE liquidaciones SET
@@ -1148,7 +1178,7 @@ def pagar_factura(fid: int, fecha_pago: str) -> bool:
     try:
         fecha_dt = datetime.strptime(fecha_pago, "%Y-%m-%d").date()
     except (ValueError, TypeError):
-        fecha_dt = date.today()
+        fecha_dt = fecha_sistema()
 
     _exec("UPDATE facturas SET estado='PAGADA', fecha_pago=%s WHERE id=%s AND consorcio_id=%s",
           (fecha_dt, fid, _cid()))
@@ -1227,9 +1257,9 @@ def save_pedido(data: dict) -> int:
         try:
             fecha = datetime.strptime(v, "%Y-%m-%d").date()
         except ValueError:
-            fecha = date.today()
+            fecha = fecha_sistema()
     else:
-        fecha = v or date.today()
+        fecha = v or fecha_sistema()
     pid = data.get("id")
     if pid:
         _exec("""UPDATE pedidos SET fecha=%s, descripcion=%s, categoria=%s, estado=%s,
@@ -1277,9 +1307,9 @@ def save_presupuesto(data: dict) -> int:
         try:
             fecha = datetime.strptime(v, "%Y-%m-%d").date()
         except ValueError:
-            fecha = date.today()
+            fecha = fecha_sistema()
     else:
-        fecha = v or date.today()
+        fecha = v or fecha_sistema()
     sel = bool(data.get("seleccionado"))
     pid = data.get("id")
     if pid:

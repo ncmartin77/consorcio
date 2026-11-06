@@ -75,6 +75,7 @@
 - **`tojson` en `onclick`**: NO usar `{{ obj|tojson }}` dentro de atributos HTML con comillas dobles — usar atributos `data-*` en su lugar.
 - **FONDO_RESERVA**: `save_gasto` fue corregido para permitir actualizar solo el importe (antes bloqueaba edicion).
 - **`factura_en_liquidacion`**: usa `liq_esta_cerrada()`, NO `liquidacion_existe()`.
+- **Fecha del sistema** (v5.7): config `fecha_simulada`, se fija solo por `POST /config/fecha-sistema` (tarjeta arriba en Configuracion). `pg_db.fecha_sistema()` es el "hoy" de toda la app (`_fecha_hoy()` en app.py la usa); checkpoints siguen con fecha real. Al fijar/quitar se llama `recalcular_intereses_abiertas()` (= `aplicar_sin_interes(p, None)`, respeta el switch por unidad). El form general de `/config` solo guarda los campos que vienen en el form.
 - **Libre deuda** (v5.6): se emite desde Unidades solo si la unidad tiene pagada en TOTAL (o total <= 0) la **ultima liquidacion emitida**, abierta o cerrada (`get_estado_libre_deuda()`; se revalida en `emitir_libre_deuda()`). Tabla `libres_deuda` (numero correlativo por consorcio con `pg_advisory_xact_lock`, auditada). Codigo HMAC con `clave_firma` sobre `LIBRE_DEUDA|cid|numero|unidad|periodo_hasta|fecha_emision|validez_dias`; verificacion publica `/libre-deuda/verificar/<cid>/<numero>/<codigo>`. Validez sugerida: config `libre_deuda_validez_dias` (solo la manda el form del resumen; los otros forms no la pisan).
 
 ---
@@ -88,7 +89,7 @@
 - Checkbox `sin_interes` disponible por unidad para manejar excepciones de interes.
 - v5.2 (03/11): toggle `sin_interes` rapido y con montos actualizados en pantalla. **Pendiente: que el usuario lo confirme en Render** (no se pudo probar contra la BD desde la PC de desarrollo).
 - Script `gen_nov.py` (fuera de git) genera la liquidacion 2026-11; no esta confirmado si ya se corrio.
-- 06/11: rama `feat/libre-deuda` (desde `master` 5.5-0411) con v5.6-0611 "certificado de libre deuda", probada contra la base de prueba `consorcio-tst` con el test client de Flask (emision, bloqueo por deuda, PDF, QR valido/falso/anulado, auditoria). Falta: mergear a `master` (= deploy) con OK del usuario.
+- 06/11: rama `feat/libre-deuda` (desde `master` 5.5-0411) con v5.6-0611 "certificado de libre deuda", probada contra la base de prueba `consorcio-tst` con el test client de Flask (emision, bloqueo por deuda, PDF, QR valido/falso/anulado, auditoria). Mergeada y desplegada el 06/11.
 - La rama `supabase-storage` (Storage, v6.0 planeada) sigue aparte y su ultimo commit local `6495413` tiene `.env.local` con claves: **no pushear ni mergear ese commit** (repo publico). Esa rama tiene la version mas completa de esta memoria.
 
 ---

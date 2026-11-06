@@ -1,6 +1,31 @@
 {% extends "base.html" %}
 {% block title %}Configuración{% endblock %}
 {% block content %}
+{% set _fs = cfg.get('fecha_simulada','') %}
+<div class="card shadow-sm mb-4 {{ 'border-warning border-3' if _fs }}" id="fecha-sistema">
+  <div class="card-header {{ 'bg-warning text-dark' if _fs else 'bg-dark text-white' }} fw-semibold">
+    <i class="bi bi-calendar-event"></i> Fecha del sistema
+    {% if _fs %}<span class="badge bg-danger ms-2">FIJADA: {{ _fs | fecha_ar }}</span>{% else %}<span class="badge bg-light text-dark ms-2">fecha real</span>{% endif %}
+  </div>
+  <div class="card-body">
+    <p class="small text-muted mb-3">
+      Con una fecha fijada, el sistema trabaja como si hoy fuera ese día: los <strong>intereses y la mora</strong>
+      se calculan a esa fecha, y también la usan el período actual, las fechas sugeridas de pagos y caja,
+      el libre deuda y los PDFs. Al guardar, se recalculan los intereses de todas las liquidaciones
+      <strong>abiertas</strong> (las cerradas no se tocan). Dejala vacía para usar la fecha real.
+    </p>
+    <form method="POST" action="{{ url_for('fijar_fecha_sistema') }}" class="d-flex flex-wrap gap-2 align-items-center">
+      <input type="date" class="form-control" style="max-width:200px" name="fecha_sistema" value="{{ _fs }}" required>
+      <button type="submit" class="btn btn-warning"><i class="bi bi-check-lg"></i> Fijar fecha y recalcular</button>
+      {% if _fs %}
+      <button type="submit" name="accion" value="quitar" class="btn btn-outline-secondary" formnovalidate>
+        <i class="bi bi-arrow-counterclockwise"></i> Volver a la fecha real
+      </button>
+      {% endif %}
+    </form>
+  </div>
+</div>
+
 <div class="row">
   <div class="col-lg-7">
 
@@ -278,7 +303,6 @@
           <input type="hidden" name="tasa_mora" value="{{ cfg.get('tasa_mora','7') }}">
           <input type="hidden" name="dia_vencimiento" value="{{ cfg.get('dia_vencimiento','15') }}">
           <input type="hidden" name="fondo_reserva_mensual" value="{{ cfg.get('fondo_reserva_mensual','0') }}">
-          <input type="hidden" name="fecha_simulada" value="{{ cfg.get('fecha_simulada','') }}">
           <div class="row g-3">
             <div class="col-md-4">
               <label class="form-label fw-semibold">Días de Cobro</label>
@@ -455,38 +479,7 @@
       </div>
       <div class="card-body">
         <div class="row g-3 align-items-end">
-          <div class="col-md-4">
-            <label class="form-label fw-semibold">
-              <i class="bi bi-calendar-event"></i> Fecha Simulada (para pruebas)
-            </label>
-            <form method="POST">
-              <input type="hidden" name="edificio_nombre" value="{{ cfg.get('edificio_nombre','') }}">
-              <input type="hidden" name="edificio_direccion" value="{{ cfg.get('edificio_direccion','') }}">
-              <input type="hidden" name="alias_cbu" value="{{ cfg.get('alias_cbu','') }}">
-              <input type="hidden" name="titular_cuenta" value="{{ cfg.get('titular_cuenta','') }}">
-              <input type="hidden" name="administrador" value="{{ cfg.get('administrador','') }}">
-              <input type="hidden" name="telefono" value="{{ cfg.get('telefono','') }}">
-              <input type="hidden" name="email" value="{{ cfg.get('email','') }}">
-              <input type="hidden" name="whatsapp" value="{{ cfg.get('whatsapp','') }}">
-              <input type="hidden" name="tasa_mora" value="{{ cfg.get('tasa_mora','7') }}">
-              <input type="hidden" name="dia_vencimiento" value="{{ cfg.get('dia_vencimiento','15') }}">
-              <input type="hidden" name="fondo_reserva_mensual" value="{{ cfg.get('fondo_reserva_mensual','0') }}">
-              <input type="hidden" name="dias_cobro" value="{{ cfg.get('dias_cobro','') }}">
-              <input type="hidden" name="horario_cobro" value="{{ cfg.get('horario_cobro','') }}">
-              <input type="hidden" name="direccion_cobro" value="{{ cfg.get('direccion_cobro','') }}">
-              <input type="hidden" name="texto_anuncio" value="{{ cfg.get('texto_anuncio','') }}">
-              <input type="hidden" name="url_app" value="{{ cfg.get('url_app','http://localhost:5000') }}">
-              <div class="input-group">
-                <input type="date" class="form-control" name="fecha_simulada"
-                       value="{{ cfg.get('fecha_simulada','') }}">
-                <button type="submit" class="btn btn-secondary">
-                  <i class="bi bi-check"></i> Fijar
-                </button>
-              </div>
-              <small class="text-muted">Vacío = fecha real del sistema</small>
-            </form>
-          </div>
-          <div class="col-md-8">
+          <div class="col-12">
             <p class="text-muted small mb-2">
               Borra <strong>liquidaciones, gastos mensuales y caja diaria</strong>.
               Las unidades funcionales y proveedores <strong>no se tocan</strong>.

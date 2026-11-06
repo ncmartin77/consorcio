@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 5.6-0611
+**Versión actual:** 5.7-0611
 
 ---
 
@@ -332,10 +332,24 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ---
 
-#### v5.6-0611 — Certificado de libre deuda
+#### v5.7-0611 — Fecha del sistema (intereses calculados a una fecha)
 
 **Lanzamiento:** 6 de noviembre  
 **Versión actual**
+
+**Cambios:**
+
+- La "Fecha Simulada" de la Zona de Pruebas pasa a ser la **Fecha del sistema**, con su propia tarjeta arriba de todo en Configuración. Con una fecha fijada la app trabaja como si hoy fuera ese día: intereses y mora (vencimiento), período actual, fechas sugeridas de pagos/caja/facturas/presupuestos, libre deuda y la marca "Generado el" de los PDFs. El vencimiento de checkpoints sigue con la fecha real (borra archivos).
+- La fórmula de interés no cambia: la fecha solo decide si ya pasó el vencimiento.
+- Al fijar o quitar la fecha se **recalculan los intereses de todas las liquidaciones abiertas** (`recalcular_intereses_abiertas()`), respetando el switch "sin interés" de cada unidad; las cerradas no se tocan.
+- Aviso visible mientras está fijada: franja amarilla bajo la barra superior en todas las páginas y etiqueta con la fecha en la barra.
+- Fix: guardar el formulario principal de Configuración borraba la fecha (y cualquier dato que ese form no mandaba). Ahora cada form solo actualiza sus campos.
+
+---
+
+#### v5.6-0611 — Certificado de libre deuda
+
+**Lanzamiento:** 6 de noviembre
 
 **Cambios:**
 
