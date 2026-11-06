@@ -35,6 +35,29 @@ Se corrieron los cuatro scripts de `pruebas/` seguidos, contra la base de prueba
 
 ---
 
+## v7.0-0611 — Saldo a favor
+
+**Pedido:** si una UF paga de más, se salda el total y le queda saldo a favor el mes siguiente.
+
+**Antes:** el formulario no dejaba pagar más que el saldo, y si llegaba un pago mayor el excedente se perdía.
+
+Prueba (`pruebas/probar_saldo_a_favor.py`, base de prueba, meses 2026-11 → 2026-12; todo restaurado al final):
+
+| # | Caso | Esperado | Resultado |
+|---|---|---|---|
+| 1 | Interés con deuda +10.000 y expensas 20.000 (vencido, 5 %) | 500 + 1.000 = $ 1.500 | ✅ |
+| 1 | Con saldo a favor −5.000 y expensas 20.000 | mora solo sobre 15.000 = $ 750 | ✅ |
+| 1 | Con saldo a favor −25.000 y expensas 20.000 | $ 0 | ✅ |
+| 2 | UF 17 nov: total $ 43.866,68, paga $ 48.866,68 | TOTAL, saldo −5.000; Caja $ 48.866,68; aviso de saldo a favor | ✅ |
+| 3 | UF 17 dic | deuda anterior −5.000; total = expensas 55.023,53 − 5.000 = $ 50.023,53 | ✅ |
+| 4 | UF 18: a favor $ 44.044,72 vs expensas dic $ 43.044,72 | dic pagada sin abonar (total −1.000) y pasan −1.000 al mes siguiente | ✅ |
+| 5 | Pantallas | "a favor" en dic, "a favor próx. mes" en nov, formulario sin máximo, recibo PDF 200 | ✅ |
+| — | Restauración | Liquidaciones nov/dic y Caja iguales al inicio | ✅ |
+
+Regresión: `probar_anular_pagos.py` y `probar_liquidacion_estados.py`.
+
+---
+
 ## v6.6-0611 — Aporte al fondo cuenta cuando se cobra
 
 **Caso:** Perú 376, saldo inicial del fondo $ 0 a sep-2026; el aporte de septiembre ($ 80.000) se cobra en la liquidación de octubre, pero el fondo seguía en $ 0.
@@ -346,6 +369,7 @@ C:\Users\Maria\.venvs\consorcio\Scripts\python.exe pruebas\probar_fondo_reserva.
 | `probar_anular_pagos.py` | Anular pago por unidad y del período, fecha de pago con fecha fijada | Sí, y lo revierte todo desde el Log de Movimientos |
 | `probar_liquidacion_estados.py` | Pantalla de Liquidación abierta, cerrada y sin generar, con y sin fecha fijada | Cambia y restaura el estado de una liquidación y la fecha |
 | `probar_pagina_error.py` | Página de error 500 para admin y usuario común | No |
+| `probar_saldo_a_favor.py` | Pago de más, saldo a favor al mes siguiente, interés y mora con saldo a favor | Sí, y restaura liquidaciones y Caja |
 | `probar_fondo_saldo_inicial.py` | Saldo del fondo con saldo inicial al mismo mes que un aporte | Cambia y restaura la config del fondo |
 | `probar_fondo_reserva.py` | Migración, saldo del fondo, extraordinarios pendiente / con el fondo, pantallas y PDF | Sí: aplica la migración (permanente); el gasto de prueba se borra y la config se restaura |
 

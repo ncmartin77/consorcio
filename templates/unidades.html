@@ -48,11 +48,11 @@
             <td class="text-end small">
               {% set si = u.get('deuda_inicial')|float %}
               {% if si != 0 %}
-                {% if si < 0 %}
+                {% if si > 0 %}
                   <span class="text-danger fw-semibold">$ {{ "%.2f"|format(si)|replace(".",",") }}</span>
                   <div class="text-danger" style="font-size:0.7rem">Deuda</div>
                 {% else %}
-                  <span class="text-success fw-semibold">$ {{ "%.2f"|format(si)|replace(".",",") }}</span>
+                  <span class="text-success fw-semibold">$ {{ "%.2f"|format(-si)|replace(".",",") }}</span>
                   <div class="text-success" style="font-size:0.7rem">A favor</div>
                 {% endif %}
                 {% if u.get('deuda_inicial_fecha') %}
@@ -246,7 +246,7 @@
               <label class="form-label fw-semibold">Saldo Inicial $</label>
               <input type="number" class="form-control" id="form_deuda_inicial" name="deuda_inicial"
                      step="0.01" value="0"
-                     title="Negativo = deuda, positivo = saldo a favor al comenzar a usar la app">
+                     title="Positivo = deuda, negativo = saldo a favor al comenzar a usar la app">
             </div>
             <div class="col-md-4">
               <label class="form-label fw-semibold">Al período</label>

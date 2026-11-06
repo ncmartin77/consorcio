@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 6.6-0611
+**Versión actual:** 7.0-0611
 
 ---
 
@@ -334,12 +334,30 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ---
 
+### v7.x — Saldo a favor
+
+#### v7.0-0611 — Pagos de más: saldo a favor para el mes siguiente
+
+**Lanzamiento:** 6 de noviembre
+**Versión actual**
+**Por qué es mayor:** cambia el cálculo cuando una unidad paga de más (antes el excedente se perdía) y la mora con saldo a favor. Aprobado por el usuario. La migración a Supabase Storage pasa a **8.0**.
+
+**Cambios:**
+
+- El formulario de pago ya no limita el monto al saldo; si se paga de más avisa cuánto queda a favor.
+- Pago de más: la unidad queda **pagada** y el excedente se guarda como saldo negativo (`saldo_pendiente < 0`) = **saldo a favor**. El cobro completo entra a Caja.
+- Mes siguiente: `deuda_anterior` negativa = saldo a favor, que reduce el total (`_deuda_desde_mes_anterior`). Si el saldo a favor cubre todo el mes, la unidad queda pagada sin abonar y el resto sigue a favor.
+- Interés: el saldo a favor nunca genera interés; la mora del mes (vencido y sin pagos) se cobra solo sobre la parte de las expensas que el saldo a favor no cubre.
+- Pantallas: "a favor" en verde en deuda anterior y en saldo ("a favor próx. mes"); recibo PDF con "SALDO A FAVOR".
+- Unidades: la vista del saldo inicial mostraba el signo al revés del cálculo (positivo decía "A favor"); ahora positivo = **Deuda** y negativo = **A favor**, igual que en la liquidación.
+
+---
+
 ### v6.x — Fondo de reserva y gastos extraordinarios
 
 #### v6.6-0611 — Fix: el aporte al fondo cuenta cuando se cobra
 
 **Lanzamiento:** 6 de noviembre
-**Versión actual**
 
 **Cambios:**
 

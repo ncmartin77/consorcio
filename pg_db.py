@@ -663,7 +663,7 @@ def _simular_a_fecha(periodo: str, filas: list, con_liq_previa: set = None, cfg:
         total = round(r["expensas"] + r["deuda_anterior"] + interes + float(r.get("extras") or 0), 2)
         tipo_pago, saldo, pagado = _estado_pago(total, monto)
         r.update({"interes": interes, "total_a_pagar": total, "monto_pagado": monto,
-                  "tipo_pago": tipo_pago, "saldo_pendiente": saldo if monto > 0 else 0.0,
+                  "tipo_pago": tipo_pago, "saldo_pendiente": saldo if (monto > 0 or pagado) else 0.0,
                   "pagado": 1 if pagado else 0, "simulado": True})
     return filas
 
@@ -705,22 +705,45 @@ def _params_interes(periodo: str, cfg: dict, real: bool = False):
 
 def _calcular_interes(expensas, deuda_anterior, es_deuda_inicial, monto_pagado, sin_interes,
                       tasa_mora, hoy, fecha_vencimiento) -> float:
+    """
+    Interés del período. deuda_anterior negativa = SALDO A FAVOR (v7.0):
+    - el saldo a favor nunca genera interés (solo se cobra sobre deuda > 0);
+    - la mora del mes (vencido y sin pagos) se cobra solo sobre la parte de las expensas
+      que el saldo a favor no cubre.
+    """
     if sin_interes:
         return 0.0
-    interes_deuda = 0.0 if es_deuda_inicial else round(deuda_anterior * tasa_mora, 2)
+    interes_deuda = 0.0 if es_deuda_inicial else round(max(deuda_anterior, 0.0) * tasa_mora, 2)
     mora_corriente = 0.0
     if fecha_vencimiento and hoy > fecha_vencimiento and monto_pagado == 0:
-        mora_corriente = round(expensas * tasa_mora, 2)
+        no_cubierto = max(expensas + min(deuda_anterior, 0.0), 0.0)
+        mora_corriente = round(no_cubierto * tasa_mora, 2)
     return round(interes_deuda + mora_corriente, 2)
 
 
 def _estado_pago(total: float, monto_pagado: float):
-    """Devuelve (tipo_pago, saldo, pagado) según lo abonado contra el total."""
-    if monto_pagado >= total and monto_pagado > 0:
-        return "TOTAL", 0.0, True
+    """
+    Devuelve (tipo_pago, saldo, pagado) según lo abonado contra el total.
+    saldo < 0 = saldo A FAVOR (pagó de más, o el saldo a favor anterior cubre todo el mes):
+    la unidad queda pagada y ese saldo pasa al mes siguiente (v7.0).
+    """
+    if total <= 0 or (monto_pagado >= total and monto_pagado > 0):
+        return "TOTAL", round(total - monto_pagado, 2), True
     if monto_pagado > 0:
         return "PARCIAL", round(total - monto_pagado, 2), False
     return "PENDIENTE", total, False
+
+
+def _deuda_desde_mes_anterior(prev_row: dict) -> float:
+    """Deuda (+) o saldo a favor (−) que pasa del mes anterior al siguiente."""
+    total = float(prev_row.get("total_a_pagar") or 0)
+    pagado_monto = float(prev_row.get("monto_pagado") or 0)
+    if prev_row.get("pagado") == 1:
+        # Pagada: solo pasa el saldo a favor (si pagó de más o el crédito cubría todo)
+        return round(min(total - pagado_monto, 0.0), 2)
+    if prev_row.get("tipo_pago") == "PARCIAL":
+        return round(prev_row.get("saldo_pendiente", total), 2)
+    return round(total, 2)
 
 
 def generar_liquidacion(periodo: str):
@@ -766,12 +789,8 @@ def generar_liquidacion(periodo: str):
             except (ValueError, TypeError):
                 deuda_anterior = 0.0
             es_deuda_inicial = True  # primer mes: no aplicar interés sobre saldo inicial
-        elif prev_row["pagado"] == 1:
-            deuda_anterior = 0.0
-        elif prev_row.get("tipo_pago") == "PARCIAL":
-            deuda_anterior = round(prev_row.get("saldo_pendiente", prev_row["total_a_pagar"]), 2)
         else:
-            deuda_anterior = round(prev_row["total_a_pagar"], 2)
+            deuda_anterior = _deuda_desde_mes_anterior(prev_row)
 
         pago = pagos_previos.get(numero, {})
         monto_pagado = float(pago.get("monto_pagado") or 0)
@@ -803,8 +822,8 @@ def generar_liquidacion(periodo: str):
             u.get("descripcion", "") or "", u.get("propietario", "") or "", u.get("inquilino", "") or "",
             pct, expensas, deuda_anterior, interes, total, pagado_flag,
             monto_pagado if monto_pagado > 0 else None,
-            tipo_pago if monto_pagado > 0 else None,
-            saldo if monto_pagado > 0 else None,
+            tipo_pago if (monto_pagado > 0 or pagado_flag) else None,
+            saldo if (monto_pagado > 0 or pagado_flag) else None,
             fecha_pago_d,
             extras_unidad if extras_unidad else None,
             sin_interes,
@@ -865,8 +884,8 @@ def aplicar_sin_interes(periodo: str, valor, unidad: str = None) -> dict:
 
                 valores.append((
                     f["id"], sin_int, interes, total, pagado_flag,
-                    tipo_pago if monto_pagado > 0 else None,
-                    saldo if monto_pagado > 0 else None,
+                    tipo_pago if (monto_pagado > 0 or pagado_flag) else None,
+                    saldo if (monto_pagado > 0 or pagado_flag) else None,
                 ))
                 rows[numero] = {"interes": interes, "total_a_pagar": total,
                                 "saldo_pendiente": saldo, "tipo_pago": tipo_pago}
@@ -945,7 +964,8 @@ def marcar_pagado(periodo: str, unidad: str, monto_pagado: float, fecha_pago: st
 
     saldo = round(total_a_pagar - total_pagado, 2)
     if saldo <= 0:
-        tipo_pago, saldo, pagado_flag = "TOTAL", 0.0, True
+        # saldo < 0: pagó de más → queda como saldo a favor para el mes siguiente (v7.0)
+        tipo_pago, pagado_flag = "TOTAL", True
     else:
         tipo_pago, pagado_flag = "PARCIAL", False
 

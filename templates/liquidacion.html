@@ -338,8 +338,11 @@
             <td>{{ r.inquilino or r.propietario }}</td>
             <td class="text-center">{{ "%.3f"|format(r.pct_aplicado) }}%</td>
             <td class="text-end">$ {{ "%.2f"|format(r.expensas)|replace(".",",") }}</td>
-            <td class="text-end {% if r.deuda_anterior > 0 %}text-danger fw-semibold{% endif %}">
-              {% if r.deuda_anterior > 0 %}$ {{ "%.2f"|format(r.deuda_anterior)|replace(".",",") }}{% else %}—{% endif %}
+            <td class="text-end {% if r.deuda_anterior > 0 %}text-danger fw-semibold{% elif r.deuda_anterior < 0 %}text-success fw-semibold{% endif %}">
+              {% if r.deuda_anterior > 0 %}$ {{ "%.2f"|format(r.deuda_anterior)|replace(".",",") }}
+              {% elif r.deuda_anterior < 0 %}$ {{ "%.2f"|format(-r.deuda_anterior)|replace(".",",") }}
+                <div style="font-size:0.65rem">a favor</div>
+              {% else %}—{% endif %}
             </td>
             <td class="text-center">
               <span class="celda-interes {% if r.interes > 0 %}text-danger fw-semibold{% else %}text-muted{% endif %}">
@@ -364,7 +367,9 @@
               {% if r.monto_pagado > 0 %}$ {{ "%.2f"|format(r.monto_pagado)|replace(".",",") }}{% else %}—{% endif %}
             </td>
             <td class="text-end celda-saldo {% if r.saldo_pendiente > 0 %}text-danger fw-semibold{% endif %}">
-              {% if tipo == 'TOTAL' %}—
+              {% if tipo == 'TOTAL' and r.saldo_pendiente < 0 %}<span class="text-success fw-semibold">$ {{ "%.2f"|format(-r.saldo_pendiente)|replace(".",",") }}</span>
+                <div class="text-success" style="font-size:0.65rem">a favor próx. mes</div>
+              {% elif tipo == 'TOTAL' %}—
               {% elif r.saldo_pendiente > 0 %}$ {{ "%.2f"|format(r.saldo_pendiente)|replace(".",",") }}
               {% else %}$ {{ "%.2f"|format(r.total_a_pagar)|replace(".",",") }}{% endif %}
             </td>
@@ -672,6 +677,11 @@
             <i class="bi bi-exclamation-triangle"></i>
             El monto es menor al saldo → se registrará como <strong>pago parcial</strong>.
           </div>
+          <div id="mp_aviso_favor" class="alert alert-success py-1 small mb-0" style="display:none">
+            <i class="bi bi-piggy-bank"></i>
+            Paga de más: queda pagado y <strong>$ <span id="mp_excedente"></span></strong> pasan como
+            <strong>saldo a favor</strong> al mes siguiente.
+          </div>
           <hr class="my-2">
           <div class="mb-2">
             <label class="form-label fw-semibold text-warning small">
@@ -860,7 +870,6 @@ function abrirModalPago(r, esParcial) {
 
   const input = document.getElementById('mp_monto');
   input.value = saldo.toFixed(2);
-  input.max = saldo;
   document.getElementById('mp_fecha').value = '{{ hoy_sistema }}';
   document.getElementById('mp_aviso_parcial').style.display = 'none';
   document.getElementById('mp_bonif').value = '';
@@ -878,6 +887,10 @@ document.getElementById('mp_monto').addEventListener('input', function() {
   const v = parseFloat(this.value) || 0;
   document.getElementById('mp_aviso_parcial').style.display =
     (v > 0 && v < _saldoActual) ? 'block' : 'none';
+  const exc = Math.round((v - _saldoActual) * 100) / 100;
+  document.getElementById('mp_aviso_favor').style.display = exc > 0 ? 'block' : 'none';
+  document.getElementById('mp_excedente').textContent =
+    exc.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 });
 
 // ── Notas ──────────────────────────────────────────────────────────────────

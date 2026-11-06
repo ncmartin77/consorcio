@@ -709,6 +709,9 @@ def generar_recibo_pago(row: dict, config: dict, periodo: str,
     if deuda_anterior > 0:
         resumen_data.append([f"SALDO DEUDOR {mes_gastos_abrev}", _fmt(deuda_anterior)])
         resumen_data.append(["Mora", _fmt(interes)])
+    elif deuda_anterior < 0:
+        resumen_data.append([f"SALDO A FAVOR {mes_gastos_abrev}", "- " + _fmt(-deuda_anterior)])
+        resumen_data.append(["Mora", _fmt(interes) if interes else "—"])
     else:
         resumen_data.append([f"SALDO DEUDOR {mes_gastos_abrev}", "—"])
         resumen_data.append(["Mora", "—"])
@@ -717,7 +720,11 @@ def generar_recibo_pago(row: dict, config: dict, periodo: str,
     # Estado de pago
     if tipo_pago == "TOTAL":
         resumen_data.append(["ABONADO", _fmt(monto_pagado)])
-        resumen_data.append(["SALDO", "—"])
+        saldo_favor = round(monto_pagado - total_a_pagar, 2)
+        if saldo_favor > 0:
+            resumen_data.append(["SALDO A FAVOR (próximo mes)", _fmt(saldo_favor)])
+        else:
+            resumen_data.append(["SALDO", "—"])
     elif tipo_pago == "PARCIAL":
         resumen_data.append(["ABONADO", _fmt(monto_pagado)])
         saldo_pend = round(total_a_pagar - monto_pagado, 2)

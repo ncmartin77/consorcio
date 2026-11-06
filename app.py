@@ -1256,7 +1256,11 @@ def marcar_pagado(periodo, unidad):
         elif tipo == "PARCIAL":
             flash(f"UF {unidad}: pago parcial de ${monto:,.2f}. Saldo pendiente: ${resultado['saldo']:,.2f}.", "warning")
         else:
-            flash(f"UF {unidad}: pago total registrado.", "success")
+            if resultado.get("saldo", 0) < 0:
+                flash(f"UF {unidad}: pago total registrado. Pagó de más: queda un saldo a favor de "
+                      f"$ {-resultado['saldo']:,.2f} para el mes siguiente.", "success")
+            else:
+                flash(f"UF {unidad}: pago total registrado.", "success")
 
     # Bonificación opcional: SALIDA en Caja Diaria, no afecta la liquidación
     bonif_str = request.form.get("bonificacion", "0").strip().replace(",", ".")
