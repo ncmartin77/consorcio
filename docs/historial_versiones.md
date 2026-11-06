@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 6.2-0611
+**Versión actual:** 6.3-0611
 
 ---
 
@@ -336,10 +336,21 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v6.x — Fondo de reserva y gastos extraordinarios
 
-#### v6.2-0611 — Detalle de errores para administradores
+#### v6.3-0611 — Fix: error 500 en Liquidación cerrada o sin generar
 
 **Lanzamiento:** 6 de noviembre
 **Versión actual**
+
+**Cambios:**
+
+- Causa real del error 500 en `/liquidacion/2026-10` (obtenida con la página de error de la v6.2): `UnboundLocalError: cannot access local variable '_cal'`. La ruta `liquidacion()` tenía `import calendar as _cal` dentro de un `if` que solo corre si la liquidación existe y está abierta; ese import vuelve local a `_cal` en toda la función, así que con la liquidación **cerrada o sin generar** fallaba más abajo. Error antiguo (no de esta sesión); en la base de prueba no aparecía porque octubre está abierta. Se quitó el import local (ya estaba importado arriba).
+- La v6.1 (períodos mal cargados) atacó otra causa posible; queda como protección extra.
+
+---
+
+#### v6.2-0611 — Detalle de errores para administradores
+
+**Lanzamiento:** 6 de noviembre
 
 **Cambios:**
 

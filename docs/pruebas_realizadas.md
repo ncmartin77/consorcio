@@ -35,6 +35,32 @@ Se corrieron los cuatro scripts de `pruebas/` seguidos, contra la base de prueba
 
 ---
 
+## v6.3-0611 — Causa real del error 500 en Liquidación
+
+**Detalle obtenido en producción** con la página de error de la v6.2 (admin, `GET /liquidacion/2026-10`, fecha 06/10):
+
+```
+File "/opt/render/project/src/app.py", line 1071, in liquidacion
+    ultimo_dia = _cal.monthrange(yp, mp)[1]
+UnboundLocalError: cannot access local variable '_cal' where it is not associated with a value
+```
+
+**Causa:** `import calendar as _cal` dentro de un `if` (solo corre con la liquidación abierta) vuelve local a `_cal` en toda la función. Con la liquidación de octubre **cerrada o sin generar** en producción, `_cal` no existe al usarse más abajo. En la base de prueba octubre está abierta, por eso no se reproducía.
+
+Prueba (`pruebas/probar_liquidacion_estados.py`):
+
+| Estado de la liquidación | Fecha real — antes | Fecha real — después | Fecha 06/10 — antes | Fecha 06/10 — después |
+|---|---|---|---|---|
+| Abierta (2026-12) | ✅ 200 | ✅ 200 | ✅ 200 | ✅ 200 |
+| Sin generar (2027-02) | ❌ UnboundLocalError | ✅ 200 | ❌ UnboundLocalError | ✅ 200 |
+| Cerrada (2026-12, cerrada para la prueba) | ❌ UnboundLocalError | ✅ 200 | ❌ UnboundLocalError | ✅ 200 |
+
+Se revisaron los demás imports locales de `app.py` (`_re`, `_hmac_mod`, `traceback`, etc.): se usan después de importarse, no tienen el problema.
+
+> Aprendizaje: la v6.1 atacó una causa posible sin confirmarla. Con un error que no se reproduce en prueba, primero obtener el traceback real (página de error de la v6.2 o log de Render).
+
+---
+
 ## v6.2-0611 — Página de error con detalle para administradores
 
 Después de la v6.1, `/liquidacion/2026-10` con fecha 06/10 **siguió dando error 500 en producción**, y en la base de prueba no se reproduce: la causa depende de datos de producción, a los que no hay acceso.
@@ -268,6 +294,8 @@ C:\Users\Maria\.venvs\consorcio\Scripts\python.exe pruebas\probar_fondo_reserva.
 | `diagnostico_fondo.py` | Gastos por tipo, facturas y caja del fondo, saldo del fondo | No (solo lectura) |
 | `reproducir_error_liquidar.py` | "Liquidar" con fecha fijada, mostrando el traceback si falla | Regenera esa liquidación (conserva pagos); restaura la fecha |
 | `probar_periodos_invalidos.py` | Pantallas con gastos de fondo con período mal cargado | Inserta y borra gastos de prueba |
+| `probar_liquidacion_estados.py` | Pantalla de Liquidación abierta, cerrada y sin generar, con y sin fecha fijada | Cambia y restaura el estado de una liquidación y la fecha |
+| `probar_pagina_error.py` | Página de error 500 para admin y usuario común | No |
 | `probar_fondo_reserva.py` | Migración, saldo del fondo, extraordinarios pendiente / con el fondo, pantallas y PDF | Sí: aplica la migración (permanente); el gasto de prueba se borra y la config se restaura |
 
 Cuando se agregue una prueba, sumar su sección arriba (la más nueva primero) y, si sirve repetirla, su script en `pruebas/`.

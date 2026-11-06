@@ -1044,7 +1044,9 @@ def liquidacion(periodo=None):
     liq_generada_check = db.liquidacion_existe(periodo)
     liq_cerrada_check = db.liq_esta_cerrada(periodo)
     if liq_generada_check and not liq_cerrada_check:
-        import calendar as _cal
+        # Ojo: no hacer "import calendar as _cal" acá. Un import dentro de la función vuelve
+        # local a _cal en TODA la función y, si este if no se ejecuta (liquidación cerrada o
+        # sin generar), más abajo daba UnboundLocalError. _cal ya está importado arriba.
         cfg_check = db.get_config()
         hoy_check = _fecha_hoy()
         try:
