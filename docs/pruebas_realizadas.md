@@ -35,6 +35,18 @@ Se corrieron los cuatro scripts de `pruebas/` seguidos, contra la base de prueba
 
 ---
 
+## v6.2-0611 — Página de error con detalle para administradores
+
+Después de la v6.1, `/liquidacion/2026-10` con fecha 06/10 **siguió dando error 500 en producción**, y en la base de prueba no se reproduce: la causa depende de datos de producción, a los que no hay acceso.
+
+| Caso (`pruebas/probar_pagina_error.py`, error forzado en una ruta temporal) | Esperado | Resultado |
+|---|---|---|
+| Administrador | 500 con traceback, página, versión, consorcio y fecha fijada | ✅ |
+| Usuario común | 500 con mensaje simple, sin detalle técnico | ✅ |
+| Log | Traceback completo registrado | ✅ |
+
+---
+
 ## v6.1-0611 — Error 500 al liquidar octubre con fecha 06/10
 
 **Reporte:** en producción, "Liquidar" octubre con la fecha del sistema en 06/10 devolvió *Internal Server Error*.

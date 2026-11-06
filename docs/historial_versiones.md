@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 6.1-0611
+**Versión actual:** 6.2-0611
 
 ---
 
@@ -336,10 +336,21 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v6.x — Fondo de reserva y gastos extraordinarios
 
-#### v6.1-0611 — Fix: error 500 por períodos mal cargados en el fondo
+#### v6.2-0611 — Detalle de errores para administradores
 
 **Lanzamiento:** 6 de noviembre
 **Versión actual**
+
+**Cambios:**
+
+- Página de error 500 propia: a los administradores les muestra el detalle técnico (traceback, página, versión, consorcio, fecha del sistema) para diagnosticar sin acceso al log de Render; a los demás, un mensaje simple. Siempre queda en el log. No usa `base.html`, por si el error viene de ahí.
+- Motivo: después de la v6.1, `/liquidacion/2026-10` con fecha 06/10 seguía dando error 500 en producción y no se reproduce en la base de prueba.
+
+---
+
+#### v6.1-0611 — Fix: error 500 por períodos mal cargados en el fondo
+
+**Lanzamiento:** 6 de noviembre
 
 **Cambios:**
 

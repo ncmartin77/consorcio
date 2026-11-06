@@ -1941,6 +1941,56 @@ def delete_logo():
 
 
 # ---------------------------------------------------------------------------
+# ERRORES INTERNOS
+# ---------------------------------------------------------------------------
+
+@app.errorhandler(500)
+def error_interno(e):
+    """
+    Error 500: siempre queda el traceback en el log. A los administradores se les muestra
+    el detalle en pantalla (para diagnosticar sin acceso al log de Render); al resto, un
+    mensaje simple. La página no usa base.html, por si el error viene de ahí.
+    """
+    import traceback
+    from markupsafe import escape
+    orig = getattr(e, "original_exception", None) or e
+    detalle = "".join(traceback.format_exception(type(orig), orig, orig.__traceback__))
+    app.logger.error(f"Error 500 en {request.method} {request.path}:\n{detalle}")
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "version.txt")) as _f:
+            version = _f.read().strip()
+    except Exception:
+        version = "?"
+    cuerpo = ("<p>Ocurrió un error inesperado. Avisá al administrador del sistema.</p>"
+              f'<p><a href="{url_for("index")}">Volver al inicio</a></p>')
+    if session.get("es_admin"):
+        cuerpo = (
+            "<p>Ocurrió un error inesperado. Como sos administrador, abajo está el detalle técnico: "
+            "copialo completo y pasáselo a quien mantiene el sistema.</p>"
+            f"<p><b>Página:</b> {escape(request.method)} {escape(request.path)}<br>"
+            f"<b>Versión:</b> {escape(version)}<br>"
+            f"<b>Consorcio:</b> {escape(session.get('consorcio_id', ''))}<br>"
+            f"<b>Fecha del sistema fijada:</b> {escape(_fecha_fijada_segura())}</p>"
+            f'<pre style="white-space:pre-wrap;background:#f6f6f6;border:1px solid #ccc;padding:12px;'
+            f'font-size:12px">{escape(detalle)}</pre>'
+            f'<p><a href="{url_for("index")}">Volver al inicio</a></p>'
+        )
+    html = ('<!doctype html><html lang="es"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            '<title>Error del sistema</title></head>'
+            '<body style="font-family:system-ui,sans-serif;max-width:960px;margin:24px auto;padding:0 16px">'
+            f'<h2 style="color:#c00000">Error del sistema</h2>{cuerpo}</body></html>')
+    return html, 500
+
+
+def _fecha_fijada_segura() -> str:
+    try:
+        return db.get_config().get("fecha_simulada", "") or "(no)"
+    except Exception:
+        return "?"
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
