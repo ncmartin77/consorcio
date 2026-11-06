@@ -1550,22 +1550,28 @@ def get_resumen_fondo(mes_gastos: str, cfg: dict = None) -> dict:
     liquidados = {r["periodo"] for r in _fetchall(
         "SELECT DISTINCT periodo FROM liquidaciones WHERE consorcio_id=%s", (_cid(),))}
 
-    def cuenta(f):  # movimientos posteriores al saldo inicial
-        return not p0 or f["periodo"] > p0
+    # Respecto del saldo inicial (al mes p0):
+    # - un APORTE entra al fondo cuando se cobra, o sea en la liquidación siguiente a su mes
+    #   (aporte de sep se cobra en oct): cuenta si esa liquidación es posterior a p0;
+    # - un GASTO pagado con el fondo sale en su propio mes: cuenta si su mes es posterior a p0.
+    def aporte_cuenta(periodo):
+        return not p0 or _next_periodo(periodo) > p0
+
+    def uso_cuenta(periodo):
+        return not p0 or periodo > p0
 
     aportes_prev = sum(float(f["importe"]) for f in filas
-                       if f["tipo"] == "FONDO_RESERVA" and cuenta(f) and f["periodo"] < mes_gastos
+                       if f["tipo"] == "FONDO_RESERVA" and aporte_cuenta(f["periodo"]) and f["periodo"] < mes_gastos
                        and _next_periodo(f["periodo"]) in liquidados)
     usos_prev = sum(float(f["importe"]) for f in filas
-                    if f["tipo"] == "VARIABLE_FR" and cuenta(f) and f["periodo"] < mes_gastos)
+                    if f["tipo"] == "VARIABLE_FR" and uso_cuenta(f["periodo"]) and f["periodo"] < mes_gastos)
     saldo_anterior = round(saldo_ini + aportes_prev - usos_prev, 2)
 
-    en_rango = not p0 or mes_gastos > p0
     aporte = round(sum(float(f["importe"]) for f in filas
                        if f["tipo"] == "FONDO_RESERVA" and f["periodo"] == mes_gastos), 2)
-    aporte_liquidado = en_rango and _next_periodo(mes_gastos) in liquidados
+    aporte_liquidado = aporte_cuenta(mes_gastos) and _next_periodo(mes_gastos) in liquidados
     usos = round(sum(float(f["importe"]) for f in filas
-                     if f["tipo"] == "VARIABLE_FR" and f["periodo"] == mes_gastos), 2) if en_rango else 0.0
+                     if f["tipo"] == "VARIABLE_FR" and f["periodo"] == mes_gastos), 2) if uso_cuenta(mes_gastos) else 0.0
     saldo = round(saldo_anterior + (aporte if aporte_liquidado else 0) - usos, 2)
     return {
         "mes_gastos": mes_gastos,

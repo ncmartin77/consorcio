@@ -35,6 +35,22 @@ Se corrieron los cuatro scripts de `pruebas/` seguidos, contra la base de prueba
 
 ---
 
+## v6.6-0611 — Aporte al fondo cuenta cuando se cobra
+
+**Caso:** Perú 376, saldo inicial del fondo $ 0 a sep-2026; el aporte de septiembre ($ 80.000) se cobra en la liquidación de octubre, pero el fondo seguía en $ 0.
+
+Prueba (`pruebas/probar_fondo_saldo_inicial.py`, base de prueba, mes 2026-10: aporte $ 150.000 cobrado en nov, $ 11.000 pagados con el fondo):
+
+| Saldo inicial | Esperado | Resultado |
+|---|---|---|
+| $ 0 al 2026-10 | 0 + 150.000 (el uso de oct ya está en el saldo inicial) = $ 150.000 | ✅ (antes: $ 0) |
+| $ 80.000 al 2026-10 | 80.000 + 150.000 = $ 230.000 | ✅ (antes: $ 80.000) |
+| $ 0 al 2026-09 | aporte sep 80.000 + aporte oct 150.000 − uso oct 11.000 = $ 219.000 | ✅ |
+
+Regresión: `probar_fondo_reserva.py` con los mismos saldos que en v6.0.
+
+---
+
 ## v6.5-0611 — Estado de la liquidación debajo del título
 
 Se generó la pantalla de Liquidación en los tres estados (base de prueba; la cerrada se cerró solo para la prueba y se volvió a abrir) y se revisó a la vista:
@@ -330,6 +346,7 @@ C:\Users\Maria\.venvs\consorcio\Scripts\python.exe pruebas\probar_fondo_reserva.
 | `probar_anular_pagos.py` | Anular pago por unidad y del período, fecha de pago con fecha fijada | Sí, y lo revierte todo desde el Log de Movimientos |
 | `probar_liquidacion_estados.py` | Pantalla de Liquidación abierta, cerrada y sin generar, con y sin fecha fijada | Cambia y restaura el estado de una liquidación y la fecha |
 | `probar_pagina_error.py` | Página de error 500 para admin y usuario común | No |
+| `probar_fondo_saldo_inicial.py` | Saldo del fondo con saldo inicial al mismo mes que un aporte | Cambia y restaura la config del fondo |
 | `probar_fondo_reserva.py` | Migración, saldo del fondo, extraordinarios pendiente / con el fondo, pantallas y PDF | Sí: aplica la migración (permanente); el gasto de prueba se borra y la config se restaura |
 
 Cuando se agregue una prueba, sumar su sección arriba (la más nueva primero) y, si sirve repetirla, su script en `pruebas/`.

@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 6.5-0611
+**Versión actual:** 6.6-0611
 
 ---
 
@@ -336,10 +336,21 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v6.x — Fondo de reserva y gastos extraordinarios
 
-#### v6.5-0611 — Estado de la liquidación debajo del título
+#### v6.6-0611 — Fix: el aporte al fondo cuenta cuando se cobra
 
 **Lanzamiento:** 6 de noviembre
 **Versión actual**
+
+**Cambios:**
+
+- Saldo del fondo respecto del saldo inicial (al mes P): un **aporte** entra al fondo cuando se cobra, es decir en la liquidación siguiente a su mes; cuenta si esa liquidación es posterior a P. Antes se tomaba el mes del gasto, y el aporte de P (que se cobra en P+1) quedaba afuera. Un **gasto pagado con el fondo** sigue contando por su propio mes.
+- Caso real: Perú 376 con saldo inicial del fondo $ 0 a sep-2026 y aporte de septiembre $ 80.000 cobrado en octubre → el fondo pasa a mostrar $ 80.000 (antes $ 0).
+
+---
+
+#### v6.5-0611 — Estado de la liquidación debajo del título
+
+**Lanzamiento:** 6 de noviembre
 
 **Cambios:**
 
