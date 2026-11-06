@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 7.0-0611
+**Versión actual:** 7.1-0611
 
 ---
 
@@ -336,10 +336,21 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v7.x — Saldo a favor
 
-#### v7.0-0611 — Pagos de más: saldo a favor para el mes siguiente
+#### v7.1-0611 — Totales en el PDF resumen y en la pantalla Liquidación
 
 **Lanzamiento:** 6 de noviembre
 **Versión actual**
+
+**Cambios:**
+
+- PDF resumen: la fila TOTAL ahora incluye la suma de la columna **Deuda** (neta: un saldo a favor resta). Columnas de importes más anchas para que entren los totales.
+- Pantalla Liquidación: el pie de la tabla estaba corrido una columna (el total quedaba bajo "Extra" y lo abonado bajo "TOTAL"; "Saldo" sin total). Ahora cada total va bajo su columna y se agregan los de **Interés**, **Extra** y **Saldo**. Interés y saldo se recalculan al usar el switch de interés.
+
+---
+
+#### v7.0-0611 — Pagos de más: saldo a favor para el mes siguiente
+
+**Lanzamiento:** 6 de noviembre
 **Por qué es mayor:** cambia el cálculo cuando una unidad paga de más (antes el excedente se perdía) y la mora con saldo a favor. Aprobado por el usuario. La migración a Supabase Storage pasa a **8.0**.
 
 **Cambios:**

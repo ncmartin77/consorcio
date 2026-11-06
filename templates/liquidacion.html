@@ -345,7 +345,7 @@
               {% else %}—{% endif %}
             </td>
             <td class="text-center">
-              <span class="celda-interes {% if r.interes > 0 %}text-danger fw-semibold{% else %}text-muted{% endif %}">
+              <span class="celda-interes {% if r.interes > 0 %}text-danger fw-semibold{% else %}text-muted{% endif %}" data-v="{{ r.interes }}">
                 {% if r.interes > 0 %}$ {{ "%.2f"|format(r.interes)|replace(".",",") }}{% else %}—{% endif %}
               </span>
               {% if not liq_cerrada %}
@@ -366,7 +366,8 @@
             <td class="text-end {% if tipo != 'PENDIENTE' %}text-success fw-semibold{% endif %}">
               {% if r.monto_pagado > 0 %}$ {{ "%.2f"|format(r.monto_pagado)|replace(".",",") }}{% else %}—{% endif %}
             </td>
-            <td class="text-end celda-saldo {% if r.saldo_pendiente > 0 %}text-danger fw-semibold{% endif %}">
+            {% set _saldo_fila = 0 if tipo == 'TOTAL' else (r.saldo_pendiente if r.saldo_pendiente > 0 else r.total_a_pagar) %}
+            <td class="text-end celda-saldo {% if r.saldo_pendiente > 0 %}text-danger fw-semibold{% endif %}" data-v="{{ _saldo_fila }}">
               {% if tipo == 'TOTAL' and r.saldo_pendiente < 0 %}<span class="text-success fw-semibold">$ {{ "%.2f"|format(-r.saldo_pendiente)|replace(".",",") }}</span>
                 <div class="text-success" style="font-size:0.65rem">a favor próx. mes</div>
               {% elif tipo == 'TOTAL' %}—
@@ -458,14 +459,20 @@
         </tbody>
         <tfoot class="table-light fw-bold">
           <tr>
+            {% set _tot_interes = liq|sum(attribute='interes') %}
+            {% set _tot_extras = liq|sum(attribute='extras') %}
+            {% set _ns = namespace(saldo=0) %}
+            {% for r in liq %}{% set _t = r.get('tipo_pago', 'PENDIENTE') %}{% if _t != 'TOTAL' %}{% set _ns.saldo = _ns.saldo + (r.saldo_pendiente if r.saldo_pendiente > 0 else r.total_a_pagar) %}{% endif %}{% endfor %}
             <td colspan="3">TOTALES</td>
             <td class="text-center">100%</td>
             <td class="text-end">$ {{ "%.2f"|format(total_gastos)|replace(".",",") }}</td>
             <td class="text-end">$ {{ "%.2f"|format(total_deuda)|replace(".",",") }}</td>
-            <td></td>
+            <td class="text-center text-danger" id="totInteres">$ {{ "%.2f"|format(_tot_interes)|replace(".",",") }}</td>
+            <td class="text-end">$ {{ "%.2f"|format(_tot_extras)|replace(".",",") }}</td>
             <td class="text-end text-danger" id="totAPagar">$ {{ "%.2f"|format(total_a_pagar)|replace(".",",") }}</td>
             <td class="text-end text-success">$ {{ "%.2f"|format(total_cobrado)|replace(".",",") }}</td>
-            <td colspan="4"></td>
+            <td class="text-end text-danger" id="totSaldo">$ {{ "%.2f"|format(_ns.saldo)|replace(".",",") }}</td>
+            <td colspan="3"></td>
           </tr>
         </tfoot>
       </table>
@@ -1106,6 +1113,7 @@ function actualizarFila(unidad, data) {
 
   const celda = tr.querySelector('.celda-interes');
   if (celda) {
+    celda.dataset.v = data.interes;
     celda.textContent = formatPesos(data.interes);
     celda.className = 'celda-interes ' + (data.interes > 0 ? 'text-danger fw-semibold' : 'text-muted');
   }
@@ -1114,7 +1122,9 @@ function actualizarFila(unidad, data) {
 
   const saldo = tr.querySelector('.celda-saldo');
   if (saldo && data.tipo_pago !== 'TOTAL') {
-    saldo.textContent = pesos(data.saldo_pendiente > 0 ? data.saldo_pendiente : data.total_a_pagar);
+    const v = data.saldo_pendiente > 0 ? data.saldo_pendiente : data.total_a_pagar;
+    saldo.dataset.v = v;
+    saldo.textContent = pesos(v);
   }
   [total, saldo, celda].forEach(el => {
     if (!el) return;
@@ -1128,6 +1138,13 @@ function actualizarFila(unidad, data) {
 function actualizarTotalPeriodo(v) {
   const el = document.getElementById('totAPagar');
   if (el && typeof v === 'number') el.textContent = pesos(v);
+  // Totales de interés y saldo del pie, a partir de las filas
+  const sumar = sel => Array.from(document.querySelectorAll(sel))
+    .reduce((a, c) => a + (parseFloat(c.dataset.v) || 0), 0);
+  const ti = document.getElementById('totInteres');
+  if (ti) ti.textContent = pesos(sumar('tr[data-unidad] .celda-interes'));
+  const ts = document.getElementById('totSaldo');
+  if (ts) ts.textContent = pesos(sumar('tr[data-unidad] .celda-saldo'));
 }
 
 function postSinInteres(url, valor) {

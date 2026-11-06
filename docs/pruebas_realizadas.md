@@ -35,6 +35,20 @@ Se corrieron los cuatro scripts de `pruebas/` seguidos, contra la base de prueba
 
 ---
 
+## v7.1-0611 — Totales en el PDF resumen y en la pantalla Liquidación
+
+Base de prueba, liquidación 2026-12:
+
+| Verificación | Esperado (suma de filas) | Resultado |
+|---|---|---|
+| PDF resumen: total columna Deuda | $ 1.049.442,22 | ✅ (revisado a la vista; columnas sin superponerse) |
+| Pantalla: total Interés | $ 52.472,11 | ✅ |
+| Pantalla: total TOTAL | $ 2.418.266,67 | ✅ bajo su columna |
+| Pantalla: total Saldo | $ 2.418.266,67 | ✅ bajo su columna |
+| Pie alineado con los encabezados | — | ✅ revisado a la vista |
+
+---
+
 ## v7.0-0611 — Saldo a favor
 
 **Pedido:** si una UF paga de más, se salda el total y le queda saldo a favor el mes siguiente.

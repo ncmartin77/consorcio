@@ -419,12 +419,15 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
             saldo_display,
         ])
     # Fila totales
+    # Total de la columna Deuda (neto: un saldo a favor, negativo, resta)
+    total_deuda = round(sum(float(r.get("deuda_anterior") or 0) for r in liquidacion_rows), 2)
     uf_data.append(["TOTAL", "", "", "100%",
-                    _fmt(total_gastos), "", _fmt(total_a_cobrar),
+                    _fmt(total_gastos), _fmt(total_deuda) if total_deuda else "—", _fmt(total_a_cobrar),
                     _fmt(total_cobrado), _fmt(total_pendiente)])
 
     # A4 ancho útil = 21 - 2*1.2 = 18.6 cm → repartir entre 9 cols
-    col_w = [0.9*cm, 2.8*cm, 2.8*cm, 1.5*cm, 2.0*cm, 1.8*cm, 2.0*cm, 1.8*cm, 1.9*cm]  # = 17.5 cm
+    # Columnas de importes más anchas para que entren los totales (ej. $ 1.316.352,34)
+    col_w = [0.9*cm, 2.6*cm, 2.6*cm, 1.4*cm, 2.3*cm, 2.3*cm, 2.3*cm, 1.6*cm, 2.2*cm]  # = 18.2 cm
     uf_t = Table(uf_data, colWidths=col_w, repeatRows=1)
     n = len(uf_data)
     uf_t.setStyle(TableStyle([
