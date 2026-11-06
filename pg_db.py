@@ -972,6 +972,56 @@ def marcar_pagado(periodo: str, unidad: str, monto_pagado: float, fecha_pago: st
     return {"tipo": tipo_pago, "saldo": saldo, "monto": monto_pagado, "total_pagado": total_pagado}
 
 
+def anular_pagos(periodo: str, unidades: list = None) -> tuple:
+    """
+    Anula los pagos de expensas del período (todas las unidades o las indicadas): deja la
+    fila sin pago y borra de Caja las entradas "Expensas <periodo> - ... - UF <n>" y las
+    bonificaciones "Bonificación UF <n> <periodo>". Todo en una transacción (auditada:
+    se puede revertir desde el Log de Movimientos). Devuelve (ok, mensaje, cantidad).
+    No se puede si la liquidación está CERRADA o si algún movimiento de Caja cae en un
+    mes con liquidación CERRADA.
+    """
+    if liq_esta_cerrada(periodo):
+        return False, f"La liquidación de {periodo} está cerrada: reabrila para anular pagos.", 0
+    filas = [r for r in get_liquidacion(periodo, simular=False)
+             if float(r.get("monto_pagado") or 0) > 0
+             and (unidades is None or str(r["unidad"]) in {str(u) for u in unidades})]
+    if not filas:
+        return False, "No hay pagos registrados para anular.", 0
+    cid = _cid()
+    periodo_re = re.escape(periodo)
+    with _conn() as c:
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            ids_caja = []
+            for r in filas:
+                u = re.escape(str(r["unidad"]))
+                cur.execute("""
+                    SELECT id, fecha FROM caja WHERE consorcio_id=%s AND (
+                        (tipo='ENTRADA' AND categoria='Expensas'
+                         AND descripcion ~ %s)
+                     OR (tipo='SALIDA' AND categoria='BONIFICACION'
+                         AND descripcion ~ %s))
+                """, (cid, f"^Expensas {periodo_re} - .* - UF {u}( \\(PARCIAL\\))?$",
+                      f"^Bonificación UF {u} {periodo_re}( - .*)?$"))
+                for m in cur.fetchall():
+                    mes = m["fecha"].strftime("%Y-%m") if hasattr(m["fecha"], "strftime") else str(m["fecha"])[:7]
+                    if liq_esta_cerrada(mes):
+                        raise_msg = (f"El cobro de la UF {r['unidad']} está en Caja de {mes}, "
+                                     f"cuya liquidación está cerrada: no se anuló nada.")
+                        c.rollback()
+                        return False, raise_msg, 0
+                    ids_caja.append(m["id"])
+            if ids_caja:
+                cur.execute("DELETE FROM caja WHERE consorcio_id=%s AND id = ANY(%s)", (cid, ids_caja))
+            cur.execute("""
+                UPDATE liquidaciones SET pagado=FALSE, monto_pagado=NULL, tipo_pago=NULL,
+                       saldo_pendiente=NULL, fecha_pago=NULL
+                WHERE consorcio_id=%s AND periodo=%s AND unidad = ANY(%s)
+            """, (cid, periodo, [str(r["unidad"]) for r in filas]))
+    aplicar_sin_interes(periodo, None)   # recalcula interés (mora) y estado sin el pago
+    return True, (f"Se anularon {len(filas)} pago(s) de {periodo} y {len(ids_caja)} movimiento(s) de Caja."), len(filas)
+
+
 def marcar_todos_pagado(periodo: str, fecha_pago: str) -> int:
     if liq_esta_cerrada(periodo):
         return 0

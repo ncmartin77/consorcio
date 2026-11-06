@@ -46,6 +46,16 @@
       <i class="bi bi-check2-all"></i> Pago Completo
     </button>
     {% endif %}
+    {% set _con_pago = (liq|selectattr('monto_pagado')|list) + (liq|selectattr('pago_posterior')|list) %}
+    {% if es_admin and liq and not liq_cerrada and _con_pago %}
+    <form method="POST" action="{{ url_for('anular_pagos', periodo=periodo) }}" class="d-inline"
+          onsubmit="return confirm('¿Anular TODOS los pagos registrados de {{ periodo | mes_largo }}? Se borran también sus entradas en Caja. Se puede revertir desde el Log de Movimientos.')">
+      <button type="submit" class="btn btn-outline-danger btn-sm"
+              data-ayuda="Anulá todos los pagos de expensas de este período (y sus entradas en Caja). Solo administradores; queda en el Log de Movimientos.">
+        <i class="bi bi-x-octagon"></i> Anular todos los pagos
+      </button>
+    </form>
+    {% endif %}
     {% if liq %}
     <a href="{{ url_for('descargar_pdf', periodo=periodo) }}" class="btn btn-danger btn-sm"
        data-ayuda="Descargá el resumen completo del edificio en PDF: expensas de todas las unidades, totales y notas del período.">
@@ -409,6 +419,15 @@
                  class="btn btn-sm btn-outline-primary" title="Descargar recibo">
                 <i class="bi bi-receipt"></i>
               </a>
+              {% endif %}
+              {% if es_admin and not liq_cerrada and (r.monto_pagado > 0 or r.pago_posterior) %}
+              <form method="POST" action="{{ url_for('anular_pagos', periodo=periodo) }}" class="d-inline"
+                    onsubmit="return confirm('¿Anular el pago de la UF {{ r.unidad }}? Se borra también su entrada en Caja.')">
+                <input type="hidden" name="unidad" value="{{ r.unidad }}">
+                <button class="btn btn-sm btn-outline-danger" title="Anular pago (solo admin)">
+                  <i class="bi bi-x-octagon"></i>
+                </button>
+              </form>
               {% endif %}
               {# WhatsApp/mail — solo si hay pago registrado #}
               {% if liq_generada and r.tipo_pago != 'PENDIENTE' %}
@@ -776,7 +795,7 @@ document.getElementById('periodoSelector').addEventListener('change', function()
   window.location.href = '{{ url_for("liquidacion") }}/' + this.value;
 });
 
-const _hoy = new Date().toISOString().split('T')[0];
+const _hoy = '{{ hoy_sistema }}';
 const pcFecha = document.getElementById('pc_fecha');
 if (pcFecha) pcFecha.value = _hoy;
 
@@ -832,7 +851,7 @@ function abrirModalPago(r, esParcial) {
   const input = document.getElementById('mp_monto');
   input.value = saldo.toFixed(2);
   input.max = saldo;
-  document.getElementById('mp_fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('mp_fecha').value = '{{ hoy_sistema }}';
   document.getElementById('mp_aviso_parcial').style.display = 'none';
   document.getElementById('mp_bonif').value = '';
   document.getElementById('mp_bonif_motivo').value = '';

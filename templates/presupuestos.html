@@ -134,7 +134,7 @@
 {% endblock %}
 {% block scripts %}
 <script>
-document.getElementById('ped_fecha').value = new Date().toISOString().split('T')[0];
+document.getElementById('ped_fecha').value = '{{ hoy_sistema }}';
 
 function editarPedido(p) {
   document.getElementById('modalPedidoTitulo').innerHTML =
@@ -155,7 +155,7 @@ document.getElementById('modalPedido').addEventListener('hidden.bs.modal', funct
   document.getElementById('ped_categoria').value = '';
   document.getElementById('ped_estado').value = 'ABIERTO';
   document.getElementById('ped_notas').value = '';
-  document.getElementById('ped_fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('ped_fecha').value = '{{ hoy_sistema }}';
 });
 </script>
 {% endblock %}

@@ -222,7 +222,7 @@
 {% endblock %}
 {% block scripts %}
 <script>
-document.getElementById('cot_fecha').value = new Date().toISOString().split('T')[0];
+document.getElementById('cot_fecha').value = '{{ hoy_sistema }}';
 
 function toggleProvLibre(sel) {
   const div = document.getElementById('cot_prov_libre_div');

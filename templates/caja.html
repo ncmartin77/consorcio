@@ -274,7 +274,7 @@ document.querySelectorAll('.fila-caja').forEach(function(tr) {
 });
 
 // Fecha por defecto: hoy
-const today = new Date().toISOString().split('T')[0];
+const today = '{{ hoy_sistema }}';
 document.getElementById('mov_fecha').value = today;
 
 function editarMov(m) {

@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 6.3-0611
+**Versión actual:** 6.4-0611
 
 ---
 
@@ -336,10 +336,21 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v6.x — Fondo de reserva y gastos extraordinarios
 
-#### v6.3-0611 — Fix: error 500 en Liquidación cerrada o sin generar
+#### v6.4-0611 — Anular pagos y fecha del sistema en los formularios
 
 **Lanzamiento:** 6 de noviembre
 **Versión actual**
+
+**Cambios:**
+
+- **Anular pago** (solo administradores, liquidación abierta): botón por unidad y "Anular todos los pagos" del período en Liquidación. Deja la fila sin pago, borra de Caja la entrada "Expensas <período> - … - UF <n>" y la bonificación si la hubo, y recalcula el interés. Todo en una transacción, auditada: se revierte desde el Log de Movimientos. No anula si algún cobro está en Caja de un mes con liquidación cerrada (`pg_db.anular_pagos`, `POST /liquidacion/<periodo>/anular-pagos`).
+- Los formularios (pagos, pago completo, caja, facturas, gastos, plano, presupuestos) proponían la fecha **real** del navegador; ahora proponen la **fecha del sistema** (`hoy_sistema` en el context processor). Así, con una fecha fijada, el pago queda registrado con esa fecha.
+
+---
+
+#### v6.3-0611 — Fix: error 500 en Liquidación cerrada o sin generar
+
+**Lanzamiento:** 6 de noviembre
 
 **Cambios:**
 

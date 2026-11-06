@@ -118,6 +118,7 @@ _DESC_AUDITORIA = {
     "reabrir_liquidacion": "Liquidación: reabrir",
     "pagar_todo": "Liquidación: pago completo",
     "marcar_pagado": "Liquidación: registrar pago",
+    "anular_pagos": "Liquidación: anular pago(s)",
     "notas_add": "Liquidación: agregar nota",
     "notas_delete": "Liquidación: eliminar nota",
     "extras_add": "Liquidación: agregar gasto extra",
@@ -204,6 +205,8 @@ def inject_version():
         "logo_url": logo_url,
         "periodo_trabajo": session.get("periodo_trabajo") or "",
         "fecha_sistema_fijada": fecha_fijada,
+        # "Hoy" que proponen los formularios (fecha del sistema si está fijada)
+        "hoy_sistema": (fecha_fijada or date.today()).strftime("%Y-%m-%d"),
     }
 
 
@@ -1207,6 +1210,18 @@ def toggle_sin_interes_todos(periodo):
     valor = bool((request.get_json(silent=True) or {}).get("sin_interes", False))
     res = _vista_sin_interes(periodo, db.aplicar_sin_interes(periodo, valor))
     return jsonify({"ok": True, "rows": res["rows"], "total_periodo": res["total_periodo"]})
+
+
+@app.route("/liquidacion/<periodo>/anular-pagos", methods=["POST"])
+def anular_pagos(periodo):
+    """Anula el pago de una unidad (form 'unidad') o de todo el período. Solo administradores."""
+    block = _require_admin()
+    if block:
+        return block
+    unidad = request.form.get("unidad", "").strip()
+    ok, msg, _n = db.anular_pagos(periodo, [unidad] if unidad else None)
+    flash(msg, "success" if ok else "warning")
+    return redirect(url_for("liquidacion", periodo=periodo))
 
 
 @app.route("/liquidacion/pagar-todo/<periodo>", methods=["POST"])

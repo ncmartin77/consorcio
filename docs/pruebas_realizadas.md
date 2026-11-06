@@ -35,6 +35,25 @@ Se corrieron los cuatro scripts de `pruebas/` seguidos, contra la base de prueba
 
 ---
 
+## v6.4-0611 — Anular pagos y fecha de pago con la fecha del sistema
+
+**Pedido:** borrar los pagos de octubre registrados el 03/11/2026 y que, al pagar con la fecha del sistema fijada, el pago quede con esa fecha.
+
+**Hallazgos:** cada pago, además de la fila de la liquidación, crea una entrada en Caja; no había forma de anular pagos; los formularios proponían la fecha real del navegador (no la fijada).
+
+Prueba (`pruebas/probar_anular_pagos.py`, liquidación 2026-10, fecha fijada 06/10/2026; estado inicial: 24 unidades pagadas el 03/11 y 24 entradas en Caja):
+
+| # | Caso | Esperado | Resultado |
+|---|---|---|---|
+| 1 | Formularios de Liquidación y Caja con fecha fijada | Proponen 2026-10-06 | ✅ |
+| 1 | Botones (admin) | "Anular todos los pagos" + uno por unidad | ✅ 1 + 24 |
+| 2 | Anular el pago de la UF 01 | Fila TOTAL 13.207,76 (03/11) → PENDIENTE; Caja 24 → 23; resto sin cambios | ✅ |
+| 3 | Anular todos los pagos | 0 unidades con pago, 0 entradas en Caja | ✅ |
+| 4 | Pagar UF 01 sin indicar fecha | `fecha_pago` = 2026-10-06; Caja con fecha 2026-10-06; en la vista: pagado | ✅ |
+| 5 | Revertir las 3 operaciones desde el Log de Movimientos | Liquidación y Caja idénticas al inicio | ✅ |
+
+---
+
 ## v6.3-0611 — Causa real del error 500 en Liquidación
 
 **Detalle obtenido en producción** con la página de error de la v6.2 (admin, `GET /liquidacion/2026-10`, fecha 06/10):
@@ -294,6 +313,7 @@ C:\Users\Maria\.venvs\consorcio\Scripts\python.exe pruebas\probar_fondo_reserva.
 | `diagnostico_fondo.py` | Gastos por tipo, facturas y caja del fondo, saldo del fondo | No (solo lectura) |
 | `reproducir_error_liquidar.py` | "Liquidar" con fecha fijada, mostrando el traceback si falla | Regenera esa liquidación (conserva pagos); restaura la fecha |
 | `probar_periodos_invalidos.py` | Pantallas con gastos de fondo con período mal cargado | Inserta y borra gastos de prueba |
+| `probar_anular_pagos.py` | Anular pago por unidad y del período, fecha de pago con fecha fijada | Sí, y lo revierte todo desde el Log de Movimientos |
 | `probar_liquidacion_estados.py` | Pantalla de Liquidación abierta, cerrada y sin generar, con y sin fecha fijada | Cambia y restaura el estado de una liquidación y la fecha |
 | `probar_pagina_error.py` | Página de error 500 para admin y usuario común | No |
 | `probar_fondo_reserva.py` | Migración, saldo del fondo, extraordinarios pendiente / con el fondo, pantallas y PDF | Sí: aplica la migración (permanente); el gasto de prueba se borra y la config se restaura |

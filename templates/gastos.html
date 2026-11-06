@@ -716,7 +716,7 @@ function abrirFacturaVariable(g) {
   document.getElementById('fv_titulo').textContent = g.concepto;
   document.getElementById('fv_descripcion').value  = g.concepto;
   document.getElementById('fv_importe').value      = g.importe;
-  document.getElementById('fv_fecha').value        = new Date().toISOString().split('T')[0];
+  document.getElementById('fv_fecha').value        = '{{ hoy_sistema }}';
   document.getElementById('fv_proveedor').value    = '';
   document.getElementById('fv_nro').value          = '';
   // Pre-cargar categoría FONDO_RESERVA para gastos que usan el fondo
@@ -732,7 +732,7 @@ function abrirEmitirFactura(gr) {
   document.getElementById('er_proveedor').value = ult ? (ult.proveedor_id || '') : '';
   document.getElementById('er_categoria').value = ult ? (ult.categoria || gr.categoria || '') : (gr.categoria || '');
   document.getElementById('er_nro').value = '';
-  document.getElementById('er_fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('er_fecha').value = '{{ hoy_sistema }}';
   document.getElementById('er_aviso_anterior').style.display = ult ? 'block' : 'none';
   document.getElementById('er_aviso_sin_anterior').style.display = ult ? 'none' : 'block';
   new bootstrap.Modal(document.getElementById('modalEmitirRecurrente')).show();

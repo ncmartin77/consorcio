@@ -279,7 +279,7 @@ boxes.forEach(box => {
     const input = document.getElementById('pp_monto');
     input.value = saldo.toFixed(2);
     input.max = saldo;
-    document.getElementById('pp_fecha').value = new Date().toISOString().split('T')[0];
+    document.getElementById('pp_fecha').value = '{{ hoy_sistema }}';
     document.getElementById('pp_aviso_parcial').style.display = 'none';
     document.getElementById('formPagoPlano').action = '/liquidacion/pagar/{{ periodo }}/' + d.numero;
     new bootstrap.Modal(document.getElementById('modalPagoPlano')).show();

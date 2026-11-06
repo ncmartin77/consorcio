@@ -308,8 +308,8 @@
 {% block scripts %}
 <script>
 // Fecha por defecto: hoy
-document.getElementById('fac_fecha').value = new Date().toISOString().split('T')[0];
-document.getElementById('pagar_fecha').value = new Date().toISOString().split('T')[0];
+document.getElementById('fac_fecha').value = '{{ hoy_sistema }}';
+document.getElementById('pagar_fecha').value = '{{ hoy_sistema }}';
 
 // Mapa proveedor_id → gasto_recurrente
 const provRecurrente = {
