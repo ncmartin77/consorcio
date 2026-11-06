@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 5.5-0411
+**Versión actual:** 5.6-0611
 
 ---
 
@@ -324,12 +324,25 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 #### v5.5-0411 — Memoria de Claude en el repo (sin claves)
 
-**Lanzamiento:** 4 de noviembre  
-**Versión actual**
+**Lanzamiento:** 4 de noviembre
 
 **Cambios:**
 
 - `docs/memoria_claude/`: copia de las notas de memoria de Claude de la PC original (consorcio), con contraseñas, tokens y emails reemplazados por `***`.
+
+---
+
+#### v5.6-0611 — Certificado de libre deuda
+
+**Lanzamiento:** 6 de noviembre  
+**Versión actual**
+
+**Cambios:**
+
+- Unidades: botón por unidad para emitir un **certificado de libre deuda** (PDF). Solo se habilita si la unidad tiene pagada en TOTAL la última liquidación emitida (abierta o cerrada); si no, el botón aparece deshabilitado con el monto adeudado. La validación se repite en el servidor.
+- Datos del certificado: número correlativo por consorcio, unidad, titular, "sin deuda hasta el período X inclusive", solicitante, destino, validez en días (sugerida desde Configuración → Libre Deuda, default 30), firma con el campo *Administrador*.
+- Tabla nueva `libres_deuda` (creada sola con `ensure_libres_deuda()`, auditada). Listado de emitidos en Unidades, con PDF y opción **Anular** (solo admin).
+- Verificación pública por QR: `/libre-deuda/verificar/<consorcio>/<numero>/<codigo>` (HMAC con `clave_firma` sobre los datos registrados). Muestra válido / vencido / anulado / inválido.
 
 ---
 

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Verificar Libre Deuda{% endblock %}
+
+{% block content %}
+<div class="container py-5" style="max-width: 650px;">
+
+  <div class="text-center mb-4">
+    <i class="bi bi-shield-check" style="font-size: 2.5rem; color: #1a3a5c;"></i>
+    <h4 class="mt-2 fw-bold" style="color: #1a3a5c;">Verificación de Libre Deuda</h4>
+    <p class="text-muted small">{{ cfg.edificio_nombre if cfg else "" }}</p>
+  </div>
+
+  {% if estado == "no_encontrado" %}
+  <div class="card border-warning shadow-sm">
+    <div class="card-body text-center p-4">
+      <i class="bi bi-question-circle-fill text-warning" style="font-size: 3rem;"></i>
+      <h5 class="mt-3 fw-bold">Certificado no encontrado</h5>
+      <p class="text-muted">No existe un certificado de libre deuda N° <strong>{{ "%04d"|format(numero) }}</strong>.</p>
+    </div>
+  </div>
+
+  {% elif estado == "invalido" %}
+  <div class="card border-danger shadow-sm">
+    <div class="card-header bg-danger text-white py-3 text-center">
+      <i class="bi bi-x-octagon-fill me-2"></i><span class="fw-bold fs-5">Verificación fallida</span>
+    </div>
+    <div class="card-body text-center p-4">
+      <p class="text-muted mb-1">El código de verificación no coincide con el certificado N° <strong>{{ "%04d"|format(numero) }}</strong> registrado.</p>
+      <p class="text-muted small mb-0">El documento pudo haber sido modificado o el código está mal copiado.</p>
+    </div>
+  </div>
+
+  {% else %}
+  {% set colores = {"valido": "success", "vencido": "warning", "anulado": "danger"} %}
+  {% set titulos = {"valido": "Certificado auténtico y vigente",
+                    "vencido": "Certificado auténtico, pero VENCIDO",
+                    "anulado": "Certificado ANULADO por la administración"} %}
+  {% set iconos = {"valido": "bi-patch-check-fill", "vencido": "bi-clock-history", "anulado": "bi-slash-circle-fill"} %}
+  <div class="card border-{{ colores[estado] }} shadow-sm">
+    <div class="card-header bg-{{ colores[estado] }} {{ 'text-dark' if estado == 'vencido' else 'text-white' }} py-3 text-center">
+      <i class="bi {{ iconos[estado] }} me-2"></i><span class="fw-bold fs-5">{{ titulos[estado] }}</span>
+    </div>
+    <div class="card-body p-4">
+      {% if estado != "valido" %}
+      <p class="small text-muted">
+        {% if estado == "vencido" %}El certificado fue emitido por la administración pero su plazo de validez terminó el {{ cert.vence | fecha_ar }}. Solicitá uno nuevo.
+        {% else %}Este certificado fue emitido pero luego anulado: no tiene validez.{% endif %}
+      </p>
+      {% endif %}
+      <table class="table table-sm table-bordered mb-0">
+        <tbody>
+          <tr><th class="text-muted fw-normal" style="width:40%">Certificado</th><td class="fw-semibold">N° {{ "%04d"|format(cert.numero) }}</td></tr>
+          <tr><th class="text-muted fw-normal">Edificio</th><td>{{ cfg.edificio_nombre }}</td></tr>
+          <tr><th class="text-muted fw-normal">Unidad</th><td>UF N° {{ cert.unidad }}{% if cert.descripcion %} — {{ cert.descripcion }}{% endif %}</td></tr>
+          {% if cert.propietario %}<tr><th class="text-muted fw-normal">Titular</th><td>{{ cert.propietario }}</td></tr>{% endif %}
+          <tr><th class="text-muted fw-normal">Sin deuda hasta</th><td class="fw-semibold">{{ cert.periodo_hasta | mes_largo }} inclusive</td></tr>
+          <tr><th class="text-muted fw-normal">Emitido el</th><td>{{ cert.fecha_emision | fecha_ar }}</td></tr>
+          <tr><th class="text-muted fw-normal">Válido hasta</th><td>{{ cert.vence | fecha_ar }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -14,7 +14,7 @@ import io
 from authlib.integrations.flask_client import OAuth
 
 import pg_db as db
-from pdf_gen import generar_pdf_liquidacion, generar_pdf_resumen_edificio, generar_recibo_pago
+from pdf_gen import generar_pdf_liquidacion, generar_pdf_resumen_edificio, generar_recibo_pago, generar_libre_deuda
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "edificio-brasil-secret-2024")
@@ -39,7 +39,14 @@ def mes_largo(periodo):
         return periodo
 
 
-_PUBLIC_ENDPOINTS = {"static", "login", "login_google", "auth_callback", "logout", "verificar_recibo", "recibo_publico", "recibo_publico_pdf"}
+@app.template_filter("fecha_ar")
+def fecha_ar(iso):
+    """'2026-11-06' -> '06/11/2026'."""
+    s = str(iso or "")
+    return f"{s[8:10]}/{s[5:7]}/{s[:4]}" if len(s) >= 10 else s
+
+
+_PUBLIC_ENDPOINTS = {"static", "login", "login_google", "auth_callback", "logout", "verificar_recibo", "recibo_publico", "recibo_publico_pdf", "verificar_libre_deuda"}
 
 
 def _token_recibo_publico(clave: str, cid: str, periodo: str, unidad: str) -> str:
@@ -94,6 +101,8 @@ _DESC_AUDITORIA = {
     "save_unidad": "Unidades: guardar unidad",
     "save_unidad_envio": "Unidades: cambiar envío",
     "delete_unidad": "Unidades: eliminar unidad",
+    "emitir_libre_deuda": "Unidades: emitir libre deuda",
+    "anular_libre_deuda": "Unidades: anular libre deuda",
     "save_gasto": "Gastos: guardar gasto",
     "delete_gasto": "Gastos: eliminar gasto",
     "tareas_add": "Tareas: agregar",
@@ -135,6 +144,7 @@ def _contexto_auditoria():
     if request.endpoint in _PUBLIC_ENDPOINTS or request.endpoint is None:
         return
     try:
+        db.ensure_libres_deuda()  # antes de la auditoría, para que la tabla reciba su trigger
         db.ensure_auditoria()
         db.ensure_deuda_inicial_fecha()
         db.ensure_caja_factura_id()
@@ -451,6 +461,12 @@ def config():
             "texto_anuncio": request.form.get("texto_anuncio", ""),
             "url_app": request.form.get("url_app", "http://localhost:5000"),
         }
+        # Solo lo envía el form del resumen: si no viene, no se pisa el valor guardado
+        if "libre_deuda_validez_dias" in request.form:
+            try:
+                data["libre_deuda_validez_dias"] = str(max(1, int(request.form["libre_deuda_validez_dias"])))
+            except ValueError:
+                pass
         db.save_config(data)
         flash("Configuración guardada.", "success")
         return redirect(url_for("config"))
@@ -517,7 +533,100 @@ def delete_categoria(nombre):
 def unidades():
     unidades_list = db.get_unidades()
     categorias = db.get_categorias()
-    return render_template("unidades.html", unidades=unidades_list, categorias=categorias)
+    return render_template("unidades.html", unidades=unidades_list, categorias=categorias,
+                           estado_ld=db.get_estado_libre_deuda(),
+                           libres_deuda=db.get_libres_deuda(),
+                           validez_ld=_validez_libre_deuda(db.get_config()),
+                           ld_nuevo=request.args.get("ld", type=int))
+
+
+# ---------------------------------------------------------------------------
+# LIBRE DEUDA
+# ---------------------------------------------------------------------------
+
+def _validez_libre_deuda(cfg: dict) -> int:
+    try:
+        return max(1, int(cfg.get("libre_deuda_validez_dias") or db.LIBRE_DEUDA_VALIDEZ_DEFAULT))
+    except ValueError:
+        return db.LIBRE_DEUDA_VALIDEZ_DEFAULT
+
+
+def _url_verificacion_libre_deuda(cfg: dict, cert: dict) -> str:
+    url_app = cfg.get("url_app", "http://localhost:5000").rstrip("/")
+    return f"{url_app}/libre-deuda/verificar/{session.get('consorcio_id', '')}/{cert['numero']}/{cert['codigo']}"
+
+
+@app.route("/unidades/<numero>/libre-deuda", methods=["POST"])
+def emitir_libre_deuda(numero):
+    cfg = db.get_config()
+    try:
+        validez = max(1, int(request.form.get("validez_dias") or _validez_libre_deuda(cfg)))
+    except ValueError:
+        validez = _validez_libre_deuda(cfg)
+    ok, res = db.emitir_libre_deuda(
+        numero, _fecha_hoy(), validez,
+        request.form.get("solicitante", "").strip()[:200],
+        request.form.get("destino", "").strip()[:200],
+        session.get("usuario_email", ""),
+    )
+    if not ok:
+        flash(f"No se puede emitir el libre deuda de la unidad {numero}: {res}", "danger")
+        return redirect(url_for("unidades"))
+    flash(f"Libre deuda N° {res['numero']:04d} emitido para la unidad {numero}.", "success")
+    return redirect(url_for("unidades", ld=res["numero"]) + "#libres-deuda")
+
+
+@app.route("/libre-deuda/<int:numero>/pdf")
+def libre_deuda_pdf(numero):
+    cert = db.get_libre_deuda(numero)
+    if not cert:
+        flash("Certificado no encontrado.", "warning")
+        return redirect(url_for("unidades"))
+    cfg = db.get_config()
+    logo = db.get_logo()
+    pdf_bytes = generar_libre_deuda(
+        cert, cfg,
+        url_verificacion=_url_verificacion_libre_deuda(cfg, cert),
+        logo_bytes=base64.b64decode(logo["b64"]) if logo else None,
+    )
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf", as_attachment=False,
+                     download_name=f"libre_deuda_{numero:04d}_uf_{cert['unidad']}.pdf")
+
+
+@app.route("/libre-deuda/<int:numero>/anular", methods=["POST"])
+def anular_libre_deuda(numero):
+    block = _require_admin()
+    if block:
+        return block
+    if db.anular_libre_deuda(numero):
+        flash(f"Libre deuda N° {numero:04d} anulado.", "success")
+    else:
+        flash("El certificado no existe o ya estaba anulado.", "warning")
+    return redirect(url_for("unidades") + "#libres-deuda")
+
+
+@app.route("/libre-deuda/verificar/<cid>/<int:numero>/<codigo>")
+def verificar_libre_deuda(cid, numero, codigo):
+    """Verificación pública (QR) de un certificado de libre deuda."""
+    c = db.get_consorcio(cid)
+    cert, valido, cfg = None, False, {}
+    if c:
+        db.set_active_consorcio(c["data_dir_abs"], c["db_path_abs"])
+        db.ensure_libres_deuda()
+        cert, valido = db.verificar_libre_deuda(numero, codigo)
+        cfg = db.get_config()
+    if not cert:
+        estado = "no_encontrado"
+    elif not valido:
+        estado = "invalido"
+    elif cert["anulado"]:
+        estado = "anulado"
+    elif cert["vence"] and cert["vence"] < _fecha_hoy().strftime("%Y-%m-%d"):
+        estado = "vencido"
+    else:
+        estado = "valido"
+    return render_template("verificar_libre_deuda.html", estado=estado, cert=cert, cfg=cfg,
+                           numero=numero)
 
 
 @app.route("/unidades/save", methods=["POST"])

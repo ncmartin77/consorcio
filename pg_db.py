@@ -13,7 +13,7 @@ import calendar as _calendar
 import json
 import uuid
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import psycopg2
 import psycopg2.errors
@@ -1460,6 +1460,171 @@ def get_estado_plano(periodo: str) -> list:
     return resultado
 
 
+# ── Libre deuda ───────────────────────────────────────────────────────────────
+# Certificado de libre deuda por unidad. Se puede emitir si la unidad tiene
+# pagada en TOTAL la última liquidación emitida del consorcio (abierta o
+# cerrada): ese total ya incluye toda la deuda anterior. Cada certificado queda
+# registrado en `libres_deuda` con número correlativo por consorcio y un código
+# HMAC (clave_firma) que permite verificarlo con el QR aunque luego cambien los
+# datos de la unidad.
+
+LIBRE_DEUDA_VALIDEZ_DEFAULT = 30
+
+
+def ensure_libres_deuda():
+    _ensure_columna("tabla.libres_deuda", """
+        CREATE TABLE IF NOT EXISTS libres_deuda (
+            id             SERIAL PRIMARY KEY,
+            consorcio_id   TEXT NOT NULL REFERENCES consorcios(id) ON DELETE CASCADE,
+            numero         INTEGER NOT NULL,
+            unidad         TEXT NOT NULL,
+            descripcion    TEXT,
+            propietario    TEXT,
+            periodo_hasta  VARCHAR(7) NOT NULL,
+            fecha_emision  DATE NOT NULL,
+            validez_dias   INTEGER NOT NULL,
+            solicitante    TEXT,
+            destino        TEXT,
+            emitido_por    TEXT,
+            codigo         TEXT NOT NULL,
+            anulado        BOOLEAN NOT NULL DEFAULT FALSE,
+            creado_en      TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE (consorcio_id, numero)
+        )
+    """)
+
+
+def _fmt_ar(n: float) -> str:
+    """125430.5 -> '125.430,50'."""
+    return f"{n:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def get_ultimo_periodo_liquidado() -> str:
+    """Último período con liquidación generada ('' si no hay ninguna)."""
+    row = _fetchone("SELECT MAX(periodo) AS p FROM liquidaciones WHERE consorcio_id=%s", (_cid(),))
+    return (row and row["p"]) or ""
+
+
+def get_estado_libre_deuda() -> dict:
+    """
+    Estado de deuda de cada unidad según la última liquidación emitida.
+    Devuelve {numero: {"libre": bool, "periodo": str, "saldo": float, "motivo": str}}.
+    """
+    periodo = get_ultimo_periodo_liquidado()
+    liq = {str(r["unidad"]): r for r in get_liquidacion(periodo)} if periodo else {}
+    estado = {}
+    for u in get_unidades():
+        num = str(u["numero"])
+        r = liq.get(num)
+        if not periodo:
+            estado[num] = {"libre": False, "periodo": "", "saldo": 0.0,
+                           "motivo": "Todavía no hay liquidaciones emitidas."}
+        elif not r:
+            estado[num] = {"libre": False, "periodo": periodo, "saldo": 0.0,
+                           "motivo": f"La unidad no figura en la liquidación {periodo}."}
+        elif r["tipo_pago"] == "TOTAL" or r["total_a_pagar"] <= 0:
+            estado[num] = {"libre": True, "periodo": periodo, "saldo": 0.0, "motivo": ""}
+        else:
+            saldo = r["saldo_pendiente"] if r["tipo_pago"] == "PARCIAL" else r["total_a_pagar"]
+            estado[num] = {"libre": False, "periodo": periodo, "saldo": round(saldo, 2),
+                           "motivo": f"Debe $ {_fmt_ar(saldo)} de la liquidación {periodo}."}
+    return estado
+
+
+def _codigo_libre_deuda(ld: dict, clave_firma: str) -> str:
+    campos = "|".join([
+        "LIBRE_DEUDA", _cid(), str(ld["numero"]), str(ld["unidad"]),
+        str(ld["periodo_hasta"]), str(ld["fecha_emision"]), str(ld["validez_dias"]),
+    ])
+    return _hmac.new(clave_firma.encode(), campos.encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def _ld_row(r) -> dict:
+    d = dict(r)
+    fe = d["fecha_emision"]
+    d["fecha_emision"] = fe.strftime("%Y-%m-%d") if hasattr(fe, "strftime") else str(fe)
+    d["unidad"] = str(d["unidad"])
+    for k in ("descripcion", "propietario", "solicitante", "destino", "emitido_por"):
+        d[k] = d.get(k) or ""
+    try:
+        vence =datetime.strptime(d["fecha_emision"], "%Y-%m-%d").date() + timedelta(days=int(d["validez_dias"]))
+        d["vence"] = vence.strftime("%Y-%m-%d")
+    except Exception:
+        d["vence"] = ""
+    return d
+
+
+def emitir_libre_deuda(unidad: str, fecha_emision: date, validez_dias: int,
+                       solicitante: str, destino: str, emitido_por: str) -> tuple:
+    """
+    Emite y registra un certificado. Devuelve (True, cert) o (False, motivo).
+    El estado de deuda se vuelve a validar acá (no se confía en la pantalla).
+    """
+    unidad = str(unidad)
+    estado = get_estado_libre_deuda().get(unidad)
+    if not estado:
+        return False, f"La unidad {unidad} no existe."
+    if not estado["libre"]:
+        return False, estado["motivo"]
+    u = get_unidad(unidad) or {}
+    clave = get_clave_firma()
+    with _conn() as c:
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # Serializa la numeración correlativa por consorcio
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"libres_deuda|{_cid()}",))
+            cur.execute("SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM libres_deuda WHERE consorcio_id=%s",
+                        (_cid(),))
+            ld = {
+                "numero": cur.fetchone()["n"],
+                "unidad": unidad,
+                "periodo_hasta": estado["periodo"],
+                "fecha_emision": fecha_emision.strftime("%Y-%m-%d"),
+                "validez_dias": int(validez_dias),
+            }
+            codigo = _codigo_libre_deuda(ld, clave)
+            cur.execute("""
+                INSERT INTO libres_deuda (consorcio_id, numero, unidad, descripcion, propietario,
+                    periodo_hasta, fecha_emision, validez_dias, solicitante, destino, emitido_por, codigo)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                RETURNING *
+            """, (_cid(), ld["numero"], unidad, u.get("descripcion", "") or "", u.get("propietario", "") or "",
+                  ld["periodo_hasta"], fecha_emision, ld["validez_dias"],
+                  solicitante or None, destino or None, emitido_por or None, codigo))
+            return True, _ld_row(cur.fetchone())
+
+
+def get_libres_deuda(limite: int = 50) -> list:
+    rows = _fetchall(
+        "SELECT * FROM libres_deuda WHERE consorcio_id=%s ORDER BY numero DESC LIMIT %s",
+        (_cid(), limite),
+    )
+    return [_ld_row(r) for r in rows]
+
+
+def get_libre_deuda(numero: int) -> dict | None:
+    r = _fetchone("SELECT * FROM libres_deuda WHERE consorcio_id=%s AND numero=%s", (_cid(), int(numero)))
+    return _ld_row(r) if r else None
+
+
+def verificar_libre_deuda(numero: int, codigo: str) -> tuple:
+    """Devuelve (cert | None, valido: bool). Recalcula el HMAC con los datos registrados."""
+    cert = get_libre_deuda(numero)
+    if not cert:
+        return None, False
+    esperado = _codigo_libre_deuda(cert, get_clave_firma())
+    valido = _hmac.compare_digest((codigo or "").lower(), esperado) and \
+        _hmac.compare_digest(esperado, cert["codigo"])
+    return cert, valido
+
+
+def anular_libre_deuda(numero: int) -> bool:
+    with _conn() as c:
+        with c.cursor() as cur:
+            cur.execute("UPDATE libres_deuda SET anulado=TRUE WHERE consorcio_id=%s AND numero=%s AND NOT anulado",
+                        (_cid(), int(numero)))
+            return cur.rowcount > 0
+
+
 # ── Notas del período ─────────────────────────────────────────────────────────
 
 def get_notas_periodo(periodo: str) -> list:
@@ -1728,6 +1893,7 @@ _TABLAS_AUDITADAS = [
     "caja", "categorias", "config", "facturas", "gastos", "gastos_extra",
     "gastos_recurrentes", "liquidaciones", "liquidaciones_estado", "notas_periodo",
     "pedidos", "presupuestos", "proveedores", "tareas", "unidades", "unidad_porcentajes",
+    "libres_deuda",
 ]
 _AUDIT_DIAS_RETENCION = 180
 

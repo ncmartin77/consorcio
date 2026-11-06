@@ -853,6 +853,152 @@ def generar_recibo_pago(row: dict, config: dict, periodo: str,
     return buffer.getvalue()
 
 
+_MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+             "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+
+
+def _fecha_larga(iso: str) -> str:
+    """'2026-11-06' -> '6 de noviembre de 2026'."""
+    try:
+        y, m, d = int(iso[:4]), int(iso[5:7]), int(iso[8:10])
+        return f"{d} de {_MESES_ES[m - 1]} de {y}"
+    except Exception:
+        return iso
+
+
+def _esc(texto) -> str:
+    """Escapa texto libre para usarlo dentro de un Paragraph de ReportLab."""
+    return (str(texto or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def _bloque_qr(codigo: str, url: str, st, leyenda: str):
+    qr = qrcode.QRCode(version=1, box_size=4, border=2,
+                       error_correction=qrcode.constants.ERROR_CORRECT_M)
+    qr.add_data(url or codigo)
+    qr.make(fit=True)
+    qr_buf = io.BytesIO()
+    qr.make_image(fill_color="black", back_color="white").save(qr_buf, format="PNG")
+    qr_buf.seek(0)
+    codigo_fmt = "  ".join(codigo[i:i+8] for i in range(0, len(codigo), 8))
+    t = Table([[
+        RLImage(qr_buf, width=2.2*cm, height=2.2*cm),
+        Paragraph(
+            f"<b>CÓDIGO DE VERIFICACIÓN</b><br/>"
+            f"<font size='7.5' color='#222222'><b>{codigo_fmt}</b></font><br/>"
+            f"<font size='6.5' color='#666666'>{leyenda}</font>",
+            st("verif_ld", fontSize=7, alignment=TA_LEFT)),
+    ]], colWidths=[2.6*cm, 14*cm])
+    t.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (0, -1), 0),
+        ("LEFTPADDING", (1, 0), (1, -1), 10),
+    ]))
+    return t
+
+
+def generar_libre_deuda(cert: dict, config: dict, url_verificacion: str = "",
+                        logo_bytes: bytes = None) -> bytes:
+    """Certificado de libre deuda de una unidad funcional."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                            rightMargin=2.2*cm, leftMargin=2.2*cm,
+                            topMargin=1.8*cm, bottomMargin=1.5*cm,
+                            title=f"Libre deuda N° {cert['numero']}")
+    c_azul = colors.HexColor("#1a3a5c")
+    c_gris = colors.HexColor("#4a4a4a")
+
+    def st(name, **kw):
+        base = {"fontName": "Helvetica", "fontSize": 10.5, "leading": 16, "textColor": colors.black}
+        base.update(kw)
+        return ParagraphStyle(name, **base)
+
+    edificio = _esc(config.get("edificio_nombre", "") or "Consorcio")
+    direccion = _esc(config.get("edificio_direccion", ""))
+    admin = _esc(config.get("administrador", ""))
+    numero = f"{int(cert['numero']):04d}"
+    unidad = _esc(cert.get("unidad", ""))
+    desc = _esc(cert.get("descripcion", ""))
+    propietario = _esc(cert.get("propietario", ""))
+    periodo_txt = _mes_nombre_largo(cert["periodo_hasta"]).title()
+    fecha_txt = _fecha_larga(cert["fecha_emision"])
+    vence_txt = _fecha_larga(cert.get("vence", ""))
+
+    story = []
+    titulo = Paragraph(edificio.upper(), st("ed", fontName="Helvetica-Bold", fontSize=13,
+                                             alignment=TA_CENTER, textColor=c_azul))
+    sub = Paragraph(direccion, st("dir", fontSize=9, alignment=TA_CENTER, textColor=c_gris))
+    logo_img = _make_logo_image(logo_bytes, max_height_cm=1.8)
+    if logo_img:
+        t = Table([[logo_img, [titulo, sub], ""]], colWidths=[3*cm, 10.6*cm, 3*cm])
+        t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+        story.append(t)
+    else:
+        story += [titulo, sub]
+    story.append(Spacer(1, 0.3*cm))
+    story.append(HRFlowable(width="100%", thickness=1.2, color=c_azul))
+    story.append(Spacer(1, 0.6*cm))
+
+    story.append(Paragraph("CERTIFICADO DE LIBRE DEUDA",
+                           st("tit", fontName="Helvetica-Bold", fontSize=16, leading=22, spaceAfter=4,
+                              alignment=TA_CENTER, textColor=c_azul)))
+    story.append(Paragraph(f"N° {numero}", st("num", fontSize=11, alignment=TA_CENTER, textColor=c_gris)))
+    story.append(Spacer(1, 0.8*cm))
+
+    lugar = f"{direccion}, " if direccion else ""
+    story.append(Paragraph(f"{lugar}{fecha_txt}.", st("fecha", alignment=TA_RIGHT)))
+    story.append(Spacer(1, 0.6*cm))
+
+    uf = f"la <b>Unidad Funcional N° {unidad}</b>"
+    if desc:
+        uf += f" ({desc})"
+    titular = f", cuyo titular registrado es <b>{propietario}</b>," if propietario else ","
+    cuerpo = (
+        f"Por medio del presente, la Administración del <b>{edificio}</b>"
+        f"{' sito en ' + direccion if direccion else ''} certifica que {uf}{titular} "
+        f"<b>no registra deuda</b> en concepto de expensas comunes ordinarias y extraordinarias, "
+        f"intereses ni cargos particulares, hasta la liquidación del período "
+        f"<b>{periodo_txt}</b> inclusive."
+    )
+    j = st("cuerpo", alignment=4, spaceAfter=10)  # 4 = justificado
+    story.append(Paragraph(cuerpo, j))
+    if cert.get("solicitante") or cert.get("destino"):
+        partes = "Se extiende el presente"
+        if cert.get("solicitante"):
+            partes += f" a pedido de <b>{_esc(cert['solicitante'])}</b>"
+        if cert.get("destino"):
+            partes += f", para ser presentado ante <b>{_esc(cert['destino'])}</b>"
+        story.append(Paragraph(partes + ".", j))
+    story.append(Paragraph(
+        f"El presente certificado tiene una validez de <b>{int(cert['validez_dias'])} días corridos</b> "
+        f"desde su fecha de emisión (hasta el {vence_txt}). No comprende expensas, cargos ni intereses "
+        f"que se devenguen con posterioridad al período indicado.", j))
+
+    # Firma
+    story.append(Spacer(1, 2.2*cm))
+    firma = Table([[""], [Paragraph(admin or "&nbsp;", st("f1", fontName="Helvetica-Bold", alignment=TA_CENTER))],
+                   [Paragraph("Administración", st("f2", fontSize=9, alignment=TA_CENTER, textColor=c_gris))]],
+                  colWidths=[7*cm], hAlign="RIGHT")
+    firma.setStyle(TableStyle([("LINEABOVE", (0, 1), (0, 1), 0.8, colors.black),
+                               ("TOPPADDING", (0, 0), (-1, -1), 1)]))
+    story.append(firma)
+
+    if cert.get("anulado"):
+        story.append(Spacer(1, 0.6*cm))
+        story.append(Paragraph("CERTIFICADO ANULADO", st("anul", fontName="Helvetica-Bold", fontSize=18,
+                                                          alignment=TA_CENTER,
+                                                          textColor=colors.HexColor("#c00000"))))
+
+    story.append(Spacer(1, 1.2*cm))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cccccc")))
+    story.append(Spacer(1, 0.15*cm))
+    story.append(_bloque_qr(
+        cert["codigo"], url_verificacion, st,
+        "Escaneá el QR para verificar la autenticidad y vigencia de este certificado."))
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
 def _prev_periodo_helper(periodo: str) -> str:
     """Helper to compute previous period without importing excel_db."""
     y, m = int(periodo[:4]), int(periodo[5:7])

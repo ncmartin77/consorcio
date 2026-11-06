@@ -318,6 +318,16 @@
               </div>
             </div>
             <div class="col-12">
+              <hr>
+              <h6 class="text-primary"><i class="bi bi-file-earmark-check"></i> Libre Deuda</h6>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Validez del certificado (días)</label>
+              <input type="number" class="form-control" name="libre_deuda_validez_dias" min="1" step="1"
+                     value="{{ cfg.get('libre_deuda_validez_dias') or 30 }}">
+              <div class="form-text">Valor sugerido al emitir un libre deuda desde Unidades. La firma usa el campo <em>Administrador</em>.</div>
+            </div>
+            <div class="col-12">
               <button type="submit" class="btn btn-info text-white">
                 <i class="bi bi-save"></i> Guardar Configuración Resumen
               </button>
