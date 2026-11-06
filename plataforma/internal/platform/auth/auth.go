@@ -94,7 +94,7 @@ type credenciales struct {
 
 // Login: POST /api/v1/sesion {"email","password"}.
 func (s *Sesiones) Login(w http.ResponseWriter, r *http.Request) {
-	ip := ipDe(r)
+	ip := IPDe(r)
 	if !s.fallos.permitido(ip) {
 		httpx.Error(w, http.StatusTooManyRequests, "demasiados intentos; probá más tarde")
 		return
@@ -170,7 +170,7 @@ func (s *Sesiones) Logout(w http.ResponseWriter, r *http.Request) {
 			slog.Error("logout", "error", err)
 		}
 		if u, ok := UsuarioDe(r.Context()); ok {
-			audit.Registrar(r.Context(), q, audit.Evento{UsuarioID: &u.ID, Accion: "logout", IP: ipDe(r)})
+			audit.Registrar(r.Context(), q, audit.Evento{UsuarioID: &u.ID, Accion: "logout", IP: IPDe(r)})
 		}
 	}
 	http.SetCookie(w, &http.Cookie{
@@ -226,9 +226,9 @@ func hashDe(token string) []byte {
 	return h[:]
 }
 
-// ipDe usa la dirección de la conexión. Detrás de Nginx habrá que tomarla de
+// IPDe usa la dirección de la conexión. Detrás de Nginx habrá que tomarla de
 // X-Forwarded-For solo si viene del proxy de confianza.
-func ipDe(r *http.Request) string {
+func IPDe(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr

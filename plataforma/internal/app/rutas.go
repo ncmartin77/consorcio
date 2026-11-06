@@ -11,11 +11,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ncmartin77/consorcio/plataforma/internal/consorcios"
+	"github.com/ncmartin77/consorcio/plataforma/internal/personas"
 	"github.com/ncmartin77/consorcio/plataforma/internal/platform/auth"
 	"github.com/ncmartin77/consorcio/plataforma/internal/platform/config"
 	"github.com/ncmartin77/consorcio/plataforma/internal/platform/dbq"
 	"github.com/ncmartin77/consorcio/plataforma/internal/platform/httpx"
 	"github.com/ncmartin77/consorcio/plataforma/internal/platform/tenant"
+	"github.com/ncmartin77/consorcio/plataforma/internal/prorrateo"
+	"github.com/ncmartin77/consorcio/plataforma/internal/unidades"
 )
 
 func Rutas(cfg config.Config, pool *pgxpool.Pool) http.Handler {
@@ -66,6 +69,9 @@ func Rutas(cfg config.Config, pool *pgxpool.Pool) http.Handler {
 			r.Route("/administraciones/{administracionID}", func(r chi.Router) {
 				r.Use(tenant.Requerir(pool))
 				consorcios.NuevoServicio(pool).Rutas(r)
+				unidades.NuevoServicio(pool).Rutas(r)
+				personas.NuevoServicio(pool).Rutas(r)
+				prorrateo.NuevoServicio(pool).Rutas(r)
 			})
 		})
 	})

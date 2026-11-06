@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ncmartin77/consorcio/plataforma/internal/platform/fecha"
+	"github.com/shopspring/decimal"
 )
 
 type Administracion struct {
@@ -37,10 +39,30 @@ type Consorcio struct {
 	CreadoEn         time.Time `json:"creado_en"`
 }
 
+type GrupoProrrateo struct {
+	ID               uuid.UUID `json:"id"`
+	AdministracionID uuid.UUID `json:"administracion_id"`
+	ConsorcioID      uuid.UUID `json:"consorcio_id"`
+	Nombre           string    `json:"nombre"`
+	Descripcion      *string   `json:"descripcion"`
+	CreadoEn         time.Time `json:"creado_en"`
+}
+
 type Membresia struct {
 	UsuarioID        uuid.UUID `json:"usuario_id"`
 	AdministracionID uuid.UUID `json:"administracion_id"`
 	Rol              string    `json:"rol"`
+	CreadoEn         time.Time `json:"creado_en"`
+}
+
+type Persona struct {
+	ID               uuid.UUID `json:"id"`
+	AdministracionID uuid.UUID `json:"administracion_id"`
+	Nombre           string    `json:"nombre"`
+	Documento        *string   `json:"documento"`
+	Email            *string   `json:"email"`
+	Telefono         *string   `json:"telefono"`
+	Notas            *string   `json:"notas"`
 	CreadoEn         time.Time `json:"creado_en"`
 }
 
@@ -52,6 +74,43 @@ type Sesion struct {
 	UltimoUso time.Time `json:"ultimo_uso"`
 	Ip        *string   `json:"ip"`
 	UserAgent *string   `json:"user_agent"`
+}
+
+type Unidad struct {
+	ID               uuid.UUID `json:"id"`
+	AdministracionID uuid.UUID `json:"administracion_id"`
+	ConsorcioID      uuid.UUID `json:"consorcio_id"`
+	Codigo           string    `json:"codigo"`
+	Descripcion      *string   `json:"descripcion"`
+	Piso             *string   `json:"piso"`
+	Tipo             string    `json:"tipo"`
+	Activa           bool      `json:"activa"`
+	CreadoEn         time.Time `json:"creado_en"`
+}
+
+type UnidadCoeficiente struct {
+	ID               uuid.UUID       `json:"id"`
+	AdministracionID uuid.UUID       `json:"administracion_id"`
+	ConsorcioID      uuid.UUID       `json:"consorcio_id"`
+	GrupoID          uuid.UUID       `json:"grupo_id"`
+	UnidadID         uuid.UUID       `json:"unidad_id"`
+	Porcentaje       decimal.Decimal `json:"porcentaje"`
+	VigenteDesde     fecha.Fecha     `json:"vigente_desde"`
+	VigenteHasta     *fecha.Fecha    `json:"vigente_hasta"`
+	CreadoEn         time.Time       `json:"creado_en"`
+}
+
+type UnidadPersona struct {
+	ID                    uuid.UUID        `json:"id"`
+	AdministracionID      uuid.UUID        `json:"administracion_id"`
+	UnidadID              uuid.UUID        `json:"unidad_id"`
+	PersonaID             uuid.UUID        `json:"persona_id"`
+	TipoVinculo           string           `json:"tipo_vinculo"`
+	PorcentajeTitularidad *decimal.Decimal `json:"porcentaje_titularidad"`
+	RecibeLiquidacion     bool             `json:"recibe_liquidacion"`
+	Desde                 fecha.Fecha      `json:"desde"`
+	Hasta                 *fecha.Fecha     `json:"hasta"`
+	CreadoEn              time.Time        `json:"creado_en"`
 }
 
 type Usuario struct {

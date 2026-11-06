@@ -15,6 +15,8 @@ sql:
           administracione: Administracion
           sesione: Sesion
           auditorium: Auditoria
+          unidade: Unidad
+          grupos_prorrateo: GrupoProrrateo
         overrides:
           - db_type: uuid
             go_type: github.com/google/uuid.UUID
@@ -28,3 +30,25 @@ sql:
             go_type: time.Time
           - db_type: numeric
             go_type: github.com/shopspring/decimal.Decimal
+          - db_type: numeric
+            nullable: true
+            go_type:
+              import: github.com/shopspring/decimal
+              type: Decimal
+              pointer: true
+          - db_type: pg_catalog.numeric
+            go_type: github.com/shopspring/decimal.Decimal
+          - db_type: pg_catalog.numeric
+            nullable: true
+            go_type:
+              import: github.com/shopspring/decimal
+              type: Decimal
+              pointer: true
+          - db_type: date
+            go_type: github.com/ncmartin77/consorcio/plataforma/internal/platform/fecha.Fecha
+          - db_type: date
+            nullable: true
+            go_type:
+              import: github.com/ncmartin77/consorcio/plataforma/internal/platform/fecha
+              type: Fecha
+              pointer: true

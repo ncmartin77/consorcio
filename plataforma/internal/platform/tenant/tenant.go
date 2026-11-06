@@ -23,6 +23,9 @@ type Contexto struct {
 	Rol              string
 }
 
+// PuedeEscribir: los roles admin y operador modifican datos; consulta solo lee.
+func (c Contexto) PuedeEscribir() bool { return c.Rol == "admin" || c.Rol == "operador" }
+
 type claveCtx struct{}
 
 func Desde(ctx context.Context) Contexto {

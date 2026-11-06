@@ -3,7 +3,7 @@
 Lo que se dejó para después, con el motivo. Actualizar al cerrar cada sesión de trabajo:
 agregar lo nuevo, tachar (borrar) lo resuelto.
 
-Última actualización: 05/11/2026.
+Última actualización: 06/11/2026.
 
 ---
 
@@ -16,6 +16,18 @@ agregar lo nuevo, tachar (borrar) lo resuelto.
 - [ ] **Roles y permisos finos**: el documento prevé las tablas `roles`, `permisos` y `accesos_consorcio` (acceso por consorcio y por unidad). Hoy hay tres roles fijos en `membresias`: `admin`, `operador` y `consulta`.
 - [ ] **Lectura de la auditoría** para administradores, con un rol o vista aparte. Hoy la aplicación solo puede insertar.
 - [ ] **Límite de intentos de login**: es en memoria y sirve para una sola instancia de la API. Si hay varias, pasarlo a la base.
+
+### Etapa 2 — Inmuebles y personas (hecha; quedó afuera)
+
+- [ ] **Coeficientes que no suman 100 %**: la plataforma exige exactamente 100 %. En el sistema actual, el grupo GENERAL de Edificio Brasil suma **100,001 %**. Al migrar (B5) hay que decidir entre ajustar una unidad o aceptar una tolerancia.
+- [ ] **Corregir errores de carga**: un vínculo o una tabla de coeficientes cargados mal no se pueden anular; solo se cierran con fecha. Falta una "anulación" auditada. A propósito, no hay DELETE.
+- [ ] **Titularidad**: no se controla que los porcentajes de los propietarios vigentes de una unidad sumen 100 %.
+- [ ] **Faltan endpoints**: editar consorcios y grupos de prorrateo, y desactivar personas.
+- [ ] **Listas sin paginar**: la búsqueda de personas corta en 200.
+- [ ] **Migrar los datos del sistema actual** (B5):
+  - Propietarios e inquilinos: hoy son texto en `unidades`; van a `personas` y `unidad_personas`.
+  - Porcentajes por categoría: van a grupos y coeficientes con vigencia.
+  - Teléfonos y mails de envío.
 
 ### Infraestructura
 
