@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 7.2-0611
+**Versión actual:** 7.3-0611
 
 ---
 
@@ -336,10 +336,20 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v7.x — Saldo a favor
 
-#### v7.2-0611 — PDF resumen: gastos ordinarios, base de la expensa e ingresos/egresos
+#### v7.3-0611 — PDF resumen sin "Fondo de Reserva disponible"
 
 **Lanzamiento:** 6 de noviembre
 **Versión actual**
+
+**Cambios:**
+
+- Se quita la línea "Fondo de Reserva disponible" del cuadro "Base de la expensa" del PDF resumen (pedido del usuario).
+
+---
+
+#### v7.2-0611 — PDF resumen: gastos ordinarios, base de la expensa e ingresos/egresos
+
+**Lanzamiento:** 6 de noviembre
 
 **Cambios:**
 

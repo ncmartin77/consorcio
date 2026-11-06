@@ -484,10 +484,8 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
     if extra_cobrar:
         base_data.append(["+ Gastos extraordinarios", _fmt(extra_cobrar)])
     base_data.append(["= Total a repartir", _fmt(total_gastos)])
-    if isinstance(fondo_reserva, dict):
-        base_data.append(["Fondo de Reserva disponible", _fmt(fondo_reserva["saldo"])])
     nb = len(base_data)
-    fila_total = nb - 2 if isinstance(fondo_reserva, dict) else nb - 1
+    fila_total = nb - 1
     bt = Table(base_data, colWidths=[4.6*cm, 2.6*cm])
     bt.setStyle(TableStyle([
         ("SPAN", (0,0), (-1,0)), ("ALIGN", (0,0), (-1,0), "CENTER"),
@@ -496,7 +494,6 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         ("ALIGN", (1,1), (1,-1), "RIGHT"),
         ("FONTNAME", (0,fila_total), (-1,fila_total), "Helvetica-Bold"),
         ("BACKGROUND", (0,fila_total), (-1,fila_total), colors.HexColor("#e8f0fe")),
-        ("TEXTCOLOR", (0,nb-1), (-1,nb-1), colors.HexColor("#0c5460") if isinstance(fondo_reserva, dict) else colors.black),
         ("GRID", (0,0), (-1,-1), 0.3, colors.grey),
         ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3),
         ("LEFTPADDING", (0,0), (-1,-1), 5),

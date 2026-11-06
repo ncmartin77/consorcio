@@ -35,6 +35,12 @@ Se corrieron los cuatro scripts de `pruebas/` seguidos, contra la base de prueba
 
 ---
 
+## v7.3-0611 — PDF resumen sin "Fondo de Reserva disponible"
+
+PDF de octubre armado con datos de producción (solo lectura): el cuadro "Base de la expensa" muestra gastos ordinarios $ 1.371.401,82 + aporte $ 80.000 = $ 1.451.401,82, sin la línea del fondo disponible ✅ (revisado a la vista).
+
+---
+
 ## v7.2-0611 — PDF resumen (página 2) y GASTOS PAGADOS
 
 **Producción, solo lectura** (Perú 376, liquidación de octubre armada con el código nuevo sin pasar por la app):
