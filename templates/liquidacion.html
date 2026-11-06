@@ -4,12 +4,23 @@
 
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h4><i class="bi bi-receipt"></i> Liquidación — <span class="text-primary">{{ periodo | mes_largo }}</span></h4>
+  {# Color de "Liquidación": verde abierta, rojo cerrada; estado debajo del título #}
+  {% set _color_liq = 'text-danger' if liq_cerrada else ('text-success' if liq_generada else '') %}
+  <div>
+    <h4 class="mb-1"><i class="bi bi-receipt {{ _color_liq }}"></i>
+      <span class="{{ _color_liq }}">Liquidación</span> — <span class="text-primary">{{ periodo | mes_largo }}</span></h4>
+    {% if liq_cerrada %}
+      <span class="badge bg-danger fs-6"><i class="bi bi-lock-fill"></i> Liquidación CERRADA</span>
+    {% elif liq_generada %}
+      <span class="badge bg-success fs-6"><i class="bi bi-unlock-fill"></i> Liquidación ABIERTA</span>
+    {% else %}
+      <span class="badge bg-secondary fs-6"><i class="bi bi-hourglass"></i> Sin generar</span>
+    {% endif %}
+  </div>
   <div class="d-flex gap-2 align-items-center flex-wrap">
     <input type="month" class="form-control form-control-sm" id="periodoSelector"
            value="{{ periodo }}">
     {% if liq_cerrada %}
-      <span class="badge bg-danger fs-6"><i class="bi bi-lock-fill"></i> Liquidación CERRADA</span>
       <form method="POST" action="{{ url_for('reabrir_liquidacion', periodo=periodo) }}"
             onsubmit="return confirm('¿Reabrir la liquidación de {{ periodo }}?')">
         <button type="submit" class="btn btn-outline-warning btn-sm">
@@ -17,7 +28,6 @@
         </button>
       </form>
     {% elif liq_generada %}
-      <span class="badge bg-success"><i class="bi bi-unlock-fill"></i> ABIERTA</span>
       <form method="POST" action="{{ url_for('generar_liquidacion', periodo=periodo) }}">
         <button type="submit" class="btn btn-outline-secondary btn-sm"
                 data-ayuda="Recalculá la liquidación con los datos actuales (gastos, pagos, intereses). No borra pagos ya registrados.">

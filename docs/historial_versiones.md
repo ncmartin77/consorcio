@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 6.4-0611
+**Versión actual:** 6.5-0611
 
 ---
 
@@ -336,10 +336,21 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v6.x — Fondo de reserva y gastos extraordinarios
 
-#### v6.4-0611 — Anular pagos y fecha del sistema en los formularios
+#### v6.5-0611 — Estado de la liquidación debajo del título
 
 **Lanzamiento:** 6 de noviembre
 **Versión actual**
+
+**Cambios:**
+
+- Pantalla Liquidación: el aviso de estado pasa de la barra de botones a debajo del título ("Liquidación ABIERTA" verde, "Liquidación CERRADA" rojo, "Sin generar" gris).
+- La palabra "Liquidación" del título (y su ícono) se colorea: verde si está abierta, rojo si está cerrada.
+
+---
+
+#### v6.4-0611 — Anular pagos y fecha del sistema en los formularios
+
+**Lanzamiento:** 6 de noviembre
 
 **Cambios:**
 

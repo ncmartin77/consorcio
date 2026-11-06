@@ -35,6 +35,20 @@ Se corrieron los cuatro scripts de `pruebas/` seguidos, contra la base de prueba
 
 ---
 
+## v6.5-0611 — Estado de la liquidación debajo del título
+
+Se generó la pantalla de Liquidación en los tres estados (base de prueba; la cerrada se cerró solo para la prueba y se volvió a abrir) y se revisó a la vista:
+
+| Estado | Palabra "Liquidación" | Aviso debajo del título | Resultado |
+|---|---|---|---|
+| Abierta (2026-12) | verde | "Liquidación ABIERTA" verde | ✅ |
+| Cerrada (2026-12) | roja | "Liquidación CERRADA" rojo | ✅ |
+| Sin generar (2027-02) | sin color | "Sin generar" gris | ✅ |
+
+El aviso ya no aparece en la barra de botones.
+
+---
+
 ## v6.4-0611 — Anular pagos y fecha de pago con la fecha del sistema
 
 **Pedido:** borrar los pagos de octubre registrados el 03/11/2026 y que, al pagar con la fecha del sistema fijada, el pago quede con esa fecha.
