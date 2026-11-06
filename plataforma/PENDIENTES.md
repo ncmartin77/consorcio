@@ -41,16 +41,16 @@ agregar lo nuevo, tachar (borrar) lo resuelto.
 - [ ] **Claves de Supabase Storage**: están solo en esta PC (`deploy/.env.supabase`, fuera de git). En otra PC hay que generarlas de nuevo en Supabase → Storage → S3 Connection.
 - [ ] **Base `legado`**: es la copia de producción del 03/11. Para refrescarla, correr `scripts/restaurar_legado.sh <backup.dump.age>` con un backup nuevo.
 
-### Decisiones abiertas (documento v0.1, sección 11)
+### Decisiones de la sección 11 del documento v0.1
 
-Hay que resolverlas antes de las reglas contables de las etapas 3 y 4:
+Tomadas el 06/11: ver `docs/decisiones-liquidaciones.md` (interés simple, mora del mes
+como hoy pero con fecha guardada, imputación a intereses y después a lo más viejo, saldo
+a favor, mayor resto, etc.). Siguen abiertas:
 
-- [ ] Alcance jurisdiccional y comprobantes exigibles.
-- [ ] Contabilidad por consorcio, cuentas separadas y fondos especiales (fondo de reserva).
-- [ ] Mora, vencimientos, aplicación de créditos y prioridad de imputación de pagos. El sistema actual ya resuelve varias: tomar sus reglas como punto de partida.
-- [ ] Traspaso de consorcios entre administraciones.
-- [ ] Roles exactos y portal de propietarios.
-- [ ] Vínculo con pagos bancarios y cómo evitar cobros duplicados.
+- [ ] Contabilidad general y cuenta separada del fondo de reserva (después del MVP).
+- [ ] Traspaso de consorcios entre administraciones (después del MVP).
+- [ ] Roles exactos y portal de propietarios (después del MVP).
+- [ ] Integración bancaria (después del MVP; en el MVP los pagos se cargan a mano con referencia única).
 
 ---
 
