@@ -621,12 +621,51 @@ def _liq_row(r) -> dict:
     }
 
 
-def get_liquidacion(periodo: str) -> list:
+def get_liquidacion(periodo: str, simular: bool = True) -> list:
+    """
+    Filas de la liquidación. Con una fecha del sistema fijada y simular=True, se devuelven
+    tal como estarían ese día (ver _simular_a_fecha), SIN modificar la base.
+    Todo lo que ESCRIBE (generar, pagar, recibos firmados) debe usar simular=False.
+    """
     rows = _fetchall(
         "SELECT * FROM liquidaciones WHERE consorcio_id=%s AND periodo=%s ORDER BY unidad",
         (_cid(), periodo)
     )
-    return [_liq_row(r) for r in rows]
+    filas = [_liq_row(r) for r in rows]
+    return _simular_a_fecha(periodo, filas) if simular else filas
+
+
+def _simular_a_fecha(periodo: str, filas: list, con_liq_previa: set = None, cfg: dict = None) -> list:
+    """
+    Con fecha del sistema fijada: los pagos con fecha posterior a ese día se toman como no
+    hechos, y el interés (mora del mes si ya venció) se recalcula a ese día. Solo en memoria:
+    la base guarda siempre los valores reales. Sin fecha fijada devuelve las filas tal cual.
+    """
+    cfg = cfg if cfg is not None else get_config()
+    hoy = get_fecha_simulada(cfg)
+    if not hoy or not filas:
+        return filas
+    tasa_mora, _, fecha_vencimiento = _params_interes(periodo, cfg)
+    if con_liq_previa is None:
+        con_liq_previa = {str(r["unidad"]) for r in _fetchall(
+            "SELECT unidad FROM liquidaciones WHERE consorcio_id=%s AND periodo=%s",
+            (_cid(), _prev_periodo(periodo)))}
+    hoy_iso = hoy.strftime("%Y-%m-%d")
+    for r in filas:
+        monto = float(r.get("monto_pagado") or 0)
+        if monto > 0 and r.get("fecha_pago") and r["fecha_pago"] > hoy_iso:
+            r["pago_posterior"] = {"fecha": r["fecha_pago"], "monto": monto}
+            monto = 0.0
+            r["fecha_pago"] = ""
+        interes = _calcular_interes(r["expensas"], r["deuda_anterior"],
+                                    str(r["unidad"]) not in con_liq_previa, monto,
+                                    r.get("sin_interes", False), tasa_mora, hoy, fecha_vencimiento)
+        total = round(r["expensas"] + r["deuda_anterior"] + interes + float(r.get("extras") or 0), 2)
+        tipo_pago, saldo, pagado = _estado_pago(total, monto)
+        r.update({"interes": interes, "total_a_pagar": total, "monto_pagado": monto,
+                  "tipo_pago": tipo_pago, "saldo_pendiente": saldo if monto > 0 else 0.0,
+                  "pagado": 1 if pagado else 0, "simulado": True})
+    return filas
 
 
 def _prev_periodo(periodo: str) -> str:
@@ -646,11 +685,12 @@ def liquidacion_existe(periodo: str) -> bool:
     ) is not None
 
 
-def _params_interes(periodo: str, cfg: dict):
-    """Devuelve (tasa_mora, hoy, fecha_vencimiento) para calcular intereses del período."""
+def _params_interes(periodo: str, cfg: dict, real: bool = False):
+    """Devuelve (tasa_mora, hoy, fecha_vencimiento) para calcular intereses del período.
+    real=True: usa la fecha real (lo que se GUARDA en la base nunca depende de la fecha fijada)."""
     tasa_mora = float(cfg.get("tasa_mora", 7)) / 100
 
-    hoy = fecha_sistema(cfg)
+    hoy = date.today() if real else fecha_sistema(cfg)
 
     try:
         dia_venc = int(cfg.get("dia_vencimiento", 15) or 15)
@@ -690,15 +730,15 @@ def generar_liquidacion(periodo: str):
     mes_gastos = _prev_periodo(periodo)
     ensure_fondo_reserva_gasto(mes_gastos)
     cfg = get_config()
-    tasa_mora, hoy, fecha_vencimiento = _params_interes(periodo, cfg)
+    tasa_mora, hoy, fecha_vencimiento = _params_interes(periodo, cfg, real=True)
 
     unidades = get_unidades(solo_activas=True)
     gastos = get_gastos(mes_gastos)
     total_gastos = sum(g["importe"] for g in gastos if g.get("tipo") != "VARIABLE_FR")
     categorias = [c["nombre"] for c in get_categorias()]
 
-    prev_liq = {str(r["unidad"]): r for r in get_liquidacion(_prev_periodo(periodo))}
-    pagos_previos = {str(r["unidad"]): r for r in get_liquidacion(periodo)}
+    prev_liq = {str(r["unidad"]): r for r in get_liquidacion(_prev_periodo(periodo), simular=False)}
+    pagos_previos = {str(r["unidad"]): r for r in get_liquidacion(periodo, simular=False)}
     sin_interes_map = {str(r["unidad"]): r.get("sin_interes", False) for r in pagos_previos.values()}
     all_extras = get_gastos_extra(periodo)
 
@@ -781,7 +821,7 @@ def generar_liquidacion(periodo: str):
             """, new_rows)
 
     set_liq_estado(periodo, "ABIERTA")
-    return get_liquidacion(periodo)
+    return get_liquidacion(periodo, simular=False)
 
 
 def aplicar_sin_interes(periodo: str, valor, unidad: str = None) -> dict:
@@ -791,7 +831,7 @@ def aplicar_sin_interes(periodo: str, valor, unidad: str = None) -> dict:
     valor=None: no cambia el switch de cada unidad, solo recalcula (ej. al cambiar la
     fecha del sistema). Devuelve {"rows": {unidad: {...}}, "total_periodo": float}."""
     cfg = get_config()
-    tasa_mora, hoy, fecha_vencimiento = _params_interes(periodo, cfg)
+    tasa_mora, hoy, fecha_vencimiento = _params_interes(periodo, cfg, real=True)
     cid = _cid()
 
     with _conn() as c:
@@ -850,8 +890,9 @@ def aplicar_sin_interes(periodo: str, valor, unidad: str = None) -> dict:
 
 def recalcular_intereses_abiertas() -> list:
     """
-    Recalcula interés/total/saldo de todas las liquidaciones NO cerradas con la fecha del
-    sistema actual, respetando el switch de cada unidad. Devuelve los períodos recalculados.
+    Recalcula interés/total/saldo GUARDADOS de todas las liquidaciones NO cerradas con la fecha
+    REAL, respetando el switch de cada unidad (normaliza valores guardados por la v5.7, que
+    usaba la fecha fijada). Devuelve los períodos recalculados.
     """
     periodos = [r["periodo"] for r in _fetchall("""
         SELECT DISTINCT l.periodo FROM liquidaciones l
@@ -934,7 +975,7 @@ def marcar_pagado(periodo: str, unidad: str, monto_pagado: float, fecha_pago: st
 def marcar_todos_pagado(periodo: str, fecha_pago: str) -> int:
     if liq_esta_cerrada(periodo):
         return 0
-    pendientes = [r for r in get_liquidacion(periodo) if r.get("tipo_pago", "PENDIENTE") == "PENDIENTE"]
+    pendientes = [r for r in get_liquidacion(periodo, simular=False) if r.get("tipo_pago", "PENDIENTE") == "PENDIENTE"]
     for r in pendientes:
         marcar_pagado(periodo, str(r["unidad"]), r["total_a_pagar"], fecha_pago)
     return len(pendientes)
@@ -1407,29 +1448,21 @@ def ensure_fondo_reserva_gasto(periodo: str):
 # ── Historial / plano ─────────────────────────────────────────────────────────
 
 def get_historial_unidades() -> dict:
-    rows = _fetchall("""
-        SELECT periodo, unidad, descripcion, propietario, inquilino,
-               expensas, deuda_anterior, interes, total_a_pagar,
-               monto_pagado, tipo_pago, saldo_pendiente, fecha_pago
-        FROM liquidaciones WHERE consorcio_id=%s ORDER BY unidad, periodo
-    """, (_cid(),))
+    filas = [_liq_row(r) for r in _fetchall(
+        "SELECT * FROM liquidaciones WHERE consorcio_id=%s ORDER BY unidad, periodo", (_cid(),))]
+    cfg = get_config()
+    if get_fecha_simulada(cfg):
+        por_periodo: dict = {}
+        for f in filas:
+            por_periodo.setdefault(f["periodo"], []).append(f)
+        for p, fs in por_periodo.items():
+            previas = {str(f["unidad"]) for f in por_periodo.get(_prev_periodo(p), [])}
+            _simular_a_fecha(p, fs, con_liq_previa=previas, cfg=cfg)
+    claves = ("periodo", "descripcion", "propietario", "inquilino", "expensas", "deuda_anterior",
+              "interes", "total_a_pagar", "monto_pagado", "tipo_pago", "saldo_pendiente", "fecha_pago")
     historial: dict = {}
-    for r in rows:
-        fp = r["fecha_pago"]
-        historial.setdefault(str(r["unidad"]), []).append({
-            "periodo": r["periodo"],
-            "descripcion": r["descripcion"] or "",
-            "propietario": r["propietario"] or "",
-            "inquilino": r["inquilino"] or "",
-            "expensas": float(r["expensas"]) if r["expensas"] else 0.0,
-            "deuda_anterior": float(r["deuda_anterior"]) if r["deuda_anterior"] else 0.0,
-            "interes": float(r["interes"]) if r["interes"] else 0.0,
-            "total_a_pagar": float(r["total_a_pagar"]) if r["total_a_pagar"] else 0.0,
-            "monto_pagado": float(r["monto_pagado"]) if r["monto_pagado"] else 0.0,
-            "tipo_pago": r["tipo_pago"] or "PENDIENTE",
-            "saldo_pendiente": float(r["saldo_pendiente"]) if r["saldo_pendiente"] else 0.0,
-            "fecha_pago": fp.strftime("%Y-%m-%d") if fp else "",
-        })
+    for f in filas:
+        historial.setdefault(str(f["unidad"]), []).append({k: f[k] for k in claves})
     return historial
 
 

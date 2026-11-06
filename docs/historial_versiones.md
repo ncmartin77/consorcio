@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 5.7-0611
+**Versión actual:** 5.8-0611
 
 ---
 
@@ -332,10 +332,23 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ---
 
+#### v5.8-0611 — Fecha del sistema como vista (sin pagos posteriores, sin guardar)
+
+**Lanzamiento:** 6 de noviembre
+**Versión actual**
+
+**Cambios:**
+
+- Con fecha del sistema fijada, los **pagos con fecha posterior no se cuentan**: la unidad aparece pendiente (con su mora si ya venció) y una nota "pagó el DD/MM/AAAA". Antes, fijando 06/10 octubre aparecía todo "Pagado" por pagos del 03/11.
+- La simulación es **solo de lectura** (`get_liquidacion(simular=True)` → `_simular_a_fecha()`): liquidación, estado de cuenta, plano, PDF resumen, libre deuda y el switch muestran los valores a esa fecha, pero la base **no se modifica**. Reemplaza el "recalcular y guardar" de la v5.7.
+- Lo que escribe usa siempre datos y fecha reales: generar liquidación, pagos, pago completo, switch (guarda con fecha real y muestra el simulado). Los recibos firmados y su verificación usan los datos reales.
+- Al fijar o quitar la fecha se normalizan los intereses guardados de las liquidaciones abiertas con la fecha real (corrige lo que haya guardado la v5.7 con una fecha fijada).
+
+---
+
 #### v5.7-0611 — Fecha del sistema (intereses calculados a una fecha)
 
-**Lanzamiento:** 6 de noviembre  
-**Versión actual**
+**Lanzamiento:** 6 de noviembre
 
 **Cambios:**
 

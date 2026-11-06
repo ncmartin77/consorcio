@@ -479,7 +479,7 @@ def config():
 
 @app.route("/config/fecha-sistema", methods=["POST"])
 def fijar_fecha_sistema():
-    """Fija (o quita) la fecha del sistema y recalcula los intereses de las liquidaciones abiertas."""
+    """Fija (o quita) la fecha del sistema. La simulación se aplica al mostrar; la base no cambia."""
     valor = "" if request.form.get("accion") == "quitar" else request.form.get("fecha_sistema", "").strip()
     if valor:
         try:
@@ -489,12 +489,13 @@ def fijar_fecha_sistema():
             flash("Fecha inválida.", "danger")
             return redirect(url_for("config") + "#fecha-sistema")
     db.save_config({"fecha_simulada": valor})
-    periodos = db.recalcular_intereses_abiertas()
-    recalc = f" Intereses recalculados en {len(periodos)} liquidación(es) abierta(s)." if periodos else ""
+    # Normaliza lo GUARDADO con la fecha real (la v5.7 guardaba intereses a la fecha fijada)
+    db.recalcular_intereses_abiertas()
     if valor:
-        flash(f"El sistema trabaja ahora con la fecha {fecha_ar(valor)}.{recalc}", "warning")
+        flash(f"El sistema muestra todo como si hoy fuera {fecha_ar(valor)}: intereses a esa fecha y "
+              f"sin contar los pagos registrados después. No se modifica ningún dato guardado.", "warning")
     else:
-        flash(f"El sistema volvió a la fecha real.{recalc}", "success")
+        flash("El sistema volvió a la fecha real.", "success")
     return redirect(url_for("config") + "#fecha-sistema")
 
 
@@ -1129,11 +1130,24 @@ def toggle_sin_interes(periodo, unidad):
     if db.liq_esta_cerrada(periodo):
         return jsonify({"ok": False, "error": "Liquidación cerrada"}), 403
     valor = bool((request.get_json(silent=True) or {}).get("sin_interes", False))
-    res = db.aplicar_sin_interes(periodo, valor, unidad=unidad)
+    res = _vista_sin_interes(periodo, db.aplicar_sin_interes(periodo, valor, unidad=unidad))
     row = res["rows"].get(str(unidad))
     if not row:
         return jsonify({"ok": False, "error": "Unidad no encontrada en la liquidación"}), 404
     return jsonify({"ok": True, **row, "total_periodo": res["total_periodo"]})
+
+
+def _vista_sin_interes(periodo, res):
+    """Con fecha del sistema fijada, devuelve los montos simulados (los que muestra la pantalla)."""
+    if not db.get_fecha_simulada():
+        return res
+    sim = {str(r["unidad"]): r for r in db.get_liquidacion(periodo)}
+    claves = ("interes", "total_a_pagar", "saldo_pendiente", "tipo_pago")
+    rows = {u: {k: sim[u][k] for k in claves} for u in res["rows"] if u in sim}
+    for u, r in rows.items():
+        if r["tipo_pago"] == "PENDIENTE":
+            r["saldo_pendiente"] = r["total_a_pagar"]
+    return {"rows": rows, "total_periodo": round(sum(r["total_a_pagar"] for r in sim.values()), 2)}
 
 
 @app.route("/liquidacion/<periodo>/sin-interes-todos", methods=["POST"])
@@ -1141,7 +1155,7 @@ def toggle_sin_interes_todos(periodo):
     if db.liq_esta_cerrada(periodo):
         return jsonify({"ok": False, "error": "Liquidación cerrada"}), 403
     valor = bool((request.get_json(silent=True) or {}).get("sin_interes", False))
-    res = db.aplicar_sin_interes(periodo, valor)
+    res = _vista_sin_interes(periodo, db.aplicar_sin_interes(periodo, valor))
     return jsonify({"ok": True, "rows": res["rows"], "total_periodo": res["total_periodo"]})
 
 
@@ -1287,7 +1301,7 @@ def descargar_pdf(periodo):
 @app.route("/liquidacion/recibo/<periodo>/<unidad>")
 def descargar_recibo(periodo, unidad):
     """Resumen de expensas individual por unidad."""
-    liq = db.get_liquidacion(periodo)
+    liq = db.get_liquidacion(periodo, simular=False)  # recibo firmado: datos reales
     row = next((r for r in liq if str(r["unidad"]) == str(unidad)), None)
     if not row or row.get("tipo_pago", "PENDIENTE") == "PENDIENTE":
         flash("No hay pago registrado para esta unidad.", "warning")
@@ -1329,7 +1343,7 @@ def _recibo_publico_get_row(cid, periodo, unidad, token):
     expected = _token_recibo_publico(clave, cid, periodo, unidad)
     if not _hmac_mod.compare_digest(token, expected):
         abort(403)
-    liq = db.get_liquidacion(periodo)
+    liq = db.get_liquidacion(periodo, simular=False)  # recibo firmado: datos reales
     row = next((r for r in liq if str(r["unidad"]) == str(unidad)), None)
     if not row or row.get("tipo_pago", "PENDIENTE") == "PENDIENTE":
         abort(404)
@@ -1388,7 +1402,7 @@ def verificar_recibo(periodo=None, unidad=None, codigo=None):
     if not periodo or not unidad or not codigo:
         return render_template("verificar.html", estado="formulario")
 
-    liq = db.get_liquidacion(periodo)
+    liq = db.get_liquidacion(periodo, simular=False)  # recibo firmado: datos reales
     row = next((r for r in liq if str(r["unidad"]) == str(unidad)), None)
     if not row:
         return render_template("verificar.html", estado="no_encontrado",

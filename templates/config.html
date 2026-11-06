@@ -9,14 +9,15 @@
   </div>
   <div class="card-body">
     <p class="small text-muted mb-3">
-      Con una fecha fijada, el sistema trabaja como si hoy fuera ese día: los <strong>intereses y la mora</strong>
-      se calculan a esa fecha, y también la usan el período actual, las fechas sugeridas de pagos y caja,
-      el libre deuda y los PDFs. Al guardar, se recalculan los intereses de todas las liquidaciones
-      <strong>abiertas</strong> (las cerradas no se tocan). Dejala vacía para usar la fecha real.
+      Con una fecha fijada, el sistema muestra todo como si hoy fuera ese día: los <strong>intereses y la mora</strong>
+      se calculan a esa fecha y los <strong>pagos registrados después no se cuentan</strong> (en liquidación,
+      estado de cuenta, plano, PDFs y libre deuda). También la usan el período actual y las fechas sugeridas
+      de pagos y caja. Es una vista: <strong>los datos guardados no se modifican</strong> y los recibos de pago
+      siempre salen con los datos reales. Dejala vacía para usar la fecha real.
     </p>
     <form method="POST" action="{{ url_for('fijar_fecha_sistema') }}" class="d-flex flex-wrap gap-2 align-items-center">
       <input type="date" class="form-control" style="max-width:200px" name="fecha_sistema" value="{{ _fs }}" required>
-      <button type="submit" class="btn btn-warning"><i class="bi bi-check-lg"></i> Fijar fecha y recalcular</button>
+      <button type="submit" class="btn btn-warning"><i class="bi bi-check-lg"></i> Fijar fecha</button>
       {% if _fs %}
       <button type="submit" name="accion" value="quitar" class="btn btn-outline-secondary" formnovalidate>
         <i class="bi bi-arrow-counterclockwise"></i> Volver a la fecha real

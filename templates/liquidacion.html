@@ -368,6 +368,12 @@
               {% else %}
                 <span class="badge bg-danger">Pendiente</span>
               {% endif %}
+              {% if r.pago_posterior %}
+                <div class="text-muted" style="font-size:0.65rem"
+                     title="Hay un pago registrado después de la fecha del sistema: no se cuenta mientras esa fecha esté fijada.">
+                  <i class="bi bi-calendar-event"></i> pagó el {{ r.pago_posterior.fecha | fecha_ar }}
+                </div>
+              {% endif %}
             </td>
             <td class="text-center text-nowrap">
               {% if liq_cerrada %}

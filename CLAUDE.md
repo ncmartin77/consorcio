@@ -117,7 +117,7 @@ templates/                ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 
 **UNIDADES columns are dynamic:** each category in `CATEGORIAS_PCT` adds a `pct_NOMBRE` column to the UNIDADES sheet. When reading a unit's percentage, `excel_db.py` reads whichever `pct_*` columns exist. If a unit has multiple categories, the average is used.
 
-**`fecha_simulada`** in CONFIG overrides `date.today()` throughout the app (see `_fecha_hoy()` in `app.py`). Useful for testing past/future periods.
+**`fecha_simulada`** ("Fecha del sistema", tarjeta arriba en Configuración, `POST /config/fecha-sistema`): `pg_db.fecha_sistema()` / `_fecha_hoy()` la usan como "hoy". Es solo una vista: `get_liquidacion()` simula por defecto (pagos posteriores a esa fecha no cuentan, interés a esa fecha) sin escribir; las escrituras y recibos firmados usan `get_liquidacion(p, simular=False)` y `_params_interes(..., real=True)`. Ver `docs/memoria_sesion_claude.md`.
 
 **Deuda anterior flow:** if a unit has no previous liquidación row, its `deuda_inicial` field (set in Apertura) seeds the first debt. Subsequent months carry forward `saldo_pendiente` for partial payments or `total_a_pagar` for unpaid units.
 
