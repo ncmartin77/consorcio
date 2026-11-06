@@ -35,6 +35,29 @@ Se corrieron los cuatro scripts de `pruebas/` seguidos, contra la base de prueba
 
 ---
 
+## v7.2-0611 — PDF resumen (página 2) y GASTOS PAGADOS
+
+**Producción, solo lectura** (Perú 376, liquidación de octubre armada con el código nuevo sin pasar por la app):
+
+| Cuadro | Resultado |
+|---|---|
+| Gastos Ordinarios — Septiembre 2026 | 8 gastos, total $ 1.371.401,82, sin el Fondo de Reserva ✅ |
+| Base de la expensa | $ 1.371.401,82 + aporte $ 80.000 = $ 1.451.401,82 (= expensas de octubre) ✅; fondo disponible $ 80.000 |
+| Ingresos y egresos — Octubre 2026 | saldo al 30/09 $ 249.736,46 + 0 − 0 = saldo al 31/10 $ 249.736,46 ✅ |
+| GASTOS PAGADOS (septiembre) | antes $ 0 (solo Caja) → $ 1.341.392,22 (7 facturas pagadas) ✅ |
+
+**Base de prueba, por la app:**
+
+| Caso | Resultado |
+|---|---|
+| PDF 2026-11 y 2026-12 | 200 ✅ |
+| Ingresos y egresos nov: −1.677.797,98 + 1.783.511,98 − 276.344,34 | = −170.630,34, igual al saldo real de Caja ✅ |
+| GASTOS PAGADOS liq 2026-11 / 2026-12 | = facturas pagadas en oct / nov ($ 2.129.184,44 / $ 321.344,34) ✅ |
+
+> El gasto "Gastos generales de administración (sistema)" ($ 30.009,60, sep) no tiene factura: no entra en GASTOS PAGADOS.
+
+---
+
 ## v7.1-0611 — Totales en el PDF resumen y en la pantalla Liquidación
 
 Base de prueba, liquidación 2026-12:

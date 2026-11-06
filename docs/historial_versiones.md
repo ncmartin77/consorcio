@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 7.1-0611
+**Versión actual:** 7.2-0611
 
 ---
 
@@ -336,10 +336,23 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v7.x — Saldo a favor
 
-#### v7.1-0611 — Totales en el PDF resumen y en la pantalla Liquidación
+#### v7.2-0611 — PDF resumen: gastos ordinarios, base de la expensa e ingresos/egresos
 
 **Lanzamiento:** 6 de noviembre
 **Versión actual**
+
+**Cambios:**
+
+- PDF resumen, página 2: tabla **"Gastos Ordinarios — {mes de gastos}"** solo con gastos ordinarios (sin el aporte al fondo ni extraordinarios), total "TOTAL GASTOS ORDINARIOS".
+- Cuadro nuevo **"Base de la expensa"**: gastos ordinarios + aporte al Fondo de Reserva (+ extraordinarios a cobrar) = total a repartir; y el saldo disponible del fondo.
+- "Estado financiero" pasa a **"Ingresos y egresos — {mes de la liquidación}"**: saldo de caja al cierre del mes anterior + ingresos por pagos de expensas − egresos por pagos ordinarios = saldo de caja al cierre del mes (otros ingresos, pagos con el fondo y bonificaciones solo si los hay). `pg_db.get_resumen_caja_periodo()`.
+- Pantalla Liquidación, tarjeta **GASTOS PAGADOS**: ahora suma las facturas pagadas en el mes de gastos (aunque no hayan generado movimiento en Caja) más las salidas de Caja que no vienen de una factura (`get_gastos_pagados_periodo()`). Antes sumaba solo Caja y daba $ 0 con facturas marcadas pagadas sin Caja.
+
+---
+
+#### v7.1-0611 — Totales en el PDF resumen y en la pantalla Liquidación
+
+**Lanzamiento:** 6 de noviembre
 
 **Cambios:**
 

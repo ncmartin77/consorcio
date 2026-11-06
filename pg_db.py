@@ -1455,6 +1455,63 @@ def delete_presupuesto(pres_id):
 
 # ── Caja — saldos ─────────────────────────────────────────────────────────────
 
+def get_gastos_pagados_periodo(periodo: str) -> float:
+    """
+    Total pagado en el mes `periodo`: facturas PAGADAS con fecha de pago en ese mes (tengan o
+    no movimiento en Caja) + salidas de Caja del mes que no vienen de una factura (sin
+    factura_id ni "Pago factura ..."), sin bonificaciones. Evita contar dos veces el pago de
+    una factura y su salida de Caja.
+    """
+    fac = _fetchone(
+        "SELECT COALESCE(SUM(importe),0) AS t FROM facturas WHERE consorcio_id=%s AND estado='PAGADA' "
+        "AND to_char(fecha_pago,'YYYY-MM')=%s", (_cid(), periodo))
+    caja = _fetchone(
+        "SELECT COALESCE(SUM(importe),0) AS t FROM caja WHERE consorcio_id=%s AND tipo='SALIDA' "
+        "AND to_char(fecha,'YYYY-MM')=%s AND factura_id IS NULL "
+        "AND coalesce(descripcion,'') NOT LIKE 'Pago factura%%' "
+        "AND upper(coalesce(categoria,'')) <> 'BONIFICACION'", (_cid(), periodo))
+    return round(float(fac["t"]) + float(caja["t"]), 2)
+
+
+def get_resumen_caja_periodo(periodo: str) -> dict:
+    """
+    Ingresos y egresos de Caja del mes `periodo` (para el PDF resumen):
+    saldo al cierre del mes anterior + ingresos − egresos = saldo al cierre del mes.
+    Separa cobros de expensas, otros ingresos, pagos ordinarios, pagos con el fondo y
+    bonificaciones, para que la cuenta siempre cierre con el saldo real de Caja.
+    """
+    y, m = int(periodo[:4]), int(periodo[5:7])
+    primero = date(y, m, 1)
+    ultimo = date(y, m, _calendar.monthrange(y, m)[1])
+    anterior = primero - timedelta(days=1)
+    saldo_anterior, _, _ = get_saldo_caja(hasta_fecha=anterior.strftime("%Y-%m-%d"))
+    saldo_final, _, _ = get_saldo_caja(hasta_fecha=ultimo.strftime("%Y-%m-%d"))
+    inicio = (get_config().get("saldo_inicial_caja_fecha") or "").strip()
+    conds, params = ["consorcio_id=%s", "fecha >= %s", "fecha <= %s"], [_cid(), primero, ultimo]
+    if inicio:
+        conds.append("fecha >= %s")
+        params.append(inicio)
+    row = _fetchone(f"""
+        SELECT
+          COALESCE(SUM(CASE WHEN tipo='ENTRADA' AND categoria='Expensas' THEN importe END),0) AS ing_expensas,
+          COALESCE(SUM(CASE WHEN tipo='ENTRADA' AND coalesce(categoria,'')<>'Expensas' THEN importe END),0) AS ing_otros,
+          COALESCE(SUM(CASE WHEN tipo='SALIDA' AND upper(coalesce(categoria,''))='FONDO_RESERVA' THEN importe END),0) AS egr_fondo,
+          COALESCE(SUM(CASE WHEN tipo='SALIDA' AND upper(coalesce(categoria,''))='BONIFICACION' THEN importe END),0) AS egr_bonif,
+          COALESCE(SUM(CASE WHEN tipo='SALIDA' AND upper(coalesce(categoria,'')) NOT IN ('FONDO_RESERVA','BONIFICACION')
+                            THEN importe END),0) AS egr_ordinarios
+        FROM caja WHERE {' AND '.join(conds)}
+    """, params)
+    r = {k: round(float(v), 2) for k, v in row.items()}
+    return {
+        "periodo": periodo,
+        "saldo_anterior": round(saldo_anterior, 2), "fecha_anterior": anterior.strftime("%Y-%m-%d"),
+        "ingresos_expensas": r["ing_expensas"], "otros_ingresos": r["ing_otros"],
+        "egresos_ordinarios": r["egr_ordinarios"], "egresos_fondo": r["egr_fondo"],
+        "bonificaciones": r["egr_bonif"],
+        "saldo_final": round(saldo_final, 2), "fecha_final": ultimo.strftime("%Y-%m-%d"),
+    }
+
+
 def get_saldo_caja(hasta_fecha=None):
     cfg = get_config()
     saldo_inicial = float(cfg.get("saldo_inicial_caja", 0) or 0)

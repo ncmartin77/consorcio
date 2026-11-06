@@ -1080,7 +1080,7 @@ def liquidacion(periodo=None):
     # Entradas = propietarios pagando en el período de la liquidación
     # Salidas = facturas/gastos pagados en el mes ANTERIOR (que generaron esta liquidación)
     entradas, _ = db.get_movimientos_periodo(periodo)
-    _, salidas = db.get_movimientos_periodo(mes_gastos)
+    salidas = db.get_gastos_pagados_periodo(mes_gastos)  # facturas pagadas en el mes + salidas de caja sin factura
     fondo = _resumen_fondo_seguro(mes_gastos)
     desglose = db.get_desglose_gastos(mes_gastos, gastos)
     liq_cerrada = db.liq_esta_cerrada(periodo)
@@ -1351,8 +1351,14 @@ def descargar_pdf(periodo):
     extras = db.get_gastos_extra(periodo)
     _logo = db.get_logo()
     _logo_bytes = base64.b64decode(_logo["b64"]) if _logo else None
+    try:
+        caja_mes = db.get_resumen_caja_periodo(periodo)
+    except Exception:
+        app.logger.exception("[pdf] resumen de caja")
+        caja_mes = None
     pdf_bytes = generar_pdf_resumen_edificio(liq, gastos, cfg, periodo, saldo_caja, fondo,
-                                             notas=notas, extras=extras, logo_bytes=_logo_bytes)
+                                             notas=notas, extras=extras, logo_bytes=_logo_bytes,
+                                             caja_mes=caja_mes)
     _meses_pdf = ["enero","febrero","marzo","abril","mayo","junio",
                   "julio","agosto","septiembre","octubre","noviembre","diciembre"]
     _mes_str = _meses_pdf[int(periodo[5:7]) - 1] + "_" + periodo[:4]

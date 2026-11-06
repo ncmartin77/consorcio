@@ -309,7 +309,7 @@ def generar_pdf_liquidacion(liquidacion_rows: list, gastos: list, config: dict, 
 def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: dict,
                                   periodo: str, saldo_caja: float, fondo_reserva: float,
                                   notas: list = None, extras: list = None,
-                                  logo_bytes: bytes = None) -> bytes:
+                                  logo_bytes: bytes = None, caja_mes: dict = None) -> bytes:
     """
     PDF único de resumen para el edificio:
     - Tabla de todas las unidades (UF, %, expensas, deuda, total, estado)
@@ -447,60 +447,94 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
     story.append(uf_t)
     story.append(Spacer(1, 0.5*cm))
 
-    # Detalle de gastos + caja en dos columnas
-    gasto_data = [["Concepto", "Tipo", "Importe"]]
-    _rotulo = {"FONDO_RESERVA": "Aporte fondo", "EXTRAORDINARIO": "Extraord.",
-               "FIJO": "Fijo", "VARIABLE": "Variable"}
-    # Orden: ordinarios, aporte al fondo, extraordinarios a cobrar
-    _orden = lambda g: {"FONDO_RESERVA": 1, "EXTRAORDINARIO": 2}.get(g.get("tipo"), 0)
-    for g in sorted(gastos_normal, key=_orden):
+    # Gastos ordinarios del mes (sin aporte al fondo ni extraordinarios) + cuadros a la derecha
+    mes_gastos_txt = _mes_nombre_largo(_prev_periodo_helper(periodo)).title()
+    _rotulo = {"FIJO": "Fijo", "VARIABLE": "Variable"}
+    ordinarios = [g for g in gastos_normal if g.get("tipo") not in ("FONDO_RESERVA", "EXTRAORDINARIO")]
+    aporte_fr = round(sum(g["importe"] for g in gastos_normal if g.get("tipo") == "FONDO_RESERVA"), 2)
+    extra_cobrar = round(sum(g["importe"] for g in gastos_normal if g.get("tipo") == "EXTRAORDINARIO"), 2)
+    total_ordinarios = round(sum(g["importe"] for g in ordinarios), 2)
+    gasto_data = [[f"Gastos Ordinarios — {mes_gastos_txt}", "", ""], ["Concepto", "Tipo", "Importe"]]
+    for g in ordinarios:
         gasto_data.append([g["concepto"], _rotulo.get(g.get("tipo", ""), g.get("tipo", "")), _fmt(g["importe"])])
-    gasto_data.append(["TOTAL A REPARTIR", "", _fmt(total_gastos)])
+    gasto_data.append(["TOTAL GASTOS ORDINARIOS", "", _fmt(total_ordinarios)])
 
     gt = Table(gasto_data, colWidths=[6.5*cm, 2.0*cm, 2.5*cm])  # = 11.0 cm
     ng = len(gasto_data)
     gt.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#2e6da4")),
-        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,-1), 8),
+        ("SPAN", (0,0), (-1,0)), ("ALIGN", (0,0), (-1,0), "CENTER"),
+        ("BACKGROUND", (0,0), (-1,0), c_azul), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+        ("BACKGROUND", (0,1), (-1,1), colors.HexColor("#2e6da4")),
+        ("TEXTCOLOR", (0,1), (-1,1), colors.white),
+        ("FONTNAME", (0,1), (-1,1), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,-1), 8),
         ("FONTNAME", (0,ng-1), (-1,ng-1), "Helvetica-Bold"),
         ("BACKGROUND", (0,ng-1), (-1,ng-1), colors.HexColor("#e8f0fe")),
-        ("ROWBACKGROUNDS", (0,1), (-1,ng-2), [colors.white, colors.HexColor("#f5f5f5")]),
-        ("ALIGN", (2,0), (2,-1), "RIGHT"),
+        ("ROWBACKGROUNDS", (0,2), (-1,ng-2), [colors.white, colors.HexColor("#f5f5f5")]),
+        ("ALIGN", (2,1), (2,-1), "RIGHT"),
         ("GRID", (0,0), (-1,-1), 0.3, colors.grey),
         ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3),
         ("LEFTPADDING", (0,0), (-1,-1), 4),
     ]))
 
-    caja_data = [
-        ["ESTADO FINANCIERO"],
-        ["Saldo en Caja", _fmt(saldo_caja)],
-    ]
-    if isinstance(fondo_reserva, dict):  # v6.0: resumen del fondo (pg_db.get_resumen_fondo)
-        fr = fondo_reserva
-        caja_data += [
-            ["Fondo: saldo anterior", _fmt(fr["saldo_anterior"])],
-            ["+ Aporte del mes", _fmt(fr["aporte"] if fr["aporte_liquidado"] else 0)],
-            ["− Pagado con el fondo", _fmt(fr["usos"])],
-            ["Fondo: saldo disponible", _fmt(fr["saldo"])],
+    # Base de cálculo de la expensa
+    base_data = [["BASE DE LA EXPENSA"],
+                 ["Gastos ordinarios", _fmt(total_ordinarios)],
+                 ["+ Aporte al Fondo de Reserva", _fmt(aporte_fr)]]
+    if extra_cobrar:
+        base_data.append(["+ Gastos extraordinarios", _fmt(extra_cobrar)])
+    base_data.append(["= Total a repartir", _fmt(total_gastos)])
+    if isinstance(fondo_reserva, dict):
+        base_data.append(["Fondo de Reserva disponible", _fmt(fondo_reserva["saldo"])])
+    nb = len(base_data)
+    fila_total = nb - 2 if isinstance(fondo_reserva, dict) else nb - 1
+    bt = Table(base_data, colWidths=[4.6*cm, 2.6*cm])
+    bt.setStyle(TableStyle([
+        ("SPAN", (0,0), (-1,0)), ("ALIGN", (0,0), (-1,0), "CENTER"),
+        ("BACKGROUND", (0,0), (-1,0), c_azul), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,-1), 8),
+        ("ALIGN", (1,1), (1,-1), "RIGHT"),
+        ("FONTNAME", (0,fila_total), (-1,fila_total), "Helvetica-Bold"),
+        ("BACKGROUND", (0,fila_total), (-1,fila_total), colors.HexColor("#e8f0fe")),
+        ("TEXTCOLOR", (0,nb-1), (-1,nb-1), colors.HexColor("#0c5460") if isinstance(fondo_reserva, dict) else colors.black),
+        ("GRID", (0,0), (-1,-1), 0.3, colors.grey),
+        ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+        ("LEFTPADDING", (0,0), (-1,-1), 5),
+    ]))
+
+    if caja_mes:
+        cm_ = caja_mes
+        caja_data = [
+            [f"INGRESOS Y EGRESOS — {_mes_nombre_largo(periodo).title()}"],
+            [f"Saldo de caja al {cm_['fecha_anterior'][8:10]}/{cm_['fecha_anterior'][5:7]}", _fmt(cm_["saldo_anterior"])],
+            ["+ Ingresos por pagos de expensas", _fmt(cm_["ingresos_expensas"])],
         ]
-    elif fondo_reserva:
-        caja_data.append(["Fondo de Reserva", _fmt(fondo_reserva)])
-    ct = Table(caja_data, colWidths=[3.8*cm, 3.4*cm])  # = 7.2 cm
+        if cm_["otros_ingresos"]:
+            caja_data.append(["+ Otros ingresos", _fmt(cm_["otros_ingresos"])])
+        caja_data.append(["− Egresos por pagos ordinarios", _fmt(cm_["egresos_ordinarios"])])
+        if cm_["egresos_fondo"]:
+            caja_data.append(["− Pagos con el Fondo de Reserva", _fmt(cm_["egresos_fondo"])])
+        if cm_["bonificaciones"]:
+            caja_data.append(["− Bonificaciones", _fmt(cm_["bonificaciones"])])
+        caja_data.append([f"Saldo de caja al {cm_['fecha_final'][8:10]}/{cm_['fecha_final'][5:7]}", _fmt(cm_["saldo_final"])])
+    else:
+        caja_data = [["INGRESOS Y EGRESOS"], ["Saldo en Caja", _fmt(saldo_caja)]]
+    nc = len(caja_data)
+    ct = Table(caja_data, colWidths=[4.6*cm, 2.6*cm])  # = 7.2 cm
     ct.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), c_verde), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
         ("SPAN", (0,0), (-1,0)), ("ALIGN", (0,0), (-1,0), "CENTER"),
         ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,-1), 8),
-        ("FONTNAME", (0,1), (-1,1), "Helvetica-Bold"),
-        ("BACKGROUND", (0,1), (-1,1), colors.HexColor("#d4edda")),
         ("ALIGN", (1,1), (1,-1), "RIGHT"),
-        ("FONTNAME", (0,len(caja_data)-1), (-1,len(caja_data)-1), "Helvetica-Bold"),
+        ("FONTNAME", (0,nc-1), (-1,nc-1), "Helvetica-Bold"),
+        ("BACKGROUND", (0,nc-1), (-1,nc-1), colors.HexColor("#d4edda")),
         ("GRID", (0,0), (-1,-1), 0.3, colors.grey),
         ("TOPPADDING", (0,0), (-1,-1), 4), ("BOTTOMPADDING", (0,0), (-1,-1), 4),
         ("LEFTPADDING", (0,0), (-1,-1), 6),
     ]))
 
-    combo = Table([[gt, ct]], colWidths=[11.1*cm, 7.4*cm])  # = 18.5 cm
+    derecha = [bt, Spacer(1, 0.3*cm), ct]
+    combo = Table([[gt, derecha]], colWidths=[11.1*cm, 7.4*cm])  # = 18.5 cm
     combo.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
         ("LEFTPADDING", (1,0), (1,0), 8),
