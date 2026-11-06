@@ -35,6 +35,35 @@ Se corrieron los cuatro scripts de `pruebas/` seguidos, contra la base de prueba
 
 ---
 
+## v6.1-0611 — Error 500 al liquidar octubre con fecha 06/10
+
+**Reporte:** en producción, "Liquidar" octubre con la fecha del sistema en 06/10 devolvió *Internal Server Error*.
+
+### Diagnóstico
+
+| Verificación | Resultado |
+|---|---|
+| Mismo caso en la base de prueba (`pruebas/reproducir_error_liquidar.py`) | No falla: Liquidar → 302, pantalla → 200 |
+| Ruta "Liquidar" | Atrapa sus propios errores y redirige: el 500 tiene que salir al **mostrar** la pantalla de Liquidación |
+| Código nuevo de la 6.0 en esa pantalla | El saldo del fondo recorre los aportes y gastos con el fondo de **todos** los meses |
+| Gasto de fondo con período mal cargado (`"2026-9"` o vacío) en la base de prueba (`pruebas/probar_periodos_invalidos.py`) | **Reproduce el error** en Gastos, Liquidación, Plano y PDF (`ValueError` al leer el período) |
+
+> No hay acceso a los datos ni al log de producción, así que no está confirmado que producción tenga ese dato: es la causa encontrada que reproduce el síntoma.
+
+### Resultado con la corrección
+
+| Pantalla (con gastos de fondo con período `"2026-9"` y vacío) | Antes | Después |
+|---|---|---|
+| Gastos 2026-11 | ❌ ValueError | ✅ 200 |
+| Liquidación 2026-10 | ❌ ValueError | ✅ 200 |
+| Liquidar 2026-10 | ✅ 302 | ✅ 302 |
+| Plano | ❌ ValueError | ✅ 200 |
+| PDF resumen 2026-12 | ❌ ValueError | ✅ 200 |
+| Liquidar octubre con fecha 06/10 (caso reportado) | ✅ | ✅ 302 → 200 |
+| Prueba completa del fondo (`probar_fondo_reserva.py`) | — | ✅ mismos saldos que en v6.0 |
+
+---
+
 ## v6.0-0611 — Fondo de reserva y gastos extraordinarios
 
 **Pedido:** base de las expensas = gastos ordinarios y recurrentes + aporte del período al fondo (el saldo acumulado no se vuelve a cobrar); cada gasto extraordinario se paga con el fondo o queda pendiente y se cobra en las expensas siguientes; la pantalla de Liquidaciones muestra el saldo acumulado del fondo (saldo anterior + aportes − gastos pagados con el fondo).
@@ -225,6 +254,8 @@ C:\Users\Maria\.venvs\consorcio\Scripts\python.exe pruebas\probar_fondo_reserva.
 | `probar_libre_deuda.py` | Libre deuda completo | Sí: pago simulado (se restaura) y certificados (`--limpiar` los borra) |
 | `probar_fecha_sistema.py` | Fecha del sistema como vista | Solo la fecha en config; al final vuelve a la anterior y verifica que la base quedó igual |
 | `diagnostico_fondo.py` | Gastos por tipo, facturas y caja del fondo, saldo del fondo | No (solo lectura) |
+| `reproducir_error_liquidar.py` | "Liquidar" con fecha fijada, mostrando el traceback si falla | Regenera esa liquidación (conserva pagos); restaura la fecha |
+| `probar_periodos_invalidos.py` | Pantallas con gastos de fondo con período mal cargado | Inserta y borra gastos de prueba |
 | `probar_fondo_reserva.py` | Migración, saldo del fondo, extraordinarios pendiente / con el fondo, pantallas y PDF | Sí: aplica la migración (permanente); el gasto de prueba se borra y la config se restaura |
 
 Cuando se agregue una prueba, sumar su sección arriba (la más nueva primero) y, si sirve repetirla, su script en `pruebas/`.

@@ -778,6 +778,19 @@ def _recalcular_liq_si_posible(periodo):
         db.generar_liquidacion(periodo_liq)
 
 
+def _resumen_fondo_seguro(mes_gastos, cfg=None):
+    """Resumen del fondo; si el cálculo falla, la pantalla se muestra igual (con aviso y log)."""
+    try:
+        return db.get_resumen_fondo(mes_gastos, cfg)
+    except Exception:
+        import traceback
+        app.logger.error(f"[fondo] Error calculando el saldo del fondo ({mes_gastos}): {traceback.format_exc()}")
+        flash("No se pudo calcular el saldo del Fondo de Reserva: se muestra en 0. Avisá al administrador del sistema.",
+              "warning")
+        return {"mes_gastos": mes_gastos, "saldo_inicial": 0.0, "saldo_inicial_periodo": "",
+                "saldo_anterior": 0.0, "aporte": 0.0, "aporte_liquidado": False, "usos": 0.0, "saldo": 0.0}
+
+
 @app.route("/gastos")
 @app.route("/gastos/<periodo>")
 def gastos(periodo=None):
@@ -795,7 +808,7 @@ def gastos(periodo=None):
     total        = desglose["total_ordinarios"]
     total_fondo  = desglose["total_aporte"]
     total_expensas = desglose["total_expensas"]
-    resumen_fondo = db.get_resumen_fondo(periodo)
+    resumen_fondo = _resumen_fondo_seguro(periodo)
     prox_periodo = db._next_periodo(periodo)
     liq_prox_cerrada = db.liq_esta_cerrada(prox_periodo)
     liq_prox_existe = db.liquidacion_existe(prox_periodo)
@@ -1063,7 +1076,7 @@ def liquidacion(periodo=None):
     # Salidas = facturas/gastos pagados en el mes ANTERIOR (que generaron esta liquidación)
     entradas, _ = db.get_movimientos_periodo(periodo)
     _, salidas = db.get_movimientos_periodo(mes_gastos)
-    fondo = db.get_resumen_fondo(mes_gastos)
+    fondo = _resumen_fondo_seguro(mes_gastos)
     desglose = db.get_desglose_gastos(mes_gastos, gastos)
     liq_cerrada = db.liq_esta_cerrada(periodo)
     liq_generada = db.liquidacion_existe(periodo)
@@ -1312,7 +1325,7 @@ def descargar_pdf(periodo):
     yp2, mp2 = int(periodo[:4]), int(periodo[5:7])
     hasta_pdf = f"{periodo}-{_cal.monthrange(yp2, mp2)[1]:02d}"
     saldo_caja, _, _ = db.get_saldo_caja(hasta_fecha=hasta_pdf)
-    fondo = db.get_resumen_fondo(mes_gastos_pdf, cfg)
+    fondo = _resumen_fondo_seguro(mes_gastos_pdf, cfg)
     notas = db.get_notas_periodo(periodo)
     extras = db.get_gastos_extra(periodo)
     _logo = db.get_logo()

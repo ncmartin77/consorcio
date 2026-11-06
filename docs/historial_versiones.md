@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 6.0-0611
+**Versión actual:** 6.1-0611
 
 ---
 
@@ -336,10 +336,21 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v6.x — Fondo de reserva y gastos extraordinarios
 
-#### v6.0-0611 — Fondo de reserva con saldo y gastos extraordinarios separados
+#### v6.1-0611 — Fix: error 500 por períodos mal cargados en el fondo
 
 **Lanzamiento:** 6 de noviembre
 **Versión actual**
+
+**Cambios:**
+
+- El cálculo del saldo del fondo ignora gastos con período mal formado (vacío, "2026-9"): antes daban error 500 en Gastos, Liquidación, Plano y PDF (reportado al liquidar octubre con fecha 06/10).
+- Red de seguridad: si el cálculo del fondo falla por otro motivo, la pantalla se muestra igual con el fondo en 0, un aviso, y el error queda en el log.
+
+---
+
+#### v6.0-0611 — Fondo de reserva con saldo y gastos extraordinarios separados
+
+**Lanzamiento:** 6 de noviembre
 **Por qué es mayor:** cambia cómo se arman las expensas (los extraordinarios pagados con el fondo dejan de cobrarse, las facturas extraordinarias se cobran como línea aparte) y corrige datos existentes. Aprobado por el usuario. La migración a Supabase Storage, que estaba planeada como 6.0, pasa a ser 7.0.
 
 **Cambios:**

@@ -1491,9 +1491,12 @@ def get_resumen_fondo(mes_gastos: str, cfg: dict = None) -> dict:
     """
     cfg = cfg if cfg is not None else get_config()
     saldo_ini, p0 = _fondo_inicial(cfg)
+    # Solo períodos bien formados (AAAA-MM): un gasto con período vacío o "2026-9"
+    # rompía Gastos, Liquidación, Plano y el PDF (error 500).
     filas = _fetchall(
-        "SELECT periodo, tipo, concepto, importe FROM gastos WHERE consorcio_id=%s "
-        "AND tipo IN ('FONDO_RESERVA','VARIABLE_FR') ORDER BY periodo, id", (_cid(),))
+        "SELECT trim(periodo) AS periodo, tipo, concepto, COALESCE(importe, 0) AS importe FROM gastos "
+        "WHERE consorcio_id=%s AND tipo IN ('FONDO_RESERVA','VARIABLE_FR') "
+        "AND trim(periodo) ~ '^[0-9]{4}-(0[1-9]|1[0-2])$' ORDER BY periodo, id", (_cid(),))
     liquidados = {r["periodo"] for r in _fetchall(
         "SELECT DISTINCT periodo FROM liquidaciones WHERE consorcio_id=%s", (_cid(),))}
 
@@ -1525,7 +1528,8 @@ def get_resumen_fondo(mes_gastos: str, cfg: dict = None) -> dict:
 
 def get_saldo_fondo() -> float:
     """Saldo disponible del fondo hoy (todos los aportes liquidados y usos registrados)."""
-    ultimo = _fetchone("SELECT MAX(periodo) AS p FROM gastos WHERE consorcio_id=%s", (_cid(),))
+    ultimo = _fetchone("SELECT MAX(trim(periodo)) AS p FROM gastos WHERE consorcio_id=%s "
+                       "AND trim(periodo) ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'", (_cid(),))
     mes = (ultimo and ultimo["p"]) or fecha_sistema().strftime("%Y-%m")
     return get_resumen_fondo(mes)["saldo"]
 
