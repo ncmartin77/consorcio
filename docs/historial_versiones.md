@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 5.8-0611
+**Versión actual:** 5.9-0611
 
 ---
 
@@ -75,6 +75,8 @@ Para este tipo de proyecto (app de producción, equipo pequeño, sin dependencia
 ---
 
 ## Historial completo de versiones
+
+Las pruebas hechas en cada versión (desde la 5.6) están en [`pruebas_realizadas.md`](pruebas_realizadas.md).
 
 ---
 
@@ -332,10 +334,23 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ---
 
-#### v5.8-0611 — Fecha del sistema como vista (sin pagos posteriores, sin guardar)
+#### v5.9-0611 — Documentación de pruebas
 
 **Lanzamiento:** 6 de noviembre
 **Versión actual**
+
+**Cambios:**
+
+- `docs/pruebas_realizadas.md`: entorno de pruebas y resultados (con tablas) de las pruebas de v5.6 (libre deuda), diagnóstico del switch de interés, v5.7 y v5.8 (fecha del sistema).
+- `pruebas/`: scripts para repetirlas contra la base de prueba (`entorno_prueba.py`, `diagnostico_intereses.py`, `probar_switch_interes.py`, `probar_libre_deuda.py`, `probar_fecha_sistema.py`).
+- Regla en `CLAUDE.md` y en la memoria: registrar las pruebas de cada cambio.
+- Sin cambios en la app.
+
+---
+
+#### v5.8-0611 — Fecha del sistema como vista (sin pagos posteriores, sin guardar)
+
+**Lanzamiento:** 6 de noviembre
 
 **Cambios:**
 

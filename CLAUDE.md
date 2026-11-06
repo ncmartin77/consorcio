@@ -12,6 +12,9 @@ Al empezar una sesión, leer `docs/memoria_sesion_claude.md` (estado actual, pen
 Después de cada cambio significativo, hacer commit y push a GitHub.
 Usar mensajes de commit descriptivos en español.
 
+## Pruebas
+Probar contra la base de **prueba** (`consorcio-tst`) con los scripts de `pruebas/` (cliente de pruebas de Flask, abortan si `DATABASE_URL` no es la base de prueba). Registrar cada prueba en `docs/pruebas_realizadas.md` con tablas (caso / esperado / resultado), la más nueva primero.
+
 ## Versionado (`version.txt`, formato `X.Y-DDMM`)
 Actualizar `version.txt` antes de **cada** commit. `DDMM` = día y mes real del commit. Claude decide el incremento según esta regla:
 

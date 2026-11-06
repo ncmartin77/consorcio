@@ -48,6 +48,7 @@
    "/mnt/c/Program Files/Git/bin/git.exe" push origin master
    ```
 4. **MCP Supabase**: si el token expira, actualizar `headers.Authorization` en `~/.mcp.json` con el nuevo `sb_secret_*`. Al 04/11/2026 el token estaba **rechazado (401)**: hay que generar uno nuevo antes de usar el MCP.
+6. **Registrar las pruebas** de cada cambio en `docs/pruebas_realizadas.md` (la mas nueva primero, con tablas: caso / esperado / resultado) y, si sirve repetirla, agregar su script en `pruebas/` (usa `pruebas/entorno_prueba.py`, que solo corre contra la base de prueba `consorcio-tst`).
 5. **Nunca versionar secretos**: `DATABASE_URL`, tokens y claves van en `.env` (no versionado) o en el dashboard de Render. El script suelto `gen_nov.py` (fuera de git) tiene la contraseña de Supabase escrita: no commitearlo.
 
 ### Flujo tipico de un cambio
