@@ -100,11 +100,14 @@
     </div>
   </div>
   <div class="col-md-2">
-    <div class="card border-info text-center h-100">
+    <div class="card border-info text-center h-100" title="Saldo disponible = saldo anterior + aporte liquidado − gastos pagados con el fondo">
       <div class="card-body py-2 px-1">
         <div class="small text-info fw-bold">FONDO RESERVA</div>
-        <div class="fw-bold text-info">$ {{ "%.2f"|format(fondo_reserva)|replace(".",",") }}</div>
-        <div class="text-muted" style="font-size:0.65rem">{{ mes_gastos | mes_largo }}</div>
+        <div class="fw-bold {{ 'text-danger' if fondo.saldo < 0 else 'text-info' }}">$ {{ "%.2f"|format(fondo.saldo)|replace(".",",") }}</div>
+        <div class="text-muted" style="font-size:0.65rem">saldo disponible</div>
+        <div class="text-muted" style="font-size:0.6rem">
+          aporte del mes $ {{ "%.2f"|format(fondo.aporte)|replace(".",",") }}
+        </div>
       </div>
     </div>
   </div>
@@ -436,38 +439,94 @@
   </div>
 </div>
 
-<!-- Detalle de gastos -->
+<!-- Detalle de gastos (base de cálculo) -->
+<div class="row g-3 mt-1">
 <div class="col-md-6">
   <div class="card shadow-sm">
     <div class="card-header bg-secondary text-white">
-      <i class="bi bi-list-ul"></i> Gastos de {{ mes_gastos | mes_largo }} (base de cálculo)
+      <i class="bi bi-list-ul"></i> Expensas de {{ periodo | mes_largo }}: gastos de {{ mes_gastos | mes_largo }}
     </div>
     <div class="card-body p-0">
       <table class="table table-sm mb-0">
         <thead class="table-light">
-          <tr><th>Concepto</th><th class="text-end">Importe</th><th>Tipo</th></tr>
+          <tr><th>Concepto</th><th class="text-end">Importe</th></tr>
         </thead>
         <tbody>
-          {% for g in gastos %}
-          <tr>
-            <td>{{ g.concepto }}</td>
-            <td class="text-end">$ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td>
-            <td class="text-muted small">{{ g.tipo }}</td>
-          </tr>
+          <tr class="table-light"><td colspan="2" class="fw-semibold small">Gastos ordinarios</td></tr>
+          {% for g in desglose.ordinarios %}
+          <tr><td class="ps-3">{{ g.concepto }} <span class="text-muted small">{{ g.tipo|lower }}</span></td>
+              <td class="text-end">$ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td></tr>
           {% else %}
-          <tr><td colspan="3" class="text-muted text-center">Sin gastos cargados.</td></tr>
+          <tr><td colspan="2" class="text-muted text-center small">Sin gastos ordinarios.</td></tr>
           {% endfor %}
+          <tr><td class="ps-3 fw-semibold">Subtotal ordinarios</td>
+              <td class="text-end fw-semibold">$ {{ "%.2f"|format(desglose.total_ordinarios)|replace(".",",") }}</td></tr>
+          <tr class="text-info"><td><i class="bi bi-piggy-bank"></i> Aporte del período al Fondo de Reserva</td>
+              <td class="text-end fw-semibold">$ {{ "%.2f"|format(desglose.total_aporte)|replace(".",",") }}</td></tr>
+          <tr class="table-light fw-bold"><td>Base ordinaria</td>
+              <td class="text-end">$ {{ "%.2f"|format(desglose.total_ordinarios + desglose.total_aporte)|replace(".",",") }}</td></tr>
+          {% if desglose.extra_cobrar %}
+          <tr class="table-light"><td colspan="2" class="fw-semibold small text-danger">Gastos extraordinarios a cobrar (línea aparte)</td></tr>
+          {% for g in desglose.extra_cobrar %}
+          <tr><td class="ps-3">{{ g.concepto }}</td>
+              <td class="text-end text-danger">$ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td></tr>
+          {% endfor %}
+          {% endif %}
         </tbody>
         <tfoot class="table-light fw-bold">
           <tr>
-            <td>TOTAL</td>
+            <td>TOTAL REPARTIDO ENTRE LAS UNIDADES</td>
             <td class="text-end text-danger">$ {{ "%.2f"|format(total_gastos)|replace(".",",") }}</td>
-            <td></td>
           </tr>
         </tfoot>
       </table>
     </div>
   </div>
+</div>
+
+<!-- Fondo de reserva -->
+<div class="col-md-6">
+  <div class="card shadow-sm border-info">
+    <div class="card-header bg-info text-dark fw-semibold">
+      <i class="bi bi-piggy-bank-fill"></i> Fondo de Reserva
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0">
+        <tbody>
+          <tr><td>Saldo anterior{% if fondo.saldo_inicial_periodo and fondo.saldo_anterior == fondo.saldo_inicial %} <span class="text-muted small">(saldo inicial al {{ fondo.saldo_inicial_periodo | mes_largo }})</span>{% endif %}</td>
+              <td class="text-end">$ {{ "%.2f"|format(fondo.saldo_anterior)|replace(".",",") }}</td></tr>
+          <tr><td>+ Aporte del período ({{ mes_gastos | mes_largo }})
+                {% if not fondo.aporte_liquidado %}<span class="badge bg-secondary">se suma al generar la liquidación</span>{% endif %}</td>
+              <td class="text-end text-success">{% if fondo.aporte_liquidado %}+ $ {{ "%.2f"|format(fondo.aporte)|replace(".",",") }}{% else %}<span class="text-muted">($ {{ "%.2f"|format(fondo.aporte)|replace(".",",") }})</span>{% endif %}</td></tr>
+          {% for g in desglose.extra_fondo %}
+          <tr><td class="ps-3">− {{ g.concepto }} <span class="text-muted small">pagado con el fondo</span></td>
+              <td class="text-end text-danger">− $ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td></tr>
+          {% else %}
+          <tr><td class="text-muted small">− Gastos pagados con el fondo</td><td class="text-end text-muted">$ 0,00</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-bold">
+          <tr><td>SALDO DISPONIBLE DEL FONDO</td>
+              <td class="text-end {{ 'text-danger' if fondo.saldo < 0 else 'text-info' }}">$ {{ "%.2f"|format(fondo.saldo)|replace(".",",") }}</td></tr>
+        </tfoot>
+      </table>
+      <div class="small text-muted px-2 py-1 border-top">
+        Saldo = saldo anterior + aportes registrados − gastos pagados con el fondo. El saldo acumulado no se cobra en las expensas.
+        {% if not fondo.saldo_inicial_periodo and not fondo.saldo_inicial %}
+          <br><i class="bi bi-info-circle"></i> Sin saldo inicial cargado: configuralo en
+          <a href="{{ url_for('config') }}">Configuración → Fondo de Reserva</a>.
+        {% endif %}
+      </div>
+      {% if desglose.extra_cobrar %}
+      <div class="alert alert-warning m-2 py-2 small">
+        <i class="bi bi-exclamation-diamond"></i>
+        <strong>Extraordinarios pendientes</strong> (se cobran en estas expensas, no salen del fondo):
+        $ {{ "%.2f"|format(desglose.total_extra_cobrar)|replace(".",",") }}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
 </div>
 
 {% endif %}

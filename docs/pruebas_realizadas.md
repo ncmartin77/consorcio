@@ -35,6 +35,57 @@ Se corrieron los cuatro scripts de `pruebas/` seguidos, contra la base de prueba
 
 ---
 
+## v6.0-0611 — Fondo de reserva y gastos extraordinarios
+
+**Pedido:** base de las expensas = gastos ordinarios y recurrentes + aporte del período al fondo (el saldo acumulado no se vuelve a cobrar); cada gasto extraordinario se paga con el fondo o queda pendiente y se cobra en las expensas siguientes; la pantalla de Liquidaciones muestra el saldo acumulado del fondo (saldo anterior + aportes − gastos pagados con el fondo).
+
+### Diagnóstico de lo que había (base de prueba, `pruebas/diagnostico_fondo.py`)
+
+| Tema | Antes de v6.0 |
+|---|---|
+| Tarjeta "FONDO RESERVA" en Liquidación | Mostraba solo el **aporte del mes** ($ 150.000), no el saldo |
+| "Fondo acumulado" del plano | Suma de **todos los aportes cargados** ($ 530.000), sin descontar gastos y con un aporte de agosto que nunca se liquidó; rotulado "pendiente de cobro" |
+| Gastos pagados con el fondo (`VARIABLE_FR`) | No se cobraban, pero **nunca se descontaban** del fondo |
+| Factura marcada "extraordinario" | Al pagarla se creaba un gasto con tipo = categoría de la factura → se cobraba como ordinario |
+| Saldo inicial del fondo | No existía |
+| Dato inconsistente | Gasto de octubre "candado" $ 11.000 cargado como VARIABLE (se cobraba) con su factura pagada con el fondo |
+
+### Resultados (`pruebas/probar_fondo_reserva.py`, mes de gastos 2026-11 → liquidación 2026-12)
+
+**1. Migración automática** (gastos cobrados cuya factura se pagó con el fondo):
+
+| Gasto | Antes | Después | Efecto |
+|---|---|---|---|
+| #20 candado (oct, $ 11.000) | VARIABLE (se cobraba) | VARIABLE_FR (pagado con el fondo) | Liquidación 2026-11: expensas $ 1.060.442,22 → **$ 1.049.442,22** (− $ 11.000) |
+
+**2. Saldo del fondo** (saldo inicial de prueba $ 500.000 al 2026-08; el aporte de agosto no cuenta):
+
+| Mes de gastos | Saldo anterior | + Aporte liquidado | − Pagado con el fondo | = Saldo disponible |
+|---|---|---|---|---|
+| 2026-10 | $ 580.000,00 (500.000 + 80.000 de sep) | $ 150.000,00 | $ 11.000,00 | **$ 719.000,00** |
+| 2026-11 | $ 719.000,00 | $ 150.000,00 | $ 0,00 | **$ 869.000,00** |
+
+**3 y 4. Gasto extraordinario de prueba de $ 100.000 en 2026-11:**
+
+| Modo | Expensas 2026-12 (total repartido) | Saldo del fondo | ¿Correcto? |
+|---|---|---|---|
+| Sin el gasto | $ 1.316.352,34 (= 1.166.352,34 ordinarios + 150.000 aporte) | $ 869.000,00 | ✅ base = ordinarios + aporte |
+| **Pendiente** (se cobra) | $ 1.416.352,34 (+ 100.000, línea aparte) | $ 869.000,00 (sin cambio) | ✅ |
+| **Con el fondo** | $ 1.316.352,34 (no se cobra) | $ 769.000,00 (− 100.000) | ✅ |
+
+**5. Pantallas y PDF** (revisados con un extraordinario de cada tipo: $ 100.000 a cobrar y $ 60.000 con el fondo):
+
+| Pantalla | Qué muestra | Resultado |
+|---|---|---|
+| Gastos | Ordinarios / aporte / tabla "Gastos extraordinarios" con "Pendiente: se cobra" o "Con el fondo" y botón para cambiar; desglose: ordinarios + aporte = base ordinaria + extraordinarios a cobrar = total a repartir; saldo del fondo | ✅ |
+| Liquidación | Tarjeta del fondo con el **saldo disponible** ($ 809.000) y el aporte del mes; panel de expensas (ordinarios, aporte, extraordinarios a cobrar, total repartido $ 1.416.352,34) y panel del fondo (anterior 719.000 + aporte 150.000 − bomba 60.000 = 809.000) con aviso de extraordinarios pendientes | ✅ |
+| PDF resumen | Gastos rotulados (Fijo / Aporte fondo / Extraord.), "TOTAL A REPARTIR"; estado financiero con el fondo (anterior, aporte, pagado, saldo); tabla aparte de pagados con el fondo | ✅ revisado visualmente |
+| Plano, Configuración | Cargan; el plano muestra el saldo disponible | ✅ 200 |
+
+Limpieza: gasto de prueba borrado, liquidación 2026-12 recalculada ($ 1.316.352,34) y configuración del fondo restaurada. La migración del candado queda aplicada (es el cambio buscado).
+
+---
+
 ## v5.8-0611 — Fecha del sistema como vista (sin pagos posteriores)
 
 **Problema reportado:** con la fecha del sistema en **06/10/2026**, la liquidación aparecía toda como **pagada**.
@@ -162,6 +213,8 @@ C:\Users\Maria\.venvs\consorcio\Scripts\python.exe pruebas\diagnostico_intereses
 C:\Users\Maria\.venvs\consorcio\Scripts\python.exe pruebas\probar_switch_interes.py [periodo] [unidad]
 C:\Users\Maria\.venvs\consorcio\Scripts\python.exe pruebas\probar_libre_deuda.py --limpiar
 C:\Users\Maria\.venvs\consorcio\Scripts\python.exe pruebas\probar_fecha_sistema.py [fecha_antes] [fecha_despues]
+C:\Users\Maria\.venvs\consorcio\Scripts\python.exe pruebas\diagnostico_fondo.py
+C:\Users\Maria\.venvs\consorcio\Scripts\python.exe pruebas\probar_fondo_reserva.py [mes_gastos]
 ```
 
 | Script | Qué prueba | ¿Modifica datos? |
@@ -171,5 +224,7 @@ C:\Users\Maria\.venvs\consorcio\Scripts\python.exe pruebas\probar_fecha_sistema.
 | `probar_switch_interes.py` | Switch por unidad y "Todos" | Sí, y restaura el switch de cada unidad |
 | `probar_libre_deuda.py` | Libre deuda completo | Sí: pago simulado (se restaura) y certificados (`--limpiar` los borra) |
 | `probar_fecha_sistema.py` | Fecha del sistema como vista | Solo la fecha en config; al final vuelve a la anterior y verifica que la base quedó igual |
+| `diagnostico_fondo.py` | Gastos por tipo, facturas y caja del fondo, saldo del fondo | No (solo lectura) |
+| `probar_fondo_reserva.py` | Migración, saldo del fondo, extraordinarios pendiente / con el fondo, pantallas y PDF | Sí: aplica la migración (permanente); el gasto de prueba se borra y la config se restaura |
 
 Cuando se agregue una prueba, sumar su sección arriba (la más nueva primero) y, si sirve repetirla, su script en `pruebas/`.

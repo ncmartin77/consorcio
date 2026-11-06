@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 5.9-0611
+**Versión actual:** 6.0-0611
 
 ---
 
@@ -334,10 +334,31 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ---
 
-#### v5.9-0611 — Documentación de pruebas
+### v6.x — Fondo de reserva y gastos extraordinarios
+
+#### v6.0-0611 — Fondo de reserva con saldo y gastos extraordinarios separados
 
 **Lanzamiento:** 6 de noviembre
 **Versión actual**
+**Por qué es mayor:** cambia cómo se arman las expensas (los extraordinarios pagados con el fondo dejan de cobrarse, las facturas extraordinarias se cobran como línea aparte) y corrige datos existentes. Aprobado por el usuario. La migración a Supabase Storage, que estaba planeada como 6.0, pasa a ser 7.0.
+
+**Cambios:**
+
+- **Base de las expensas** = gastos ordinarios y recurrentes + **aporte del período** al fondo (+ extraordinarios a cobrar, como línea aparte). El saldo acumulado del fondo nunca se cobra.
+- **Gastos extraordinarios** (tipo nuevo en "Agregar gasto"): cada uno se **paga con el fondo** (`VARIABLE_FR`: no se cobra y se descuenta del saldo) o queda **pendiente** y se cobra en las expensas siguientes (`EXTRAORDINARIO`: no toca el fondo). Botón para cambiar el modo mientras la liquidación que lo cobra esté abierta (recalcula).
+- **Saldo del fondo** = saldo inicial + aportes liquidados − gastos pagados con el fondo (`get_resumen_fondo()`). Campos nuevos en Configuración → Fondo de Reserva: saldo inicial y mes.
+- **Liquidación:** la tarjeta del fondo muestra el saldo disponible (antes, solo el aporte del mes); paneles nuevos con el desglose de las expensas y la cuenta del fondo (anterior + aporte − usado = saldo) y aviso de extraordinarios pendientes.
+- **Gastos:** desglose ordinarios / aporte / base ordinaria / extraordinarios a cobrar / total a repartir; tabla de extraordinarios con su modo; saldo del fondo.
+- **PDF resumen:** gastos rotulados por tipo, total a repartir, fondo en el estado financiero, tabla de pagados con el fondo. **Plano:** saldo disponible (antes "acumulado pendiente de cobro").
+- Pagar una factura marcada **extraordinaria** crea el gasto como extraordinario a cobrar (antes, con la categoría de la factura como tipo, mezclado con los ordinarios).
+- **Migración automática** (una vez por proceso y consorcio, auditada): gastos cobrados como ordinarios cuya factura se pagó con el fondo (categoría FONDO_RESERVA, mismo mes e importe) pasan a "pagado con el fondo" y se recalcula su liquidación si está abierta.
+- Pruebas: `docs/pruebas_realizadas.md` y `pruebas/probar_fondo_reserva.py`, `pruebas/diagnostico_fondo.py`.
+
+---
+
+#### v5.9-0611 — Documentación de pruebas
+
+**Lanzamiento:** 6 de noviembre
 
 **Cambios:**
 

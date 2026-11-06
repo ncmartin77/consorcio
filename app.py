@@ -105,6 +105,7 @@ _DESC_AUDITORIA = {
     "anular_libre_deuda": "Unidades: anular libre deuda",
     "save_gasto": "Gastos: guardar gasto",
     "delete_gasto": "Gastos: eliminar gasto",
+    "modo_extraordinario": "Gastos: extraordinario pagado con fondo / a cobrar",
     "tareas_add": "Tareas: agregar",
     "tareas_delete": "Tareas: completar/eliminar",
     "save_movimiento": "Caja: guardar movimiento",
@@ -152,6 +153,17 @@ def _contexto_auditoria():
         db.ensure_liq_sin_interes()
     except Exception as exc:
         app.logger.warning(f"[Auditoría] No se pudo inicializar: {exc}")
+    if session.get("consorcio_id"):
+        try:
+            db.set_contexto_auditoria(session.get("usuario_email", ""),
+                                      "Migración v6.0: gastos pagados con el fondo de reserva")
+            for p_gasto in db.migrar_gastos_pagados_con_fondo():
+                p_liq = db._next_periodo(p_gasto)
+                if db.liquidacion_existe(p_liq) and not db.liq_esta_cerrada(p_liq):
+                    db.generar_liquidacion(p_liq)
+                app.logger.info(f"[v6.0] Gasto de {p_gasto} pasado a 'pagado con fondo'")
+        except Exception as exc:
+            app.logger.warning(f"[v6.0] Migración de gastos con fondo: {exc}")
     desc = _DESC_AUDITORIA.get(request.endpoint, request.endpoint)
     if request.view_args:
         desc += " (" + ", ".join(f"{k}: {v}" for k, v in request.view_args.items()) + ")"
@@ -452,6 +464,8 @@ def config():
             "tasa_mora": request.form.get("tasa_mora", "7"),
             "dia_vencimiento": request.form.get("dia_vencimiento", "15"),
             "fondo_reserva_mensual": request.form.get("fondo_reserva_mensual", "0"),
+            "fondo_saldo_inicial": request.form.get("fondo_saldo_inicial", "0").replace(",", ".").strip() or "0",
+            "fondo_saldo_inicial_periodo": request.form.get("fondo_saldo_inicial_periodo", "").strip(),
             "dias_cobro": request.form.get("dias_cobro", ""),
             "horario_cobro": request.form.get("horario_cobro", ""),
             "direccion_cobro": request.form.get("direccion_cobro", ""),
@@ -774,13 +788,14 @@ def gastos(periodo=None):
         _set_periodo_trabajo(db._next_periodo(periodo))
     db.ensure_fondo_reserva_gasto(periodo)
     todos_gastos = db.get_gastos(periodo)
-    gastos_list  = [g for g in todos_gastos if g.get("tipo") not in ("VARIABLE_FR", "FONDO_RESERVA")]
-    gastos_fondo = [g for g in todos_gastos if g.get("tipo") == "FONDO_RESERVA"]
-    gastos_fr    = [g for g in todos_gastos if g.get("tipo") == "VARIABLE_FR"]
-    total        = sum(g["importe"] for g in gastos_list)
-    total_fondo  = sum(g["importe"] for g in gastos_fondo)
-    total_fr     = sum(g["importe"] for g in gastos_fr)
-    total_expensas = total + total_fondo
+    desglose     = db.get_desglose_gastos(periodo, todos_gastos)
+    gastos_list  = desglose["ordinarios"]
+    gastos_fondo = desglose["aporte"]
+    extraordinarios = [g for g in todos_gastos if g.get("tipo") in db.TIPOS_EXTRAORDINARIOS]
+    total        = desglose["total_ordinarios"]
+    total_fondo  = desglose["total_aporte"]
+    total_expensas = desglose["total_expensas"]
+    resumen_fondo = db.get_resumen_fondo(periodo)
     prox_periodo = db._next_periodo(periodo)
     liq_prox_cerrada = db.liq_esta_cerrada(prox_periodo)
     liq_prox_existe = db.liquidacion_existe(prox_periodo)
@@ -809,9 +824,9 @@ def gastos(periodo=None):
 
     proveedores = db.get_proveedores()
     tareas = db.get_tareas()
-    return render_template("gastos.html", gastos=gastos_list, gastos_fr=gastos_fr,
-                           gastos_fondo=gastos_fondo,
-                           periodo=periodo, total=total, total_fr=total_fr,
+    return render_template("gastos.html", gastos=gastos_list, extraordinarios=extraordinarios,
+                           gastos_fondo=gastos_fondo, desglose=desglose, resumen_fondo=resumen_fondo,
+                           periodo=periodo, total=total,
                            total_fondo=total_fondo, total_expensas=total_expensas,
                            prox_periodo=prox_periodo, liq_prox_cerrada=liq_prox_cerrada,
                            liq_prox_existe=liq_prox_existe,
@@ -839,15 +854,33 @@ def save_gasto():
         flash("El concepto es obligatorio.", "danger")
         return redirect(url_for("gastos", periodo=periodo))
 
-    if usar_fondo_reserva and tipo == "VARIABLE":
-        # Guardar como VARIABLE_FR: aparece en Gastos Mensuales (subsección Fondo de Reserva)
-        # pero NO afecta el total de gastos ni la liquidación.
-        # El movimiento en Caja Diaria se genera al pagar la factura (categoría FONDO_RESERVA).
-        db.save_gasto(periodo, concepto, importe, "VARIABLE_FR", int(row_num) if row_num else None)
-        return redirect(url_for("gastos", periodo=periodo))
+    # Extraordinario: pagado con el fondo (VARIABLE_FR, no se cobra y se descuenta del fondo)
+    # o a cobrar en las expensas siguientes (EXTRAORDINARIO, no toca el fondo).
+    if tipo == "EXTRAORDINARIO" and request.form.get("modo_extraordinario") == "FONDO":
+        tipo = "VARIABLE_FR"
+    elif usar_fondo_reserva and tipo == "VARIABLE":  # compatibilidad con el form anterior
+        tipo = "VARIABLE_FR"
 
     db.save_gasto(periodo, concepto, importe, tipo, int(row_num) if row_num else None)
     _recalcular_liq_si_posible(periodo)
+    return redirect(url_for("gastos", periodo=periodo))
+
+
+@app.route("/gastos/<int:gid>/extraordinario/<modo>", methods=["POST"])
+def modo_extraordinario(gid, modo):
+    """Cambia un gasto extraordinario entre pagado con el fondo y a cobrar en las expensas."""
+    row = db._fetchone("SELECT periodo FROM gastos WHERE id=%s AND consorcio_id=%s", (gid, db._cid()))
+    if not row:
+        flash("Gasto no encontrado.", "warning")
+        return redirect(url_for("gastos"))
+    periodo = row["periodo"]
+    if db.liq_esta_cerrada(db._next_periodo(periodo)):
+        flash(f"La liquidación de {db._next_periodo(periodo)} está cerrada: no se puede cambiar.", "danger")
+        return redirect(url_for("gastos", periodo=periodo))
+    if db.set_modo_extraordinario(gid, modo.upper()):
+        _recalcular_liq_si_posible(periodo)
+        flash("Gasto extraordinario: " + ("se paga con el fondo de reserva." if modo.upper() == "FONDO"
+                                          else "se cobra en las expensas siguientes."), "success")
     return redirect(url_for("gastos", periodo=periodo))
 
 
@@ -1030,7 +1063,8 @@ def liquidacion(periodo=None):
     # Salidas = facturas/gastos pagados en el mes ANTERIOR (que generaron esta liquidación)
     entradas, _ = db.get_movimientos_periodo(periodo)
     _, salidas = db.get_movimientos_periodo(mes_gastos)
-    fondo = db.get_fondo_reserva_periodo(mes_gastos)
+    fondo = db.get_resumen_fondo(mes_gastos)
+    desglose = db.get_desglose_gastos(mes_gastos, gastos)
     liq_cerrada = db.liq_esta_cerrada(periodo)
     liq_generada = db.liquidacion_existe(periodo)
     notas = db.get_notas_periodo(periodo)
@@ -1066,7 +1100,8 @@ def liquidacion(periodo=None):
                            saldo_al_default=saldo_al_default,
                            entradas_caja=entradas,
                            salidas_caja=salidas,
-                           fondo_reserva=fondo,
+                           fondo=fondo,
+                           desglose=desglose,
                            liq_cerrada=liq_cerrada,
                            liq_generada=liq_generada,
                            notas=notas,
@@ -1277,7 +1312,7 @@ def descargar_pdf(periodo):
     yp2, mp2 = int(periodo[:4]), int(periodo[5:7])
     hasta_pdf = f"{periodo}-{_cal.monthrange(yp2, mp2)[1]:02d}"
     saldo_caja, _, _ = db.get_saldo_caja(hasta_fecha=hasta_pdf)
-    fondo = db.get_fondo_reserva_periodo(mes_gastos_pdf)
+    fondo = db.get_resumen_fondo(mes_gastos_pdf, cfg)
     notas = db.get_notas_periodo(periodo)
     extras = db.get_gastos_extra(periodo)
     _logo = db.get_logo()

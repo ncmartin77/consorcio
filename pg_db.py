@@ -1240,7 +1240,8 @@ def pagar_factura(fid: int, fecha_pago: str) -> bool:
                         for gr in get_gastos_recurrentes())
     es_fr = (row["categoria"] or "").upper() == "FONDO_RESERVA"
     if not es_recurrente and not es_fr:
-        save_gasto(fecha_dt.strftime("%Y-%m"), concepto[:100], importe, row["categoria"] or "FIJO")
+        tipo = "EXTRAORDINARIO" if row["extraordinario"] else (row["categoria"] or "FIJO")
+        save_gasto(fecha_dt.strftime("%Y-%m"), concepto[:100], importe, tipo)
     return True
 
 
@@ -1425,11 +1426,8 @@ def get_movimientos_periodo(periodo: str):
 
 
 def get_fondo_reserva() -> float:
-    row = _fetchone(
-        "SELECT COALESCE(SUM(importe),0) AS total FROM gastos WHERE consorcio_id=%s AND tipo='FONDO_RESERVA'",
-        (_cid(),)
-    )
-    return round(float(row["total"]), 2)
+    """Saldo disponible del fondo (v6.0). Antes sumaba solo los aportes."""
+    return get_saldo_fondo()
 
 
 def ensure_fondo_reserva_gasto(periodo: str):
@@ -1443,6 +1441,145 @@ def ensure_fondo_reserva_gasto(periodo: str):
     )
     if not exists:
         save_gasto(periodo, "Fondo de Reserva", monto, "FONDO_RESERVA")
+
+
+# ── Fondo de reserva y gastos extraordinarios (v6.0) ─────────────────────────
+# Tipos de gasto:
+#   FIJO / VARIABLE / (otros)  → ordinarios: base de las expensas.
+#   FONDO_RESERVA              → aporte del período al fondo (se cobra en las expensas).
+#   EXTRAORDINARIO             → extraordinario A COBRAR: va en las expensas siguientes
+#                                como línea aparte; NO se descuenta del fondo.
+#   VARIABLE_FR                → extraordinario PAGADO CON EL FONDO: no se cobra en las
+#                                expensas y se descuenta del saldo del fondo.
+# Saldo del fondo = saldo inicial + aportes liquidados − gastos pagados con el fondo.
+# Un aporte cuenta cuando se generó la liquidación que lo cobra (gastos de P → liquidación P+1).
+
+TIPOS_EXTRAORDINARIOS = ("EXTRAORDINARIO", "VARIABLE_FR")
+TIPOS_NO_ORDINARIOS = ("FONDO_RESERVA",) + TIPOS_EXTRAORDINARIOS
+
+
+def get_desglose_gastos(periodo: str, gastos: list = None) -> dict:
+    """Separa los gastos del mes en ordinarios, aporte al fondo y extraordinarios."""
+    gastos = gastos if gastos is not None else get_gastos(periodo)
+    ordinarios = [g for g in gastos if g.get("tipo") not in TIPOS_NO_ORDINARIOS]
+    aporte = [g for g in gastos if g.get("tipo") == "FONDO_RESERVA"]
+    a_cobrar = [g for g in gastos if g.get("tipo") == "EXTRAORDINARIO"]
+    con_fondo = [g for g in gastos if g.get("tipo") == "VARIABLE_FR"]
+    t = lambda lista: round(sum(g["importe"] for g in lista), 2)
+    return {
+        "ordinarios": ordinarios, "aporte": aporte,
+        "extra_cobrar": a_cobrar, "extra_fondo": con_fondo,
+        "total_ordinarios": t(ordinarios), "total_aporte": t(aporte),
+        "total_extra_cobrar": t(a_cobrar), "total_extra_fondo": t(con_fondo),
+        # Lo que se reparte entre las unidades (igual que get_total_gastos)
+        "total_expensas": round(t(ordinarios) + t(aporte) + t(a_cobrar), 2),
+    }
+
+
+def _fondo_inicial(cfg: dict) -> tuple:
+    try:
+        saldo = float(cfg.get("fondo_saldo_inicial") or 0)
+    except ValueError:
+        saldo = 0.0
+    return saldo, (cfg.get("fondo_saldo_inicial_periodo") or "").strip()
+
+
+def get_resumen_fondo(mes_gastos: str, cfg: dict = None) -> dict:
+    """
+    Fondo de reserva para el mes de gastos `mes_gastos` (base de la liquidación mes_gastos+1):
+    saldo anterior, aporte del período, gastos pagados con el fondo y saldo disponible.
+    """
+    cfg = cfg if cfg is not None else get_config()
+    saldo_ini, p0 = _fondo_inicial(cfg)
+    filas = _fetchall(
+        "SELECT periodo, tipo, concepto, importe FROM gastos WHERE consorcio_id=%s "
+        "AND tipo IN ('FONDO_RESERVA','VARIABLE_FR') ORDER BY periodo, id", (_cid(),))
+    liquidados = {r["periodo"] for r in _fetchall(
+        "SELECT DISTINCT periodo FROM liquidaciones WHERE consorcio_id=%s", (_cid(),))}
+
+    def cuenta(f):  # movimientos posteriores al saldo inicial
+        return not p0 or f["periodo"] > p0
+
+    aportes_prev = sum(float(f["importe"]) for f in filas
+                       if f["tipo"] == "FONDO_RESERVA" and cuenta(f) and f["periodo"] < mes_gastos
+                       and _next_periodo(f["periodo"]) in liquidados)
+    usos_prev = sum(float(f["importe"]) for f in filas
+                    if f["tipo"] == "VARIABLE_FR" and cuenta(f) and f["periodo"] < mes_gastos)
+    saldo_anterior = round(saldo_ini + aportes_prev - usos_prev, 2)
+
+    en_rango = not p0 or mes_gastos > p0
+    aporte = round(sum(float(f["importe"]) for f in filas
+                       if f["tipo"] == "FONDO_RESERVA" and f["periodo"] == mes_gastos), 2)
+    aporte_liquidado = en_rango and _next_periodo(mes_gastos) in liquidados
+    usos = round(sum(float(f["importe"]) for f in filas
+                     if f["tipo"] == "VARIABLE_FR" and f["periodo"] == mes_gastos), 2) if en_rango else 0.0
+    saldo = round(saldo_anterior + (aporte if aporte_liquidado else 0) - usos, 2)
+    return {
+        "mes_gastos": mes_gastos,
+        "saldo_inicial": saldo_ini, "saldo_inicial_periodo": p0,
+        "saldo_anterior": saldo_anterior,
+        "aporte": aporte, "aporte_liquidado": aporte_liquidado,
+        "usos": usos, "saldo": saldo,
+    }
+
+
+def get_saldo_fondo() -> float:
+    """Saldo disponible del fondo hoy (todos los aportes liquidados y usos registrados)."""
+    ultimo = _fetchone("SELECT MAX(periodo) AS p FROM gastos WHERE consorcio_id=%s", (_cid(),))
+    mes = (ultimo and ultimo["p"]) or fecha_sistema().strftime("%Y-%m")
+    return get_resumen_fondo(mes)["saldo"]
+
+
+def set_modo_extraordinario(gasto_id: int, modo: str) -> str | None:
+    """
+    Cambia un gasto extraordinario entre 'FONDO' (pagado con el fondo) y 'COBRAR'
+    (se cobra en las expensas siguientes). Devuelve el período del gasto o None.
+    """
+    nuevo = {"FONDO": "VARIABLE_FR", "COBRAR": "EXTRAORDINARIO"}.get(modo)
+    row = _fetchone("SELECT periodo, tipo FROM gastos WHERE id=%s AND consorcio_id=%s", (gasto_id, _cid()))
+    if not nuevo or not row or row["tipo"] not in TIPOS_EXTRAORDINARIOS:
+        return None
+    _exec("UPDATE gastos SET tipo=%s WHERE id=%s AND consorcio_id=%s", (nuevo, gasto_id, _cid()))
+    return row["periodo"]
+
+
+_migracion_fondo_ok: set = set()
+
+
+def migrar_gastos_pagados_con_fondo() -> list:
+    """
+    Una vez por proceso y consorcio: gastos cargados como ordinarios cuya factura se pagó
+    con el fondo (categoría FONDO_RESERVA, mismo mes e importe) pasan a VARIABLE_FR, salvo
+    que la liquidación que los cobra esté CERRADA o ya exista ese gasto como VARIABLE_FR.
+    Devuelve los períodos de gastos corregidos (para recalcular su liquidación).
+    """
+    cid = _cid()
+    if cid in _migracion_fondo_ok:
+        return []
+    with _columnas_lock:
+        if cid in _migracion_fondo_ok:
+            return []
+        candidatos = _fetchall("""
+            SELECT DISTINCT ON (g.id) g.id, g.periodo
+            FROM gastos g
+            JOIN facturas f ON f.consorcio_id = g.consorcio_id
+             AND upper(coalesce(f.categoria,'')) = 'FONDO_RESERVA'
+             AND f.importe = g.importe
+             AND to_char(coalesce(f.fecha_pago, f.fecha), 'YYYY-MM') = g.periodo
+            WHERE g.consorcio_id = %s
+              AND g.tipo NOT IN ('FONDO_RESERVA','VARIABLE_FR','EXTRAORDINARIO')
+              AND NOT EXISTS (SELECT 1 FROM gastos g2 WHERE g2.consorcio_id = g.consorcio_id
+                              AND g2.periodo = g.periodo AND g2.tipo = 'VARIABLE_FR'
+                              AND g2.importe = g.importe)
+        """, (cid,))
+        periodos = []
+        for c in candidatos:
+            if liq_esta_cerrada(_next_periodo(c["periodo"])):
+                continue
+            _exec("UPDATE gastos SET tipo='VARIABLE_FR' WHERE id=%s AND consorcio_id=%s", (c["id"], cid))
+            periodos.append(c["periodo"])
+        _migracion_fondo_ok.add(cid)
+        return sorted(set(periodos))
 
 
 # ── Historial / plano ─────────────────────────────────────────────────────────

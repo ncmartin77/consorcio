@@ -124,7 +124,7 @@ templates/                ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 
 **Deuda anterior flow:** if a unit has no previous liquidación row, its `deuda_inicial` field (set in Apertura) seeds the first debt. Subsequent months carry forward `saldo_pendiente` for partial payments or `total_a_pagar` for unpaid units.
 
-**Fondo de reserva** is a special gasto of type `FONDO_RESERVA`, auto-inserted each month by `ensure_fondo_reserva_gasto()`. Its accumulated total is tracked separately via `get_fondo_reserva()` which sums CAJA entries of category `FONDO_RESERVA`.
+**Fondo de reserva (v6.0):** the monthly contribution is a gasto of type `FONDO_RESERVA` (auto-inserted by `ensure_fondo_reserva_gasto()`), charged in the expensas. Extraordinary expenses are either `VARIABLE_FR` (paid with the fund: not charged, deducted from the fund) or `EXTRAORDINARIO` (pending: charged in the next expensas as a separate line, fund untouched); switch with `POST /gastos/<id>/extraordinario/<FONDO|COBRAR>`. Fund balance: `pg_db.get_resumen_fondo(mes_gastos)` = config `fondo_saldo_inicial` (as of `fondo_saldo_inicial_periodo`) + contributions whose next-period liquidación exists − `VARIABLE_FR`. The accumulated balance is never charged. `get_desglose_gastos()` splits ordinarios / aporte / extraordinarios.
 
 **Gastos `VARIABLE_FR` (Fondo de Reserva variable):** when adding a VARIABLE gasto, the Agregar Gasto modal shows a checkbox "Usar de Fondo de Reserva". When checked, the gasto is saved to `GASTOS_MENSUALES` with `tipo="VARIABLE_FR"`. Key behaviors:
 - Shown in Gastos Mensuales in a separate subsection ("Gastos con Fondo de Reserva"), not in the main table.

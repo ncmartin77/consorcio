@@ -446,9 +446,13 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
 
     # Detalle de gastos + caja en dos columnas
     gasto_data = [["Concepto", "Tipo", "Importe"]]
-    for g in gastos_normal:
-        gasto_data.append([g["concepto"], g.get("tipo",""), _fmt(g["importe"])])
-    gasto_data.append(["TOTAL GASTOS", "", _fmt(total_gastos)])
+    _rotulo = {"FONDO_RESERVA": "Aporte fondo", "EXTRAORDINARIO": "Extraord.",
+               "FIJO": "Fijo", "VARIABLE": "Variable"}
+    # Orden: ordinarios, aporte al fondo, extraordinarios a cobrar
+    _orden = lambda g: {"FONDO_RESERVA": 1, "EXTRAORDINARIO": 2}.get(g.get("tipo"), 0)
+    for g in sorted(gastos_normal, key=_orden):
+        gasto_data.append([g["concepto"], _rotulo.get(g.get("tipo", ""), g.get("tipo", "")), _fmt(g["importe"])])
+    gasto_data.append(["TOTAL A REPARTIR", "", _fmt(total_gastos)])
 
     gt = Table(gasto_data, colWidths=[6.5*cm, 2.0*cm, 2.5*cm])  # = 11.0 cm
     ng = len(gasto_data)
@@ -469,6 +473,16 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         ["ESTADO FINANCIERO"],
         ["Saldo en Caja", _fmt(saldo_caja)],
     ]
+    if isinstance(fondo_reserva, dict):  # v6.0: resumen del fondo (pg_db.get_resumen_fondo)
+        fr = fondo_reserva
+        caja_data += [
+            ["Fondo: saldo anterior", _fmt(fr["saldo_anterior"])],
+            ["+ Aporte del mes", _fmt(fr["aporte"] if fr["aporte_liquidado"] else 0)],
+            ["− Pagado con el fondo", _fmt(fr["usos"])],
+            ["Fondo: saldo disponible", _fmt(fr["saldo"])],
+        ]
+    elif fondo_reserva:
+        caja_data.append(["Fondo de Reserva", _fmt(fondo_reserva)])
     ct = Table(caja_data, colWidths=[3.8*cm, 3.4*cm])  # = 7.2 cm
     ct.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), c_verde), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
@@ -476,7 +490,8 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,-1), 8),
         ("FONTNAME", (0,1), (-1,1), "Helvetica-Bold"),
         ("BACKGROUND", (0,1), (-1,1), colors.HexColor("#d4edda")),
-        ("ALIGN", (1,1), (1,1), "RIGHT"),
+        ("ALIGN", (1,1), (1,-1), "RIGHT"),
+        ("FONTNAME", (0,len(caja_data)-1), (-1,len(caja_data)-1), "Helvetica-Bold"),
         ("GRID", (0,0), (-1,-1), 0.3, colors.grey),
         ("TOPPADDING", (0,0), (-1,-1), 4), ("BOTTOMPADDING", (0,0), (-1,-1), 4),
         ("LEFTPADDING", (0,0), (-1,-1), 6),
@@ -493,7 +508,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
     # Sección Fondo de Reserva (solo si hay gastos VARIABLE_FR)
     if gastos_fr:
         c_naranja = colors.HexColor("#856404")
-        story.append(Paragraph("GASTOS CON FONDO DE RESERVA",
+        story.append(Paragraph("GASTOS EXTRAORDINARIOS PAGADOS CON EL FONDO DE RESERVA (no se cobran en las expensas)",
                                 st("frh", fontSize=9, fontName="Helvetica-Bold",
                                    textColor=c_naranja, spaceAfter=4)))
         fr_data = [["Concepto", "Importe"]]
