@@ -725,8 +725,8 @@ def generar_liquidacion(periodo: str):
     """
     Genera / recalcula la liquidación ABIERTA de `periodo`. La fecha de referencia es la fecha del
     sistema (fijada o real): deuda anterior = total de la liquidación anterior − sus pagos con
-    fecha <= hoy (negativa = saldo a favor). v9.1: la liquidación NO lleva interés; el interés se
-    decide al cobrar (switch en Cobranzas, `interes_pago`). Si nada cambió no escribe.
+    fecha <= hoy (negativa = saldo a favor). Mientras está abierta NO lleva interés: el interés se
+    decide al CERRARLA (v9.2, `cerrar_liquidacion` con un switch por unidad). Si nada cambió no escribe.
     """
     if liq_esta_cerrada(periodo):
         return None
@@ -906,38 +906,14 @@ def _error_cobro(periodo: str) -> str | None:
     return None
 
 
-def interes_pago(periodo: str, unidad: str, fecha: str, saldo: float, cfg: dict = None,
-                 pagos: list = None) -> float:
-    """
-    Interés que corresponde cobrar al registrar un pago de la liquidación `periodo` (v9.1, regla
-    del usuario): si la fecha de pago es posterior al vencimiento, tasa × saldo adeudado, UNA sola
-    vez por unidad y liquidación (si ya se le cobró interés en esta liquidación, 0).
-    Lo que pasa a la liquidación siguiente no lleva interés. El switch de Cobranzas decide si se cobra.
-    """
-    cfg = cfg if cfg is not None else get_config()
-    venc = _fecha_vencimiento(periodo, cfg)
-    if not venc or saldo <= 0 or not fecha or fecha <= venc.strftime("%Y-%m-%d"):
-        return 0.0
-    pagos = pagos if pagos is not None else get_pagos(periodo, unidad)
-    if any(p.get("interes", 0) > 0 for p in pagos if str(p["unidad"]) == str(unidad)):
-        return 0.0
-    return round(saldo * float(cfg.get("tasa_mora", 7) or 0) / 100, 2)
-
-
-def info_cobranza(periodo: str, filas: list, fecha: str = None) -> dict:
-    """Agrega a cada fila `interes_sugerido` (a la fecha del sistema) y `interes_ya` (ya se le cobró).
-    Devuelve {"vencimiento": iso, "tasa": float} para la pantalla."""
-    cfg = get_config()
-    fecha = fecha or fecha_sistema(cfg).strftime("%Y-%m-%d")
-    venc = _fecha_vencimiento(periodo, cfg)
+def info_cobranza(periodo: str, filas: list) -> dict:
+    """Agrega a cada fila `saldo_a_pagar`. Devuelve datos de la pantalla de Cobranzas."""
     for r in filas:
         saldo = 0.0 if r["tipo_pago"] == "TOTAL" else (
             r["saldo_pendiente"] if r["tipo_pago"] == "PARCIAL" else r["total_a_pagar"])
         r["saldo_a_pagar"] = round(saldo, 2)
-        r["interes_ya"] = r.get("interes_cobrado", 0) > 0
-        r["interes_sugerido"] = interes_pago(periodo, r["unidad"], fecha, saldo, cfg, r.get("pagos", []))
-    return {"vencimiento": venc.strftime("%Y-%m-%d") if venc else "",
-            "tasa": float(cfg.get("tasa_mora", 7) or 0)}
+    venc = _fecha_vencimiento(periodo, get_config())
+    return {"vencimiento": venc.strftime("%Y-%m-%d") if venc else ""}
 
 
 def _regenerar_siguiente(periodo: str):
@@ -948,14 +924,13 @@ def _regenerar_siguiente(periodo: str):
 
 
 def registrar_pago(periodo: str, unidad: str, monto: float, fecha: str = None,
-                   bonificacion: float = 0.0, bonif_motivo: str = "", regenerar: bool = True,
-                   cobrar_interes: bool = True) -> dict:
+                   bonificacion: float = 0.0, bonif_motivo: str = "", regenerar: bool = True) -> dict:
     """
     Registra un pago de expensas contra la liquidación CERRADA `periodo` (v9.0). Crea el pago,
     su entrada en Caja y, si hay bonificación, la salida en Caja (no cambia lo que se debe).
-    v9.1: si paga después del vencimiento y `cobrar_interes` (switch), se cobra además el interés
-    (`interes_pago`), con su propia entrada en Caja (categoría Intereses); no cambia lo que se debe.
-    Devuelve {"error": msg} o {"tipo", "saldo", "monto", "total_pagado", "interes"}.
+    El interés no se cobra acá: se define al cerrar la liquidación (v9.2). Las columnas
+    pagos.interes / interes_caja_id quedan de la v9.1 (se siguen mostrando y anulando).
+    Devuelve {"error": msg} o {"tipo", "saldo", "monto", "total_pagado"}.
     """
     err = _error_cobro(periodo)
     if err:
@@ -981,9 +956,7 @@ def registrar_pago(periodo: str, unidad: str, monto: float, fecha: str = None,
         return {"error": f"La UF {unidad} no figura en la liquidación {periodo}."}
 
     total = float(row["total_a_pagar"] or 0)
-    pagos_uf = get_pagos(periodo, unidad)
-    previo = sum(p["monto"] for p in pagos_uf)
-    interes = interes_pago(periodo, unidad, fecha, round(total - previo, 2), pagos=pagos_uf) if cobrar_interes else 0.0
+    previo = sum(p["monto"] for p in get_pagos(periodo, unidad))
     total_pagado = round(previo + monto, 2)
     tipo_pago, saldo, _ = _estado_pago(total, total_pagado)
 
@@ -1001,23 +974,15 @@ def registrar_pago(periodo: str, unidad: str, monto: float, fecha: str = None,
             "INSERT INTO caja (consorcio_id, fecha, descripcion, tipo, categoria, importe) "
             "VALUES (%s,%s,%s,'SALIDA','BONIFICACION',%s) RETURNING id",
             (_cid(), fecha_d, desc[:200], bonificacion))
-    interes_caja_id = None
-    if interes > 0:
-        interes_caja_id = _insert_returning(
-            "INSERT INTO caja (consorcio_id, fecha, descripcion, tipo, categoria, importe) "
-            "VALUES (%s,%s,%s,'ENTRADA','Intereses',%s) RETURNING id",
-            (_cid(), fecha_d, f"Interés mora Expensas {periodo} - {persona} - UF {unidad}"[:200], interes))
     _exec("""
         INSERT INTO pagos (consorcio_id, periodo, unidad, fecha, monto, bonificacion, bonif_motivo,
-                           caja_id, bonif_caja_id, interes, interes_caja_id)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                           caja_id, bonif_caja_id)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """, (_cid(), periodo, str(unidad), fecha_d, round(monto, 2), bonificacion,
-          (bonif_motivo or None) if bonificacion > 0 else None, caja_id, bonif_caja_id,
-          interes, interes_caja_id))
+          (bonif_motivo or None) if bonificacion > 0 else None, caja_id, bonif_caja_id))
     if regenerar:
         _regenerar_siguiente(periodo)
-    return {"tipo": tipo_pago, "saldo": saldo, "monto": round(monto, 2), "total_pagado": total_pagado,
-            "interes": interes}
+    return {"tipo": tipo_pago, "saldo": saldo, "monto": round(monto, 2), "total_pagado": total_pagado}
 
 
 def anular_pagos(periodo: str, unidades: list = None, pago_id: int = None) -> tuple:
@@ -1051,7 +1016,7 @@ def anular_pagos(periodo: str, unidades: list = None, pago_id: int = None) -> tu
     return True, (f"Se anularon {len(pagos)} pago(s) de {periodo} y {len(ids_caja)} movimiento(s) de Caja."), len(pagos)
 
 
-def pagar_todo(periodo: str, fecha_pago: str, cobrar_interes: bool = True) -> tuple:
+def pagar_todo(periodo: str, fecha_pago: str) -> tuple:
     """Paga el saldo de todas las unidades con deuda en la liquidación. Devuelve (cantidad, error)."""
     err = _error_cobro(periodo)
     if err:
@@ -1063,8 +1028,7 @@ def pagar_todo(periodo: str, fecha_pago: str, cobrar_interes: bool = True) -> tu
         saldo = r["saldo_pendiente"] if r["tipo_pago"] == "PARCIAL" else r["total_a_pagar"]
         if saldo <= 0:
             continue
-        res = registrar_pago(periodo, str(r["unidad"]), saldo, fecha_pago, regenerar=False,
-                             cobrar_interes=cobrar_interes)
+        res = registrar_pago(periodo, str(r["unidad"]), saldo, fecha_pago, regenerar=False)
         if res.get("error"):
             if n:
                 _regenerar_siguiente(periodo)
@@ -1208,12 +1172,44 @@ def error_cierre(periodo: str) -> str | None:
     return None
 
 
-def cerrar_liquidacion(periodo: str) -> str | None:
-    """Recalcula a la fecha del sistema y congela la liquidación. Devuelve error o None."""
+def tasa_mora(cfg: dict = None) -> float:
+    cfg = cfg if cfg is not None else get_config()
+    return float(cfg.get("tasa_mora", 7) or 0)
+
+
+def propuesta_intereses(filas: list, cfg: dict = None) -> list:
+    """Unidades con deuda anterior (> 0) y el interés que les corresponde al cerrar:
+    tasa × deuda anterior (v9.2). Para la ventana de cierre."""
+    tasa = tasa_mora(cfg)
+    return [{"unidad": str(r["unidad"]), "persona": r.get("inquilino") or r.get("propietario") or "",
+             "deuda": round(r["deuda_anterior"], 2), "interes": round(r["deuda_anterior"] * tasa / 100, 2)}
+            for r in filas if r["deuda_anterior"] > 0]
+
+
+def cerrar_liquidacion(periodo: str, con_interes=None) -> str | None:
+    """
+    Recalcula a la fecha del sistema y congela la liquidación (v9.2). Al cerrar se decide el
+    interés: a las unidades de `con_interes` (iterable de números de UF; None = ninguna) se les
+    suma tasa × deuda anterior; a las demás, 0 (quedan con sin_interes). Devuelve error o None.
+    """
     err = error_cierre(periodo)
     if err:
         return err
-    generar_liquidacion(periodo)
+    filas = generar_liquidacion(periodo) or []
+    elegidas = {str(u) for u in (con_interes or [])}
+    valores = []
+    for p in propuesta_intereses(filas):
+        if p["unidad"] in elegidas and p["interes"] > 0:
+            valores.append((p["interes"], False, p["unidad"]))
+    with _conn() as c:
+        with c.cursor() as cur:
+            cur.execute("UPDATE liquidaciones SET interes=0, sin_interes=TRUE WHERE consorcio_id=%s AND periodo=%s "
+                        "AND deuda_anterior > 0", (_cid(), periodo))
+            for interes, sin_int, unidad in valores:
+                cur.execute("""UPDATE liquidaciones SET interes=%s, sin_interes=%s,
+                                   total_a_pagar = expensas + deuda_anterior + COALESCE(extras, 0) + %s
+                               WHERE consorcio_id=%s AND periodo=%s AND unidad=%s""",
+                            (interes, sin_int, interes, _cid(), periodo, unidad))
     set_liq_estado(periodo, "CERRADA")
     _regenerar_siguiente(periodo)
     return None

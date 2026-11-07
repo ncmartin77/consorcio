@@ -35,6 +35,59 @@ Se corrieron los cuatro scripts de `pruebas/` seguidos, contra la base de prueba
 
 ---
 
+## v9.2-0711 — Interés al cerrar la liquidación (07/11/2026)
+
+`pruebas/probar_cobranzas.py` actualizada a la regla v9.2: abierta sin interés; al cerrar, switch por unidad con tasa × deuda anterior (L08: UF 1 deuda 100 → 10; L09: UF 3 deuda 150 → 15); Cobranzas no cobra interés. Mismo consorcio aislado (tasa 10 %). Resultado: **44/44 OK**.
+
+| Caso | Esperado | Resultado |
+|---|---|---|
+| L08 generada (deuda de apertura, sin interés el 1er mes) | {1: 600, 2: 300, 3: 150} | ✅ |
+| Pagar sobre liquidación ABIERTA | rechazado | ✅ |
+| Cerrar L08 con fecha 20/07 (no cambió el mes) | sigue ABIERTA | ✅ |
+| Pantalla Liquidación sin botones de pago | sin modalPago / Pago Completo | ✅ |
+| Ventana de cierre L08: unidades con deuda anterior | solo UF 1 (deuda 100, interés 10) | ✅ |
+| Cerrar L08 con fecha 01/08 | CERRADA, fecha de cierre 01/08 | ✅ |
+| Periodo en cobro | 2026-08 | ✅ |
+| Cerrar con interés para UF 1 | interés 10 % × 100 = 10, total 610 | ✅ |
+| Pago con fecha posterior a la fecha del sistema (05/08 con hoy 01/08) | rechazado | ✅ |
+| Pagar después del vencimiento (UF 2, 20/08) | Cobranzas no cobra interés | ✅ |
+| Estado de L08 tras los pagos | 1 TOTAL 660 / 2 TOTAL 300 / 3 PENDIENTE 0 | ✅ |
+| UF 1 pagó de más | saldo a favor 50 | ✅ |
+| Pagos y Caja | 4 pagos, 4 entradas Expensas + 1 bonificación, sin Intereses | ✅ |
+| Pago con fecha en una Caja cerrada (julio, L08 cerrada) | rechazado | ✅ |
+| L09 abierta: deuda / interés / total (abierta: sin interés) | {'1': (-50.0, 0.0, 950.0), '2': (0.0, 0.0, 600.0), '3': (150.0, 0.0, 550.0)} | ✅ |
+| Pantalla Liquidación sin columna ni switch de interés | sin chk-sin-interes / toggleTodosInteres | ✅ |
+| Pagar sobre L09 abierta | rechazado | ✅ |
+| Fecha 15/08: L08 UF 2 no cuenta el pago del 20/08 | PARCIAL 100, pagó el 20/08 | ✅ |
+| Fecha 15/08: L09 se recalcula a esa fecha | UF1 deuda 0 / UF2 deuda 200, sin interés | ✅ |
+| Cobranzas: fecha por defecto = fecha del sistema | value="2026-08-15" | ✅ |
+| Vuelta a 25/08: L09 UF 2 | deuda 0, total 600 | ✅ |
+| Cobranzas sin interés (ni switch ni columna) | sin cobrar_interes / si paga hoy | ✅ |
+| Anular el pago del 20/08 de UF 2 | se borra pago + entrada + bonificación + interés; L09 UF2 deuda 200 | ✅ |
+| Revertir desde el Log el último pago | UF 2 vuelve a deber 200 en L09 | ✅ |
+| Cerrar L09 el 25/08 | rechazado (desde el 01/09) | ✅ |
+| Propuesta de interés al cerrar L09 | solo UF 3: deuda 150, interés 15 (UF 1 a favor, UF 2 sin deuda) | ✅ |
+| L09 cerrada con interés para UF 3 | UF3 15 → total 565; UF1/UF2 sin interés | ✅ |
+| Liquidación cerrada muestra la columna Interés | columna con $ 15,00 | ✅ |
+| Cerrar L09 el 02/09 | CERRADA, en cobro 2026-09 | ✅ |
+| Pagar sobre L08 (ya no es la última cerrada) | rechazado | ✅ |
+| Pago a L09 con fecha de agosto (Caja de agosto cerrada) | rechazado | ✅ |
+| Pago a L09 el 03/09 | UF 3 TOTAL | ✅ |
+| Reabrir L09 con pagos | rechazado | ✅ |
+| Reabrir L08 con L09 cerrada | rechazado | ✅ |
+| Editar en Caja el cobro de UF 3 (500, 04/09) | el pago acompaña: 500 el 04/09, PARCIAL | ✅ |
+| Borrar en Caja el cobro de UF 3 | se borra el pago | ✅ |
+| Borrar en Caja un cobro de agosto (Caja cerrada) | bloqueado | ✅ |
+| Pago completo de L09 cobra el total (con el interés de UF 3) | 950 / 600 / 565 | ✅ |
+| Pago completo de L09 | todas TOTAL | ✅ |
+| Libre deuda según la última cerrada (L09) | las 3 libres, período 2026-09 | ✅ |
+| Pantallas y PDFs | 200 en todas | ✅ |
+| Cobranzas de L08 (no es la última) | solo consulta, sin botón de pago | ✅ |
+| Migración de un pago viejo (200 en Caja + 100 sin entrada, bonificación) | 2 pagos: 200 vinculado a Caja + 100; bonificación 10 en el primero | ✅ |
+| Migración idempotente | 0 la segunda vez | ✅ |
+
+---
+
 ## v9.1-0711 — Interés al cobrar (07/11/2026)
 
 `pruebas/probar_cobranzas.py` actualizada a la regla v9.1 (la liquidación no lleva interés; se cobra al registrar un pago fuera de término con el switch, tasa × saldo, una vez por unidad). Mismo consorcio aislado (tasa 10 %, vencimiento día 10). Resultado: **42/42 OK**.

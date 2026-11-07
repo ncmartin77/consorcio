@@ -65,9 +65,8 @@
   <i class="bi bi-info-circle"></i> Lo que se cobre acá pasa a la liquidación de
   <strong>{{ periodo | mes_largo }}</strong> siguiente como deuda anterior (o saldo a favor si pagan de más){% if liq_abierta %}
   y se actualiza en la liquidación abierta hasta que se cierre{% endif %}. Lo que siga impago al vencimiento
-  ({{ vencimiento | fecha_ar }}): si pagan después, al registrar el pago se cobra el interés
-  ({{ tasa_mora }} % del saldo, una sola vez) salvo que se desactive el switch. Lo que pasa a la liquidación
-  siguiente no lleva interés.
+  ({{ vencimiento | fecha_ar }}). Lo que quede impago pasa a la liquidación siguiente, donde al cerrarla se decide
+  si lleva interés.
 </div>
 {% endif %}
 
@@ -118,7 +117,6 @@
             <th class="text-end">Total a pagar</th>
             <th class="text-end">Abonado</th>
             <th class="text-end">Saldo</th>
-            <th class="text-end" title="Interés si paga hoy (fecha del sistema), o el ya cobrado">Interés</th>
             <th class="text-center">Estado</th>
             <th class="text-center">Último pago</th>
             <th class="text-center">Acciones</th>
@@ -142,13 +140,6 @@
               {% elif tipo == 'TOTAL' %}—
               {% elif tipo == 'PARCIAL' %}<span class="text-danger fw-semibold">$ {{ "%.2f"|format(r.saldo_pendiente)|replace(".",",") }}</span>
               {% else %}<span class="text-danger fw-semibold">$ {{ "%.2f"|format(r.total_a_pagar)|replace(".",",") }}</span>{% endif %}
-            </td>
-            <td class="text-end">
-              {% if r.interes_cobrado > 0 %}<span class="text-success">$ {{ "%.2f"|format(r.interes_cobrado)|replace(".",",") }}</span>
-                <div class="text-muted" style="font-size:0.65rem">cobrado</div>
-              {% elif r.interes_sugerido > 0 %}<span class="text-danger">$ {{ "%.2f"|format(r.interes_sugerido)|replace(".",",") }}</span>
-                <div class="text-muted" style="font-size:0.65rem">si paga hoy</div>
-              {% else %}—{% endif %}
             </td>
             <td class="text-center">
               {% if tipo == 'TOTAL' %}<span class="badge bg-success">Pagado</span>
@@ -200,7 +191,6 @@
             <td class="text-end">$ {{ "%.2f"|format(total_a_pagar)|replace(".",",") }}</td>
             <td class="text-end text-success">$ {{ "%.2f"|format(total_cobrado)|replace(".",",") }}</td>
             <td class="text-end text-danger">$ {{ "%.2f"|format(_saldo_total.v)|replace(".",",") }}</td>
-            <td class="text-end text-success">{% if total_interes > 0 %}$ {{ "%.2f"|format(total_interes)|replace(".",",") }}{% endif %}</td>
             <td colspan="3"></td>
           </tr>
         </tfoot>
@@ -217,7 +207,6 @@
       <table class="table table-sm table-hover mb-0 small">
         <thead class="table-light">
           <tr><th>Fecha</th><th>UF</th><th>Nombre</th><th class="text-end">Monto</th>
-              <th class="text-end">Interés</th>
               <th class="text-end">Bonificación</th>{% if cobrable and es_admin %}<th></th>{% endif %}</tr>
         </thead>
         <tbody>
@@ -227,7 +216,6 @@
             <td><strong>{{ p.unidad }}</strong></td>
             <td>{{ p.persona }}</td>
             <td class="text-end text-success">$ {{ "%.2f"|format(p.monto)|replace(".",",") }}</td>
-            <td class="text-end">{% if p.interes > 0 %}$ {{ "%.2f"|format(p.interes)|replace(".",",") }}{% else %}—{% endif %}</td>
             <td class="text-end">{% if p.bonificacion > 0 %}$ {{ "%.2f"|format(p.bonificacion)|replace(".",",") }}
               {% if p.bonif_motivo %}<div class="text-muted" style="font-size:0.65rem">{{ p.bonif_motivo }}</div>{% endif %}
               {% else %}—{% endif %}</td>
@@ -270,13 +258,6 @@
           <label class="form-label fw-semibold">Fecha de Pago *</label>
           <input type="date" class="form-control" name="fecha_pago" value="{{ hoy_sistema }}"
                  min="{{ periodo }}-01" max="{{ hoy_sistema }}" required>
-          <div class="form-check form-switch mt-3">
-            <input class="form-check-input" type="checkbox" name="cobrar_interes" value="1" id="pc_interes"
-                   {% if vencimiento and hoy_sistema > vencimiento %}checked{% endif %}>
-            <label class="form-check-label small" for="pc_interes">
-              Cobrar interés ({{ tasa_mora }} %) a las que pagan después del vencimiento ({{ vencimiento | fecha_ar }})
-            </label>
-          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -326,23 +307,6 @@
             <label class="form-label fw-semibold">Fecha de Pago *</label>
             <input type="date" class="form-control" name="fecha_pago" id="mp_fecha"
                    min="{{ periodo }}-01" max="{{ hoy_sistema }}" required>
-          </div>
-          <div id="mp_interes_box" class="border rounded p-2 mb-2 small" style="display:none">
-            <div class="form-check form-switch mb-1">
-              <input class="form-check-input" type="checkbox" name="cobrar_interes" value="1" id="mp_cobrar_interes">
-              <label class="form-check-label fw-semibold" for="mp_cobrar_interes">
-                Cobrar interés por pago fuera de término
-              </label>
-            </div>
-            <div class="d-flex justify-content-between text-muted">
-              <span>Interés ({{ tasa_mora }} % del saldo):</span><strong id="mp_interes" class="text-danger"></strong>
-            </div>
-            <div class="d-flex justify-content-between">
-              <span>Entra en Caja:</span><strong id="mp_entra"></strong>
-            </div>
-          </div>
-          <div id="mp_interes_ya" class="text-muted small mb-2" style="display:none">
-            <i class="bi bi-info-circle"></i> Ya se le cobró interés en esta liquidación.
           </div>
           <div id="mp_aviso_parcial" class="alert alert-warning py-1 small mb-0" style="display:none">
             <i class="bi bi-exclamation-triangle"></i>
@@ -497,28 +461,6 @@ function fmt(n) {
 
 // ── Registrar pago ──────────────────────────────────────────────────────────
 let _saldoActual = 0;
-let _filaActual = null;
-const _VENC = {{ vencimiento | tojson }};
-const _TASA = {{ tasa_mora | tojson }};
-
-// Interés: solo si la fecha de pago es posterior al vencimiento, una vez por unidad (v9.1)
-function actualizarInteres() {
-  const r = _filaActual;
-  if (!r) return;
-  const fecha = document.getElementById('mp_fecha').value;
-  const box = document.getElementById('mp_interes_box');
-  const ya = r.interes_ya;
-  document.getElementById('mp_interes_ya').style.display = ya ? 'block' : 'none';
-  const aplica = !ya && _VENC && fecha > _VENC && _saldoActual > 0;
-  box.style.display = aplica ? 'block' : 'none';
-  const chk = document.getElementById('mp_cobrar_interes');
-  if (!aplica) { chk.checked = false; return; }
-  const interes = Math.round(_saldoActual * _TASA) / 100;
-  const monto = parseFloat(document.getElementById('mp_monto').value) || 0;
-  document.getElementById('mp_interes').textContent = chk.checked ? fmt(interes) : fmt(0);
-  document.getElementById('mp_entra').textContent = fmt(monto + (chk.checked ? interes : 0));
-}
-
 function _saldoDe(r) {
   if (r.tipo_pago === 'TOTAL') return 0;
   return r.tipo_pago === 'PARCIAL' ? r.saldo_pendiente : r.total_a_pagar;
@@ -527,7 +469,6 @@ function _saldoDe(r) {
 function abrirModalPago(r) {
   const saldo = _saldoDe(r);
   _saldoActual = saldo;
-  _filaActual = r;
   document.getElementById('mp_unidad').textContent = 'UF ' + r.unidad;
   document.getElementById('mp_ocupante').textContent = r.inquilino || r.propietario || '';
   document.getElementById('mp_total').textContent = fmt(r.total_a_pagar);
@@ -542,8 +483,6 @@ function abrirModalPago(r) {
   document.getElementById('mp_aviso_favor').style.display = 'none';
   document.getElementById('mp_bonif').value = '';
   document.getElementById('mp_bonif_motivo').value = '';
-  document.getElementById('mp_cobrar_interes').checked = true;
-  actualizarInteres();
   document.getElementById('formPago').action =
     '{{ url_for("cobranzas_pagar", periodo=periodo or "x", unidad="__U__") }}'.replace('__U__', encodeURIComponent(r.unidad));
   new bootstrap.Modal(document.getElementById('modalPago')).show();
@@ -562,13 +501,7 @@ document.getElementById('mp_monto').addEventListener('input', function() {
   document.getElementById('mp_aviso_favor').style.display = (v > 0 && exc > 0) ? 'block' : 'none';
   document.getElementById('mp_excedente').textContent =
     exc.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-  actualizarInteres();
 });
-document.getElementById('mp_fecha').addEventListener('change', function() {
-  document.getElementById('mp_cobrar_interes').checked = true;
-  actualizarInteres();
-});
-document.getElementById('mp_cobrar_interes').addEventListener('change', actualizarInteres);
 
 // ── WhatsApp ────────────────────────────────────────────────────────────────
 const _WA_EDIFICIO    = {{ consorcio_nombre | tojson }};
@@ -596,9 +529,6 @@ function _buildWAMensaje(r) {
     L.push(`   Abonado ${fmt(r.monto_pagado)} de ${fmt(r.total_a_pagar)}`);
   } else {
     L.push(`💲 *Total a pagar: ${fmt(r.total_a_pagar)}*`);
-  }
-  if (tipo !== 'TOTAL' && r.interes_sugerido > 0) {
-    L.push(`⏰ Vencido: interés por mora ${fmt(r.interes_sugerido)}`);
   }
   if (tipo !== 'TOTAL') {
     if (diaVenc > 0) L.push(`📆 Vencimiento: día ${diaVenc}`);

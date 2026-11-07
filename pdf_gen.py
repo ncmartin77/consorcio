@@ -392,7 +392,10 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
     story.append(Paragraph("DETALLE POR UNIDAD FUNCIONAL",
                             st("h", fontSize=9, fontName="Helvetica-Bold", textColor=c_azul,
                                spaceAfter=4)))
+    con_interes = any(float(r.get("interes") or 0) for r in liquidacion_rows)
     uf_header = ["UF", "Descripción", "Prop./Inquilino", "%", "Expensas", "Deuda", "Total", "Pagado", "Saldo"]
+    if con_interes:
+        uf_header.insert(6, "Interés")
     uf_data = [uf_header]
     for r in liquidacion_rows:
         ocupante = r.get("inquilino") or r.get("propietario") or "—"
@@ -406,8 +409,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         else:
             est = "—"
             saldo_display = _fmt(r["total_a_pagar"])  # aún no pagó nada → debe el total
-        monto_p = r.get("monto_pagado", 0)
-        uf_data.append([
+        fila_uf = [
             str(r["unidad"]),
             r["descripcion"][:18],
             ocupante[:20],
@@ -417,17 +419,25 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
             _fmt(r["total_a_pagar"]),
             est,
             saldo_display,
-        ])
+        ]
+        if con_interes:
+            fila_uf.insert(6, _fmt(r["interes"]) if r.get("interes") else "—")
+        uf_data.append(fila_uf)
     # Fila totales
     # Total de la columna Deuda (neto: un saldo a favor, negativo, resta)
     total_deuda = round(sum(float(r.get("deuda_anterior") or 0) for r in liquidacion_rows), 2)
-    uf_data.append(["TOTAL", "", "", "100%",
-                    _fmt(total_gastos), _fmt(total_deuda) if total_deuda else "—", _fmt(total_a_cobrar),
-                    _fmt(total_cobrado), _fmt(total_pendiente)])
+    fila_tot = ["TOTAL", "", "", "100%",
+                _fmt(total_gastos), _fmt(total_deuda) if total_deuda else "—", _fmt(total_a_cobrar),
+                _fmt(total_cobrado), _fmt(total_pendiente)]
+    if con_interes:
+        fila_tot.insert(6, _fmt(round(sum(float(r.get("interes") or 0) for r in liquidacion_rows), 2)))
+    uf_data.append(fila_tot)
 
     # A4 ancho útil = 21 - 2*1.2 = 18.6 cm → repartir entre 9 cols
     # Columnas de importes más anchas para que entren los totales (ej. $ 1.316.352,34)
     col_w = [0.9*cm, 2.6*cm, 2.6*cm, 1.4*cm, 2.3*cm, 2.3*cm, 2.3*cm, 1.6*cm, 2.2*cm]  # = 18.2 cm
+    if con_interes:
+        col_w = [0.9*cm, 2.0*cm, 2.0*cm, 1.3*cm, 2.2*cm, 2.2*cm, 1.8*cm, 2.3*cm, 1.6*cm, 2.2*cm]  # = 18.5 cm
     uf_t = Table(uf_data, colWidths=col_w, repeatRows=1)
     n = len(uf_data)
     uf_t.setStyle(TableStyle([
@@ -437,7 +447,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         ("FONTNAME", (0,n-1), (-1,n-1), "Helvetica-Bold"),
         ("BACKGROUND", (0,n-1), (-1,n-1), colors.HexColor("#dce8f8")),
         ("ROWBACKGROUNDS", (0,1), (-1,n-2), [colors.white, colors.HexColor("#f5f5f5")]),
-        ("ALIGN", (3,0), (-1,-1), "RIGHT"), ("ALIGN", (7,0), (7,-1), "CENTER"),
+        ("ALIGN", (3,0), (-1,-1), "RIGHT"), ("ALIGN", (len(uf_header)-2, 0), (len(uf_header)-2, -1), "CENTER"),
         ("ALIGN", (0,0), (0,-1), "CENTER"),
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
         ("GRID", (0,0), (-1,-1), 0.3, colors.grey),
@@ -746,11 +756,11 @@ def generar_recibo_pago(row: dict, config: dict, periodo: str,
         resumen_data.append([f"SALDO A FAVOR {mes_gastos_abrev}", "- " + _fmt(-deuda_anterior)])
     else:
         resumen_data.append([f"SALDO DEUDOR {mes_gastos_abrev}", "—"])
-    if interes:  # liquidaciones anteriores a v9.1 (el interés iba en la liquidación)
-        resumen_data.append(["Mora", _fmt(interes)])
+    if interes:  # interés sobre la deuda anterior, decidido al cerrar la liquidación
+        resumen_data.append(["Interés sobre deuda anterior", _fmt(interes)])
     resumen_data.append(["TOTAL A PAGAR", _fmt(total_a_pagar)])
 
-    # v9.1: interés por pago fuera de término, cobrado al registrar el pago (aparte del total)
+    # v9.1 (solo pagos de esa versión): interés cobrado al registrar el pago, aparte del total
     interes_cobrado = row.get("interes_cobrado", 0.0) or 0.0
     if interes_cobrado > 0:
         resumen_data.append(["Interés por pago fuera de término", _fmt(interes_cobrado)])

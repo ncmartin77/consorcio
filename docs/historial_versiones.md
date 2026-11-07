@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 9.1-0711
+**Versión actual:** 9.2-0711
 
 ---
 
@@ -336,10 +336,23 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v9.x — Cobranzas separada de Liquidación
 
-#### v9.1-0711 — El interés se decide al cobrar
+#### v9.2-0711 — El interés se decide al cerrar la liquidación
 
 **Lanzamiento:** 7 de noviembre
 **Versión actual**
+
+**Cambios (regla del usuario, reemplaza a la v9.1):**
+
+- Mientras la liquidación está **abierta** no lleva interés.
+- Al **cerrarla** se abre una ventana con las unidades que tienen deuda anterior, el interés que les corresponde (**tasa × deuda anterior**) y un **switch por unidad** (activado por defecto; "todas / ninguna" arriba). Las tildadas quedan con el interés sumado al total, congelado con la liquidación; las demás sin interés.
+- La liquidación cerrada y el PDF resumen muestran la columna **Interés** (en el PDF solo si alguna unidad lo tiene). El recibo muestra "Interés sobre deuda anterior".
+- **Cobranzas ya no cobra interés** (se quita el switch de la v9.1): se cobra el total de la liquidación. Para no cobrar el interés después de cerrar, se puede usar la bonificación.
+
+---
+
+#### v9.1-0711 — El interés se decide al cobrar (reemplazada por la v9.2)
+
+**Lanzamiento:** 7 de noviembre
 
 **Cambios (regla del usuario):**
 

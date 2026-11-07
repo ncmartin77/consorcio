@@ -1123,6 +1123,8 @@ def liquidacion(periodo=None):
                            unidades=unidades,
                            unidades_map=unidades_map,
                            error_cierre=db.error_cierre(periodo) if (liq_generada and not liq_cerrada) else None,
+                           propuesta_interes=db.propuesta_intereses(liq, cfg) if (liq_generada and not liq_cerrada) else [],
+                           tasa_mora=db.tasa_mora(cfg),
                            periodo_cobranza=db.periodo_cobranza())
 
 
@@ -1151,7 +1153,8 @@ def generar_liquidacion(periodo):
 
 @app.route("/liquidacion/cerrar/<periodo>", methods=["POST"])
 def cerrar_liquidacion(periodo):
-    err = db.cerrar_liquidacion(periodo)
+    # Switch por unidad en la ventana de cierre: las tildadas llevan interés sobre su deuda anterior
+    err = db.cerrar_liquidacion(periodo, con_interes=request.form.getlist("interes_uf"))
     if err:
         flash(err, "warning")
         return redirect(url_for("liquidacion", periodo=periodo))
@@ -1184,7 +1187,7 @@ def cobranzas(periodo=None):
     actual = db.periodo_cobranza()
     periodo = periodo or actual
     liq = db.get_liquidacion(periodo) if periodo else []
-    info = db.info_cobranza(periodo, liq) if periodo else {"vencimiento": "", "tasa": 0}
+    info = db.info_cobranza(periodo, liq) if periodo else {"vencimiento": ""}
     cobrable = bool(periodo) and periodo == actual
     cfg = db.get_config()
     unidades_map = {str(u["numero"]): u for u in db.get_unidades(solo_activas=False)}
@@ -1212,8 +1215,7 @@ def cobranzas(periodo=None):
         pendientes=sum(1 for r in liq if r["tipo_pago"] != "TOTAL"),
         recibo_tokens=recibo_tokens,
         recibo_base_url=f"{url_app}/recibo/publico/{cid}/{periodo}",
-        vencimiento=info["vencimiento"], tasa_mora=info["tasa"],
-        total_interes=round(sum(r.get("interes_cobrado", 0) for r in liq), 2),
+        vencimiento=info["vencimiento"],
     )
 
 
@@ -1227,8 +1229,7 @@ def cobranzas_pagar(periodo, unidad):
     fecha_pago = request.form.get("fecha_pago") or _fecha_hoy().strftime("%Y-%m-%d")
     monto, bonif = _num("monto_pagado"), _num("bonificacion")
     res = db.registrar_pago(periodo, unidad, monto, fecha_pago, bonif,
-                            (request.form.get("bonif_motivo") or "").strip(),
-                            cobrar_interes=request.form.get("cobrar_interes") == "1")
+                            (request.form.get("bonif_motivo") or "").strip())
     if res.get("error"):
         flash(res["error"], "danger")
     elif res["tipo"] == "PARCIAL":
@@ -1238,8 +1239,6 @@ def cobranzas_pagar(periodo, unidad):
               f"$ {-res['saldo']:,.2f} para la liquidación siguiente.", "success")
     else:
         flash(f"UF {unidad}: pago total registrado.", "success")
-    if not res.get("error") and res.get("interes", 0) > 0:
-        flash(f"Interés por pago fuera de término: ${res['interes']:,.2f} (entrada aparte en Caja).", "info")
     if not res.get("error") and bonif > 0:
         flash(f"Bonificación de ${bonif:,.2f} registrada en Caja Diaria.", "info")
     return redirect(url_for("cobranzas", periodo=periodo))
@@ -1248,7 +1247,7 @@ def cobranzas_pagar(periodo, unidad):
 @app.route("/cobranzas/<periodo>/pagar-todo", methods=["POST"])
 def cobranzas_pagar_todo(periodo):
     fecha_pago = request.form.get("fecha_pago") or _fecha_hoy().strftime("%Y-%m-%d")
-    n, err = db.pagar_todo(periodo, fecha_pago, cobrar_interes=request.form.get("cobrar_interes") == "1")
+    n, err = db.pagar_todo(periodo, fecha_pago)
     if err:
         flash(err, "danger")
     if n:

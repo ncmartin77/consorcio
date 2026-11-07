@@ -1,7 +1,7 @@
 """
 v9.0/v9.1 — Cobranzas separada de Liquidación, contra la base de PRUEBA.
-v9.1: la liquidación no lleva interés; se cobra al registrar un pago fuera de término
-(tasa × saldo, una vez por unidad y liquidación) si el switch está activado.
+v9.2: el interés se decide al CERRAR la liquidación, con un switch por unidad
+(tasa × deuda anterior); mientras está abierta y en Cobranzas no hay interés.
 
 Crea un consorcio de prueba aislado ("Prueba v9 cobranzas", 3 UF) y recorre el ciclo:
 liquidación abierta → cierre (desde el 1° del mes) → cobro sobre la última cerrada →
@@ -73,37 +73,39 @@ try:
 
     # ── 2. Cierre y cobro ────────────────────────────────────────────────────
     fecha("2026-08-01")
-    cliente.post("/liquidacion/cerrar/2026-08")
+    h = cliente.get("/liquidacion/2026-08").get_data(as_text=True)
+    check("Ventana de cierre L08: unidades con deuda anterior", "solo UF 1 (deuda 100, interés 10)",
+          h.count('name="interes_uf"'), h.count('name="interes_uf"') == 1 and 'data-interes="10.0"' in h)
+    cliente.post("/liquidacion/cerrar/2026-08", data={"interes_uf": ["1"]})
     fc = db._fetchone("SELECT fecha_cierre FROM liquidaciones_estado WHERE consorcio_id=%s AND periodo='2026-08'",
                       (CID,))["fecha_cierre"]
     check("Cerrar L08 con fecha 01/08", "CERRADA, fecha de cierre 01/08",
           f"{db.get_liq_estado('2026-08')} {fc}", db.get_liq_estado("2026-08") == "CERRADA" and str(fc) == "2026-08-01")
     check("Periodo en cobro", "2026-08", db.periodo_cobranza(), db.periodo_cobranza() == "2026-08")
+    f1 = fila("2026-08", "1")
+    check("Cerrar con interés para UF 1", "interés 10 % × 100 = 10, total 610", f"{f1['interes']} / {f1['total_a_pagar']}",
+          f1["interes"] == 10 and f1["total_a_pagar"] == 610)
     r = db.registrar_pago("2026-08", "1", 600, "2026-08-05")
     check("Pago con fecha posterior a la fecha del sistema (05/08 con hoy 01/08)", "rechazado",
           r.get("error", "aceptado")[:60], "posterior a la fecha del sistema" in r.get("error", ""))
-    fecha("2026-08-05"); pagar("2026-08", "1", 600, "2026-08-05"); flashes()
+    fecha("2026-08-05"); pagar("2026-08", "1", 610, "2026-08-05"); flashes()
     fecha("2026-08-08"); pagar("2026-08", "2", 100, "2026-08-08"); flashes()
-    fecha("2026-08-20"); pagar("2026-08", "2", 200, "2026-08-20", bonificacion="5", bonif_motivo="redondeo",
-                               cobrar_interes="1"); flashes()
-    fecha("2026-08-25"); pagar("2026-08", "1", 50, "2026-08-25", cobrar_interes="1"); flashes()
-    i2 = [p["interes"] for p in db.get_pagos("2026-08", "2")]
-    check("UF 2 paga 200 el 20/08 (vence 10/08) con el switch activado", "interés 10 % × 200 = 20 en ese pago",
-          i2, i2 == [0.0, 20.0])
-    i1 = [p["interes"] for p in db.get_pagos("2026-08", "1")]
-    check("UF 1 paga de más el 25/08 (sin saldo)", "sin interés", i1, i1 == [0.0, 0.0])
+    fecha("2026-08-20"); pagar("2026-08", "2", 200, "2026-08-20", bonificacion="5", bonif_motivo="redondeo"); flashes()
+    fecha("2026-08-25"); pagar("2026-08", "1", 50, "2026-08-25"); flashes()
+    ip = sum(p["interes"] for u in "123" for p in db.get_pagos("2026-08", u))
+    check("Pagar después del vencimiento (UF 2, 20/08)", "Cobranzas no cobra interés", ip, ip == 0)
     est = {u: (fila("2026-08", u)["tipo_pago"], fila("2026-08", u)["monto_pagado"]) for u in "123"}
-    check("Estado de L08 tras los pagos", "1 TOTAL 650 / 2 TOTAL 300 / 3 PENDIENTE 0",
-          est, est == {"1": ("TOTAL", 650.0), "2": ("TOTAL", 300.0), "3": ("PENDIENTE", 0.0)})
+    check("Estado de L08 tras los pagos", "1 TOTAL 660 / 2 TOTAL 300 / 3 PENDIENTE 0",
+          est, est == {"1": ("TOTAL", 660.0), "2": ("TOTAL", 300.0), "3": ("PENDIENTE", 0.0)})
     check("UF 1 pagó de más", "saldo a favor 50", -fila("2026-08", "1")["saldo_pendiente"],
           fila("2026-08", "1")["saldo_pendiente"] == -50)
     n_pagos = len(db.get_pagos("2026-08"))
     caja = db._fetchall("SELECT tipo, categoria, importe FROM caja WHERE consorcio_id=%s ORDER BY id", (CID,))
     cats = [x["categoria"] for x in caja]
-    check("Pagos y Caja", "4 pagos, 4 entradas Expensas + 1 bonificación + 1 Intereses",
+    check("Pagos y Caja", "4 pagos, 4 entradas Expensas + 1 bonificación, sin Intereses",
           f"{n_pagos} pagos, {cats.count('Expensas')} entradas, {cats.count('BONIFICACION')} bonif., "
           f"{cats.count('Intereses')} interés",
-          n_pagos == 4 and cats.count("Expensas") == 4 and cats.count("BONIFICACION") == 1 and cats.count("Intereses") == 1)
+          n_pagos == 4 and cats.count("Expensas") == 4 and cats.count("BONIFICACION") == 1 and cats.count("Intereses") == 0)
     r = db.registrar_pago("2026-08", "3", 10, "2026-07-31")
     check("Pago con fecha en una Caja cerrada (julio, L08 cerrada)", "rechazado",
           r.get("error", "aceptado")[:60], "Caja de 2026-07" in r.get("error", ""))
@@ -113,7 +115,7 @@ try:
     l9 = {u: (fila("2026-09", u)["deuda_anterior"], fila("2026-09", u)["interes"], fila("2026-09", u)["total_a_pagar"])
           for u in "123"}
     esperado = {"1": (-50.0, 0.0, 950.0), "2": (0.0, 0.0, 600.0), "3": (150.0, 0.0, 550.0)}
-    check("L09 abierta: deuda / interés / total (la deuda pasa sin interés)", esperado, l9, l9 == esperado)
+    check("L09 abierta: deuda / interés / total (abierta: sin interés)", esperado, l9, l9 == esperado)
     h = cliente.get("/liquidacion/2026-09").get_data(as_text=True)
     check("Pantalla Liquidación sin columna ni switch de interés", "sin chk-sin-interes / toggleTodosInteres",
           "ok" if "chk-sin-interes" not in h and "toggleTodosInteres" not in h else "tiene",
@@ -137,8 +139,9 @@ try:
     check("Vuelta a 25/08: L09 UF 2", "deuda 0, total 600", fila("2026-09", "2")["total_a_pagar"],
           fila("2026-09", "2")["total_a_pagar"] == 600)
     h = cliente.get("/cobranzas").get_data(as_text=True)
-    check("Cobranzas a 25/08: UF 3 debe 150 vencido", "columna Interés sugiere $ 15,00 si paga hoy",
-          "ok" if "15,00" in h and "si paga hoy" in h else "no", "15,00" in h and "si paga hoy" in h)
+    check("Cobranzas sin interés (ni switch ni columna)", "sin cobrar_interes / si paga hoy",
+          "ok" if "cobrar_interes" not in h and "si paga hoy" not in h else "tiene",
+          "cobrar_interes" not in h and "si paga hoy" not in h)
 
     # ── 5. Anular un pago (admin) ────────────────────────────────────────────
     p_20 = next(p for p in db.get_pagos("2026-08", "2") if p["fecha"] == "2026-08-20")
@@ -164,7 +167,16 @@ try:
           db.get_liq_estado("2026-09") == "ABIERTA")
     flashes()
     fecha("2026-09-02")
-    cliente.post("/liquidacion/cerrar/2026-09"); flashes()
+    prop = [(p["unidad"], p["deuda"], p["interes"]) for p in db.propuesta_intereses(db.get_liquidacion("2026-09"))]
+    check("Propuesta de interés al cerrar L09", "solo UF 3: deuda 150, interés 15 (UF 1 a favor, UF 2 sin deuda)",
+          prop, prop == [("3", 150.0, 15.0)])
+    cliente.post("/liquidacion/cerrar/2026-09", data={"interes_uf": ["3"]}); flashes()
+    l9c = {u: (fila("2026-09", u)["interes"], fila("2026-09", u)["total_a_pagar"]) for u in "123"}
+    check("L09 cerrada con interés para UF 3", "UF3 15 → total 565; UF1/UF2 sin interés",
+          l9c, l9c == {"1": (0.0, 950.0), "2": (0.0, 600.0), "3": (15.0, 565.0)})
+    h = cliente.get("/liquidacion/2026-09").get_data(as_text=True)
+    check("Liquidación cerrada muestra la columna Interés", "columna con $ 15,00",
+          "ok" if ">Interés</th>" in h and "15,00" in h else "no", ">Interés</th>" in h and "15,00" in h)
     check("Cerrar L09 el 02/09", "CERRADA, en cobro 2026-09", f"{db.get_liq_estado('2026-09')} {db.periodo_cobranza()}",
           db.get_liq_estado("2026-09") == "CERRADA" and db.periodo_cobranza() == "2026-09")
     fecha("2026-09-05")
@@ -201,21 +213,10 @@ try:
     check("Borrar en Caja un cobro de agosto (Caja cerrada)", "bloqueado", ok, ok is False)
 
     # ── 10. Pago completo, libre deuda, pantallas y PDFs ─────────────────────
-    # Interés en L09 (vence 10/09): pagos del 15/09
-    fecha("2026-09-15")
-    pagar("2026-09", "2", 100, "2026-09-15"); flashes()                       # switch desactivado
-    pagar("2026-09", "2", 100, "2026-09-15", cobrar_interes="1"); flashes()   # 10 % × 500
-    pagar("2026-09", "2", 100, "2026-09-15", cobrar_interes="1"); flashes()   # ya se cobró: 0
-    i2 = [p["interes"] for p in db.get_pagos("2026-09", "2")]
-    check("UF 2 en L09: switch apagado / activado / de nuevo activado", "0 / 50 (10 % de 500) / 0 (una sola vez)",
-          i2, i2 == [0.0, 50.0, 0.0])
-    check("La liquidación no cambia por el interés", "L09 UF 2 total 600, abonado 300",
-          f"{fila('2026-09', '2')['total_a_pagar']} / {fila('2026-09', '2')['monto_pagado']}",
-          fila("2026-09", "2")["total_a_pagar"] == 600 and fila("2026-09", "2")["monto_pagado"] == 300)
-    cliente.post("/cobranzas/2026-09/pagar-todo", data={"fecha_pago": "2026-09-15", "cobrar_interes": "1"}); flashes()
-    it = {u: sum(p["interes"] for p in db.get_pagos("2026-09", u)) for u in "123"}
-    check("Pago completo el 15/09 con interés", "UF1 10 % × 950 = 95 / UF2 50 (ya cobrado) / UF3 10 % × 550 = 55",
-          it, it == {"1": 95.0, "2": 50.0, "3": 55.0})
+    cliente.post("/cobranzas/2026-09/pagar-todo", data={"fecha_pago": "2026-09-05"}); flashes()
+    cob = {u: fila("2026-09", u)["monto_pagado"] for u in "123"}
+    check("Pago completo de L09 cobra el total (con el interés de UF 3)", "950 / 600 / 565",
+          cob, cob == {"1": 950.0, "2": 600.0, "3": 565.0})
     est = {u: fila("2026-09", u)["tipo_pago"] for u in "123"}
     check("Pago completo de L09", "todas TOTAL", est, set(est.values()) == {"TOTAL"})
     ld = db.get_estado_libre_deuda()
@@ -228,7 +229,8 @@ try:
         "/liquidacion/2026-09": cliente.get("/liquidacion/2026-09").status_code,
         "/caja/2026-09": cliente.get("/caja/2026-09").status_code,
         "recibo UF 1": cliente.get("/liquidacion/recibo/2026-09/1").status_code,
-        "recibo UF 2 (con interés)": cliente.get("/liquidacion/recibo/2026-09/2").status_code,
+        "recibo UF 3 (con interés)": cliente.get("/liquidacion/recibo/2026-09/3").status_code,
+        "PDF resumen L08 (con interés)": cliente.get("/liquidacion/pdf/2026-08").status_code,
         "PDF resumen": cliente.get("/liquidacion/pdf/2026-09").status_code,
         "/plano/2026-09": cliente.get("/plano/2026-09").status_code,
         "/unidades": cliente.get("/unidades").status_code,

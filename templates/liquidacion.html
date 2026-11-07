@@ -36,7 +36,7 @@
     {% elif liq_generada %}
       <form method="POST" action="{{ url_for('generar_liquidacion', periodo=periodo) }}">
         <button type="submit" class="btn btn-outline-secondary btn-sm"
-                data-ayuda="Recalculá la liquidación con los datos actuales: gastos, pagos de la liquidación anterior e interés.">
+                data-ayuda="Recalculá la liquidación con los datos actuales: gastos y pagos de la liquidación anterior. El interés se decide al cerrarla.">
           <i class="bi bi-arrow-clockwise"></i> Recalcular
         </button>
       </form>
@@ -47,13 +47,10 @@
         </button>
       </span>
       {% else %}
-      <form method="POST" action="{{ url_for('cerrar_liquidacion', periodo=periodo) }}"
-            onsubmit="return confirm('¿Cerrar la liquidación de {{ periodo | mes_largo }}? El monto queda fijo (no se cargan más gastos) y se empieza a cobrar en Cobranzas.')">
-        <button type="submit" class="btn btn-warning btn-sm"
-                data-ayuda="Cerrá la liquidación cuando cambió el mes y no hay más gastos: el monto queda fijo y se empieza a cobrar en Cobranzas.">
-          <i class="bi bi-lock-fill"></i> Cerrar Liquidación
-        </button>
-      </form>
+      <button type="button" class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#modalCerrar"
+              data-ayuda="Cerrá la liquidación cuando cambió el mes y no hay más gastos: se decide el interés de cada unidad con deuda, el monto queda fijo y se empieza a cobrar en Cobranzas.">
+        <i class="bi bi-lock-fill"></i> Cerrar Liquidación
+      </button>
       {% endif %}
     {% else %}
     <form method="POST" action="{{ url_for('generar_liquidacion', periodo=periodo) }}">
@@ -313,6 +310,7 @@
             <th class="text-center">% U.F.</th>
             <th class="text-end">Expensas</th>
             <th class="text-end">Deuda Ant.</th>
+            {% if liq_cerrada %}<th class="text-end">Interés</th>{% endif %}
             <th class="text-end">Extra</th>
             <th class="text-end">TOTAL</th>
             <th class="text-end">Abonado</th>
@@ -338,6 +336,11 @@
                 <div style="font-size:0.65rem">a favor</div>
               {% else %}—{% endif %}
             </td>
+            {% if liq_cerrada %}
+            <td class="text-end {% if r.interes > 0 %}text-danger fw-semibold{% endif %}">
+              {% if r.interes > 0 %}$ {{ "%.2f"|format(r.interes)|replace(".",",") }}{% else %}—{% endif %}
+            </td>
+            {% endif %}
             <td class="text-end {% if r.extras > 0 %}text-danger fw-semibold{% endif %}"
                 title="{% for e in extras_por_unidad.get(r.unidad|string, []) %}{{ e.descripcion }}: ${{ '%.2f'|format(e.monto) }}{% if not loop.last %} | {% endif %}{% endfor %}">
               {% if r.extras > 0 %}$ {{ "%.2f"|format(r.extras)|replace(".",",") }}{% else %}—{% endif %}
@@ -407,6 +410,7 @@
             <td class="text-center">100%</td>
             <td class="text-end">$ {{ "%.2f"|format(total_gastos)|replace(".",",") }}</td>
             <td class="text-end">$ {{ "%.2f"|format(total_deuda)|replace(".",",") }}</td>
+            {% if liq_cerrada %}<td class="text-end text-danger">$ {{ "%.2f"|format(liq|sum(attribute='interes'))|replace(".",",") }}</td>{% endif %}
             <td class="text-end">$ {{ "%.2f"|format(_tot_extras)|replace(".",",") }}</td>
             <td class="text-end text-danger" id="totAPagar">$ {{ "%.2f"|format(total_a_pagar)|replace(".",",") }}</td>
             <td class="text-end text-success">$ {{ "%.2f"|format(total_cobrado)|replace(".",",") }}</td>
@@ -539,6 +543,67 @@
   </div>
 </div>
 
+<!-- ===== MODAL CERRAR LIQUIDACIÓN (v9.2: se decide el interés) ===== -->
+{% if liq_generada and not liq_cerrada and not error_cierre %}
+<div class="modal fade" id="modalCerrar" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('cerrar_liquidacion', periodo=periodo) }}">
+        <div class="modal-header bg-warning">
+          <h5 class="modal-title"><i class="bi bi-lock-fill"></i> Cerrar liquidación de {{ periodo | mes_largo }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small mb-2">Al cerrar, el monto queda <strong>fijo</strong> (no se cargan más gastos) y se empieza a
+            cobrar en Cobranzas. Antes, decidí a qué unidades con deuda se les ajusta el <strong>interés</strong>
+            ({{ tasa_mora }} % de la deuda anterior).</p>
+          {% if propuesta_interes %}
+          <table class="table table-sm align-middle mb-1">
+            <thead class="table-light">
+              <tr>
+                <th>UF</th><th>Nombre</th><th class="text-end">Deuda anterior</th><th class="text-end">Interés</th>
+                <th class="text-center">
+                  <div class="form-check form-switch d-inline-block mb-0" title="Todas / ninguna">
+                    <input class="form-check-input" type="checkbox" id="intTodas" checked>
+                  </div> Aplicar
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in propuesta_interes %}
+              <tr>
+                <td><strong>{{ p.unidad }}</strong></td>
+                <td>{{ p.persona }}</td>
+                <td class="text-end">$ {{ "%.2f"|format(p.deuda)|replace(".",",") }}</td>
+                <td class="text-end text-danger">$ {{ "%.2f"|format(p.interes)|replace(".",",") }}</td>
+                <td class="text-center">
+                  <div class="form-check form-switch d-inline-block mb-0">
+                    <input class="form-check-input chk-int-uf" type="checkbox" name="interes_uf"
+                           value="{{ p.unidad }}" data-interes="{{ p.interes }}" checked>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot class="fw-bold">
+              <tr><td colspan="3">Total de intereses</td><td class="text-end text-danger" id="intTotal"></td><td></td></tr>
+            </tfoot>
+          </table>
+          <div class="form-text">Los montos son con la deuda de hoy; se recalculan al confirmar si entra algún pago antes.</div>
+          {% else %}
+          <div class="alert alert-light border small mb-0">Ninguna unidad tiene deuda anterior: no hay intereses para ajustar.</div>
+          {% endif %}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-warning"><i class="bi bi-lock-fill"></i> Cerrar liquidación</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}
 {% block scripts %}
 <script>
@@ -660,5 +725,20 @@ function eliminarExtra(eid, btn) {
     });
 }
 
+
+// ── Cierre: interés por unidad ──────────────────────────────────────────────
+function totalIntereses() {
+  const t = Array.from(document.querySelectorAll('.chk-int-uf:checked'))
+    .reduce((a, c) => a + (parseFloat(c.dataset.interes) || 0), 0);
+  const el = document.getElementById('intTotal');
+  if (el) el.textContent = '$ ' + t.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+document.querySelectorAll('.chk-int-uf').forEach(c => c.addEventListener('change', totalIntereses));
+const _intTodas = document.getElementById('intTodas');
+if (_intTodas) _intTodas.addEventListener('change', function() {
+  document.querySelectorAll('.chk-int-uf').forEach(c => { c.checked = this.checked; });
+  totalIntereses();
+});
+totalIntereses();
 </script>
 {% endblock %}
