@@ -35,6 +35,22 @@ Se corrieron los cuatro scripts de `pruebas/` seguidos, contra la base de prueba
 
 ---
 
+## v8.1-0611 — Saldo de caja a la fecha de cierre
+
+Reporte: el PDF decía "Saldo de caja al 31/10" pero se generó el 01/10 (fecha del sistema).
+
+Prueba (`pruebas/probar_saldo_cierre.py`, base de prueba, liquidación 2026-12):
+
+| Caso | Esperado | Resultado |
+|---|---|---|
+| Abierta, fecha del sistema 10/12 | saldo al 10/12 (PDF y tarjeta SALDO EN CAJA) | ✅ |
+| Cerrada el 05/01, consultada el 20/01 | saldo al 05/01 | ✅ |
+| Cerrada sin fecha de cierre guardada (anterior a v8.1) | saldo a fin de mes (31/12) | ✅ |
+| Reabierta | se borra la fecha de cierre | ✅ |
+| PDF resumen | 200 | ✅ |
+
+---
+
 ## v8.0-0611 — Fondo de Reserva = saldo de caja del mes anterior
 
 | Caso | Esperado | Resultado |
@@ -427,6 +443,7 @@ C:\Users\Maria\.venvs\consorcio\Scripts\python.exe pruebas\probar_fondo_reserva.
 | `probar_anular_pagos.py` | Anular pago por unidad y del período, fecha de pago con fecha fijada | Sí, y lo revierte todo desde el Log de Movimientos |
 | `probar_liquidacion_estados.py` | Pantalla de Liquidación abierta, cerrada y sin generar, con y sin fecha fijada | Cambia y restaura el estado de una liquidación y la fecha |
 | `probar_pagina_error.py` | Página de error 500 para admin y usuario común | No |
+| `probar_saldo_cierre.py` | Saldo de caja a la fecha de cierre (abierta / cerrada / reabierta) | Cambia y restaura estado y fecha |
 | `probar_saldo_a_favor.py` | Pago de más, saldo a favor al mes siguiente, interés y mora con saldo a favor | Sí, y restaura liquidaciones y Caja |
 | `probar_fondo_reserva.py` | Migración, saldo del fondo, extraordinarios pendiente / con el fondo, pantallas y PDF | Sí: aplica la migración (permanente); el gasto de prueba se borra y la config se restaura |
 

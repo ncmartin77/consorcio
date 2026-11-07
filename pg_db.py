@@ -1069,12 +1069,40 @@ def get_liq_estado(periodo: str) -> str:
     return row["estado"] if row else ""
 
 
+def ensure_liq_fecha_cierre():
+    _ensure_columna("liquidaciones_estado.fecha_cierre",
+                    "ALTER TABLE liquidaciones_estado ADD COLUMN IF NOT EXISTS fecha_cierre DATE")
+
+
 def set_liq_estado(periodo: str, estado: str):
+    """Guarda el estado; al CERRAR registra la fecha de cierre (fecha del sistema), al reabrir la borra."""
+    ensure_liq_fecha_cierre()
+    fecha_cierre = fecha_sistema() if estado == "CERRADA" else None
     _exec("""
-        INSERT INTO liquidaciones_estado (consorcio_id, periodo, estado)
-        VALUES (%s,%s,%s)
-        ON CONFLICT (consorcio_id, periodo) DO UPDATE SET estado = EXCLUDED.estado
-    """, (_cid(), periodo, estado))
+        INSERT INTO liquidaciones_estado (consorcio_id, periodo, estado, fecha_cierre)
+        VALUES (%s,%s,%s,%s)
+        ON CONFLICT (consorcio_id, periodo) DO UPDATE SET estado = EXCLUDED.estado,
+            fecha_cierre = EXCLUDED.fecha_cierre
+    """, (_cid(), periodo, estado, fecha_cierre))
+
+
+def fecha_corte_liquidacion(periodo: str) -> date:
+    """
+    Fecha a la que se informa el saldo de caja de la liquidación `periodo` (v8.1):
+    - CERRADA: la fecha en que se cerró (si se cerró antes de registrar la fecha, fin de mes);
+    - ABIERTA o sin generar: la fecha del sistema (hoy de la app).
+    Nunca antes del día anterior al inicio del mes.
+    """
+    ensure_liq_fecha_cierre()
+    y, m = int(periodo[:4]), int(periodo[5:7])
+    fin_mes = date(y, m, _calendar.monthrange(y, m)[1])
+    row = _fetchone("SELECT estado, fecha_cierre FROM liquidaciones_estado WHERE consorcio_id=%s AND periodo=%s",
+                    (_cid(), periodo))
+    if row and row["estado"] == "CERRADA":
+        corte = row["fecha_cierre"] or fin_mes
+    else:
+        corte = fecha_sistema()
+    return max(corte, date(y, m, 1) - timedelta(days=1))
 
 
 def liq_esta_cerrada(periodo: str) -> bool:
@@ -1475,14 +1503,15 @@ def get_gastos_pagados_periodo(periodo: str) -> float:
 
 def get_resumen_caja_periodo(periodo: str) -> dict:
     """
-    Ingresos y egresos de Caja del mes `periodo` (para el PDF resumen):
-    saldo al cierre del mes anterior + ingresos − egresos = saldo al cierre del mes.
+    Ingresos y egresos de Caja de la liquidación `periodo` (para el PDF resumen):
+    saldo al cierre del mes anterior + ingresos − egresos = saldo a la fecha de cierre de la
+    liquidación (o a la fecha del sistema si sigue abierta).
     Separa cobros de expensas, otros ingresos, pagos ordinarios, pagos con el fondo y
     bonificaciones, para que la cuenta siempre cierre con el saldo real de Caja.
     """
     y, m = int(periodo[:4]), int(periodo[5:7])
     primero = date(y, m, 1)
-    ultimo = date(y, m, _calendar.monthrange(y, m)[1])
+    ultimo = fecha_corte_liquidacion(periodo)   # cierre de la liquidación (o hoy si está abierta)
     anterior = primero - timedelta(days=1)
     saldo_anterior, _, _ = get_saldo_caja(hasta_fecha=anterior.strftime("%Y-%m-%d"))
     saldo_final, _, _ = get_saldo_caja(hasta_fecha=ultimo.strftime("%Y-%m-%d"))

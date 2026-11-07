@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 8.0-0611
+**Versión actual:** 8.1-0611
 
 ---
 
@@ -336,10 +336,21 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v8.x — Fondo de Reserva = saldo de caja
 
-#### v8.0-0611 — El Fondo de Reserva del mes es el saldo de caja del mes anterior
+#### v8.1-0611 — Saldo de caja a la fecha de cierre de la liquidación
 
 **Lanzamiento:** 6 de noviembre
 **Versión actual**
+
+**Cambios:**
+
+- Se guarda la **fecha de cierre** de cada liquidación (`liquidaciones_estado.fecha_cierre`, fecha del sistema al cerrar; se borra al reabrir).
+- El saldo de caja de la liquidación (PDF "Ingresos y egresos", encabezado del PDF y tarjeta SALDO EN CAJA) se informa a la **fecha de cierre**; si está abierta, a la fecha del sistema; si se cerró antes de este cambio, a fin de mes (`fecha_corte_liquidacion()`). Antes era siempre el último día del mes, y no coincidía con la fecha de generación del PDF.
+
+---
+
+#### v8.0-0611 — El Fondo de Reserva del mes es el saldo de caja del mes anterior
+
+**Lanzamiento:** 6 de noviembre
 **Por qué es mayor:** cambia la regla de cálculo del Fondo de Reserva (aprobado por el usuario). La migración a Supabase Storage pasa a **9.0**.
 
 **Cambios:**

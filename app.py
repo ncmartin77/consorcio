@@ -152,6 +152,7 @@ def _contexto_auditoria():
         db.ensure_deuda_inicial_fecha()
         db.ensure_caja_factura_id()
         db.ensure_liq_sin_interes()
+        db.ensure_liq_fecha_cierre()
     except Exception as exc:
         app.logger.warning(f"[Auditoría] No se pudo inicializar: {exc}")
     if session.get("consorcio_id"):
@@ -1071,7 +1072,8 @@ def liquidacion(periodo=None):
     # Saldo de caja al último día del período (o fecha elegida por el usuario)
     yp, mp = int(periodo[:4]), int(periodo[5:7])
     ultimo_dia = _cal.monthrange(yp, mp)[1]
-    saldo_al_default = f"{periodo}-{ultimo_dia:02d}"
+    # Saldo de caja a la fecha de cierre de la liquidación (o a hoy si está abierta)
+    saldo_al_default = db.fecha_corte_liquidacion(periodo).strftime("%Y-%m-%d")
     saldo_al = request.args.get("saldo_al", saldo_al_default)
     saldo_caja, _, _ = db.get_saldo_caja(hasta_fecha=saldo_al)
     # Entradas = propietarios pagando en el período de la liquidación
@@ -1341,7 +1343,7 @@ def descargar_pdf(periodo):
     gastos = db.get_gastos(mes_gastos_pdf)
     cfg = db.get_config()
     yp2, mp2 = int(periodo[:4]), int(periodo[5:7])
-    hasta_pdf = f"{periodo}-{_cal.monthrange(yp2, mp2)[1]:02d}"
+    hasta_pdf = db.fecha_corte_liquidacion(periodo).strftime("%Y-%m-%d")  # cierre de la liquidación (o hoy)
     saldo_caja, _, _ = db.get_saldo_caja(hasta_fecha=hasta_pdf)
     fondo = _resumen_fondo_seguro(mes_gastos_pdf, cfg)
     notas = db.get_notas_periodo(periodo)
