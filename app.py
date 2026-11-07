@@ -112,8 +112,6 @@ _DESC_AUDITORIA = {
     "delete_movimiento": "Caja: eliminar movimiento",
     "eliminar_ultimo_movimiento": "Caja: eliminar último movimiento",
     "generar_liquidacion": "Liquidación: generar",
-    "toggle_sin_interes": "Liquidación: activar/desactivar interés",
-    "toggle_sin_interes_todos": "Liquidación: activar/desactivar interés (todas)",
     "cerrar_liquidacion": "Liquidación: cerrar",
     "reabrir_liquidacion": "Liquidación: reabrir",
     "cobranzas_pagar_todo": "Cobranzas: pago completo",
@@ -1176,27 +1174,6 @@ def reabrir_liquidacion(periodo):
     return redirect(url_for("liquidacion", periodo=periodo))
 
 
-@app.route("/liquidacion/<periodo>/sin-interes/<unidad>", methods=["POST"])
-def toggle_sin_interes(periodo, unidad):
-    if db.liq_esta_cerrada(periodo):
-        return jsonify({"ok": False, "error": "Liquidación cerrada"}), 403
-    valor = bool((request.get_json(silent=True) or {}).get("sin_interes", False))
-    res = db.aplicar_sin_interes(periodo, valor, unidad=unidad)
-    row = res["rows"].get(str(unidad))
-    if not row:
-        return jsonify({"ok": False, "error": "Unidad no encontrada en la liquidación"}), 404
-    return jsonify({"ok": True, **row, "total_periodo": res["total_periodo"]})
-
-
-@app.route("/liquidacion/<periodo>/sin-interes-todos", methods=["POST"])
-def toggle_sin_interes_todos(periodo):
-    if db.liq_esta_cerrada(periodo):
-        return jsonify({"ok": False, "error": "Liquidación cerrada"}), 403
-    valor = bool((request.get_json(silent=True) or {}).get("sin_interes", False))
-    res = db.aplicar_sin_interes(periodo, valor)
-    return jsonify({"ok": True, "rows": res["rows"], "total_periodo": res["total_periodo"]})
-
-
 # ---------------------------------------------------------------------------
 # COBRANZAS (v9.0): pagos de expensas sobre la última liquidación cerrada
 # ---------------------------------------------------------------------------
@@ -1207,6 +1184,7 @@ def cobranzas(periodo=None):
     actual = db.periodo_cobranza()
     periodo = periodo or actual
     liq = db.get_liquidacion(periodo) if periodo else []
+    info = db.info_cobranza(periodo, liq) if periodo else {"vencimiento": "", "tasa": 0}
     cobrable = bool(periodo) and periodo == actual
     cfg = db.get_config()
     unidades_map = {str(u["numero"]): u for u in db.get_unidades(solo_activas=False)}
@@ -1234,6 +1212,8 @@ def cobranzas(periodo=None):
         pendientes=sum(1 for r in liq if r["tipo_pago"] != "TOTAL"),
         recibo_tokens=recibo_tokens,
         recibo_base_url=f"{url_app}/recibo/publico/{cid}/{periodo}",
+        vencimiento=info["vencimiento"], tasa_mora=info["tasa"],
+        total_interes=round(sum(r.get("interes_cobrado", 0) for r in liq), 2),
     )
 
 
@@ -1247,7 +1227,8 @@ def cobranzas_pagar(periodo, unidad):
     fecha_pago = request.form.get("fecha_pago") or _fecha_hoy().strftime("%Y-%m-%d")
     monto, bonif = _num("monto_pagado"), _num("bonificacion")
     res = db.registrar_pago(periodo, unidad, monto, fecha_pago, bonif,
-                            (request.form.get("bonif_motivo") or "").strip())
+                            (request.form.get("bonif_motivo") or "").strip(),
+                            cobrar_interes=request.form.get("cobrar_interes") == "1")
     if res.get("error"):
         flash(res["error"], "danger")
     elif res["tipo"] == "PARCIAL":
@@ -1257,6 +1238,8 @@ def cobranzas_pagar(periodo, unidad):
               f"$ {-res['saldo']:,.2f} para la liquidación siguiente.", "success")
     else:
         flash(f"UF {unidad}: pago total registrado.", "success")
+    if not res.get("error") and res.get("interes", 0) > 0:
+        flash(f"Interés por pago fuera de término: ${res['interes']:,.2f} (entrada aparte en Caja).", "info")
     if not res.get("error") and bonif > 0:
         flash(f"Bonificación de ${bonif:,.2f} registrada en Caja Diaria.", "info")
     return redirect(url_for("cobranzas", periodo=periodo))
@@ -1265,7 +1248,7 @@ def cobranzas_pagar(periodo, unidad):
 @app.route("/cobranzas/<periodo>/pagar-todo", methods=["POST"])
 def cobranzas_pagar_todo(periodo):
     fecha_pago = request.form.get("fecha_pago") or _fecha_hoy().strftime("%Y-%m-%d")
-    n, err = db.pagar_todo(periodo, fecha_pago)
+    n, err = db.pagar_todo(periodo, fecha_pago, cobrar_interes=request.form.get("cobrar_interes") == "1")
     if err:
         flash(err, "danger")
     if n:

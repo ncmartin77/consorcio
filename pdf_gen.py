@@ -742,14 +742,18 @@ def generar_recibo_pago(row: dict, config: dict, periodo: str,
     ]
     if deuda_anterior > 0:
         resumen_data.append([f"SALDO DEUDOR {mes_gastos_abrev}", _fmt(deuda_anterior)])
-        resumen_data.append(["Mora", _fmt(interes)])
     elif deuda_anterior < 0:
         resumen_data.append([f"SALDO A FAVOR {mes_gastos_abrev}", "- " + _fmt(-deuda_anterior)])
-        resumen_data.append(["Mora", _fmt(interes) if interes else "—"])
     else:
         resumen_data.append([f"SALDO DEUDOR {mes_gastos_abrev}", "—"])
-        resumen_data.append(["Mora", "—"])
+    if interes:  # liquidaciones anteriores a v9.1 (el interés iba en la liquidación)
+        resumen_data.append(["Mora", _fmt(interes)])
     resumen_data.append(["TOTAL A PAGAR", _fmt(total_a_pagar)])
+
+    # v9.1: interés por pago fuera de término, cobrado al registrar el pago (aparte del total)
+    interes_cobrado = row.get("interes_cobrado", 0.0) or 0.0
+    if interes_cobrado > 0:
+        resumen_data.append(["Interés por pago fuera de término", _fmt(interes_cobrado)])
 
     # Estado de pago
     if tipo_pago == "TOTAL":
@@ -811,7 +815,7 @@ def generar_recibo_pago(row: dict, config: dict, periodo: str,
             ])
 
         ev_data = ev_header + ev_rows
-        ev_t = Table(ev_data, colWidths=col_w_det)
+        ev_t = Table(ev_data, colWidths=[8*cm, 2.5*cm, 3.5*cm, 4*cm])
         ev_t.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), c_gris),
             ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f5f5f5")]),

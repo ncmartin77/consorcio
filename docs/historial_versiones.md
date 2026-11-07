@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 9.0-0711
+**Versión actual:** 9.1-0711
 
 ---
 
@@ -336,10 +336,23 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v9.x — Cobranzas separada de Liquidación
 
-#### v9.0-0711 — Se cobra sobre la liquidación cerrada (pantalla Cobranzas)
+#### v9.1-0711 — El interés se decide al cobrar
 
 **Lanzamiento:** 7 de noviembre
 **Versión actual**
+
+**Cambios (regla del usuario):**
+
+- La **liquidación no lleva interés**: se quitan la columna Interés y el switch de la pantalla Liquidación. La deuda que pasa a la liquidación siguiente va sin interés.
+- En **Cobranzas**, al registrar un pago con fecha posterior al vencimiento de la liquidación, aparece el switch **"Cobrar interés"** (activado por defecto): interés = tasa × saldo adeudado, **una sola vez** por unidad y liquidación. Se puede desactivar para no cobrarlo. "Pago Completo" tiene el mismo switch.
+- El interés cobrado se guarda en el pago (`pagos.interes`) y entra en Caja como ingreso aparte (categoría **Intereses**); no cambia lo que la unidad debe. Se ve en la columna Interés de Cobranzas ("si paga hoy" / "cobrado"), en el historial de pagos, en el recibo ("Interés por pago fuera de término") y en el WhatsApp de las vencidas.
+- Fix: el recibo PDF fallaba si el mes tenía facturas extraordinarias (`col_w_det` sin definir).
+
+---
+
+#### v9.0-0711 — Se cobra sobre la liquidación cerrada (pantalla Cobranzas)
+
+**Lanzamiento:** 7 de noviembre
 **Por qué es mayor:** cambia qué significa "cerrada", dónde y cuándo se registran los pagos y la regla del interés, y los pagos pasan a una tabla nueva (migración automática). Aprobado por el usuario. La migración a Supabase Storage pasa a **10.0**.
 
 **Concepto nuevo (pedido del usuario):**

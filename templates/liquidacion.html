@@ -313,18 +313,6 @@
             <th class="text-center">% U.F.</th>
             <th class="text-end">Expensas</th>
             <th class="text-end">Deuda Ant.</th>
-            <th class="text-center" style="width:120px">
-              Interés
-              {% if not liq_cerrada %}
-              <div class="d-flex align-items-center justify-content-center gap-1 mt-1">
-                <span style="font-size:0.6rem;font-weight:normal">Todos</span>
-                <div class="form-check form-switch mb-0" title="Activar/desactivar interés para todas las unidades">
-                  <input class="form-check-input" type="checkbox" id="toggleTodosInteres"
-                         style="cursor:pointer">
-                </div>
-              </div>
-              {% endif %}
-            </th>
             <th class="text-end">Extra</th>
             <th class="text-end">TOTAL</th>
             <th class="text-end">Abonado</th>
@@ -349,20 +337,6 @@
               {% elif r.deuda_anterior < 0 %}$ {{ "%.2f"|format(-r.deuda_anterior)|replace(".",",") }}
                 <div style="font-size:0.65rem">a favor</div>
               {% else %}—{% endif %}
-            </td>
-            <td class="text-center">
-              <span class="celda-interes {% if r.interes > 0 %}text-danger fw-semibold{% else %}text-muted{% endif %}" data-v="{{ r.interes }}">
-                {% if r.interes > 0 %}$ {{ "%.2f"|format(r.interes)|replace(".",",") }}{% else %}—{% endif %}
-              </span>
-              {% if not liq_cerrada %}
-              <div class="form-check form-switch d-flex justify-content-center mb-0 mt-1">
-                <input class="form-check-input chk-sin-interes" type="checkbox"
-                       data-unidad="{{ r.unidad }}"
-                       {% if r.sin_interes %}checked{% endif %}
-                       title="{% if r.sin_interes %}Interés desactivado{% else %}Activar para omitir interés{% endif %}"
-                       style="cursor:pointer">
-              </div>
-              {% endif %}
             </td>
             <td class="text-end {% if r.extras > 0 %}text-danger fw-semibold{% endif %}"
                 title="{% for e in extras_por_unidad.get(r.unidad|string, []) %}{{ e.descripcion }}: ${{ '%.2f'|format(e.monto) }}{% if not loop.last %} | {% endif %}{% endfor %}">
@@ -426,7 +400,6 @@
         </tbody>
         <tfoot class="table-light fw-bold">
           <tr>
-            {% set _tot_interes = liq|sum(attribute='interes') %}
             {% set _tot_extras = liq|sum(attribute='extras') %}
             {% set _ns = namespace(saldo=0) %}
             {% for r in liq %}{% set _t = r.get('tipo_pago', 'PENDIENTE') %}{% if _t != 'TOTAL' %}{% set _ns.saldo = _ns.saldo + (r.saldo_pendiente if r.saldo_pendiente > 0 else r.total_a_pagar) %}{% endif %}{% endfor %}
@@ -434,7 +407,6 @@
             <td class="text-center">100%</td>
             <td class="text-end">$ {{ "%.2f"|format(total_gastos)|replace(".",",") }}</td>
             <td class="text-end">$ {{ "%.2f"|format(total_deuda)|replace(".",",") }}</td>
-            <td class="text-center text-danger" id="totInteres">$ {{ "%.2f"|format(_tot_interes)|replace(".",",") }}</td>
             <td class="text-end">$ {{ "%.2f"|format(_tot_extras)|replace(".",",") }}</td>
             <td class="text-end text-danger" id="totAPagar">$ {{ "%.2f"|format(total_a_pagar)|replace(".",",") }}</td>
             <td class="text-end text-success">$ {{ "%.2f"|format(total_cobrado)|replace(".",",") }}</td>
@@ -688,110 +660,5 @@ function eliminarExtra(eid, btn) {
     });
 }
 
-// ── Sin interés ──────────────────────────────────────────────────────────────
-function formatPesos(v) {
-  return v === 0 ? '—' : '$ ' + v.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
-}
-
-// Montos recalculados sin recargar la página
-const _filasActualizadas = {};
-
-function pesos(v) {
-  return '$ ' + v.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
-}
-
-// Devuelve false si la fila cambió de estado (ej. Parcial → Pagado) y hay que recargar
-function actualizarFila(unidad, data) {
-  const tr = document.querySelector(`tr[data-unidad="${unidad}"]`);
-  if (!tr) return true;
-  if (data.tipo_pago && tr.dataset.tipo && data.tipo_pago !== tr.dataset.tipo) return false;
-  _filasActualizadas[String(unidad)] = data;
-
-  const celda = tr.querySelector('.celda-interes');
-  if (celda) {
-    celda.dataset.v = data.interes;
-    celda.textContent = formatPesos(data.interes);
-    celda.className = 'celda-interes ' + (data.interes > 0 ? 'text-danger fw-semibold' : 'text-muted');
-  }
-  const total = tr.querySelector('.celda-total');
-  if (total) total.textContent = pesos(data.total_a_pagar);
-
-  const saldo = tr.querySelector('.celda-saldo');
-  if (saldo && data.tipo_pago !== 'TOTAL') {
-    const v = data.saldo_pendiente > 0 ? data.saldo_pendiente : data.total_a_pagar;
-    saldo.dataset.v = v;
-    saldo.textContent = pesos(v);
-  }
-  [total, saldo, celda].forEach(el => {
-    if (!el) return;
-    el.style.transition = 'background-color .6s';
-    el.style.backgroundColor = '#fff3cd';
-    setTimeout(() => { el.style.backgroundColor = ''; }, 700);
-  });
-  return true;
-}
-
-function actualizarTotalPeriodo(v) {
-  const el = document.getElementById('totAPagar');
-  if (el && typeof v === 'number') el.textContent = pesos(v);
-  // Totales de interés y saldo del pie, a partir de las filas
-  const sumar = sel => Array.from(document.querySelectorAll(sel))
-    .reduce((a, c) => a + (parseFloat(c.dataset.v) || 0), 0);
-  const ti = document.getElementById('totInteres');
-  if (ti) ti.textContent = pesos(sumar('tr[data-unidad] .celda-interes'));
-  const ts = document.getElementById('totSaldo');
-  if (ts) ts.textContent = pesos(sumar('tr[data-unidad] .celda-saldo'));
-}
-
-function postSinInteres(url, valor) {
-  return fetch(url, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({sin_interes: valor})
-  }).then(r => r.json().catch(() => ({ok: false, error: 'Respuesta inválida del servidor (' + r.status + ')'})));
-}
-
-function errorSinInteres(chk, valor, msg) {
-  chk.checked = !valor;
-  alert('No se pudo actualizar el interés: ' + (msg || 'error de conexión'));
-}
-
-document.querySelectorAll('.chk-sin-interes').forEach(chk => {
-  chk.addEventListener('change', function() {
-    const unidad = this.dataset.unidad;
-    const valor = this.checked;
-    const celda = document.querySelector(`tr[data-unidad="${unidad}"] .celda-interes`);
-    this.disabled = true;
-    if (celda) celda.style.opacity = '0.4';
-    postSinInteres('{{ url_for("toggle_sin_interes", periodo=periodo, unidad="__U__") }}'.replace('__U__', encodeURIComponent(unidad)), valor)
-      .then(data => {
-        if (!data.ok) return errorSinInteres(this, valor, data.error);
-        if (!actualizarFila(unidad, data)) return location.reload();
-        actualizarTotalPeriodo(data.total_periodo);
-      })
-      .catch(() => errorSinInteres(this, valor))
-      .finally(() => { this.disabled = false; if (celda) celda.style.opacity = ''; });
-  });
-});
-
-const toggleTodos = document.getElementById('toggleTodosInteres');
-if (toggleTodos) {
-  toggleTodos.addEventListener('change', function() {
-    const valor = this.checked;
-    const checks = document.querySelectorAll('.chk-sin-interes');
-    this.disabled = true;
-    checks.forEach(c => { c.disabled = true; });
-    postSinInteres('{{ url_for("toggle_sin_interes_todos", periodo=periodo) }}', valor)
-      .then(data => {
-        if (!data.ok) return errorSinInteres(this, valor, data.error);
-        checks.forEach(c => { c.checked = valor; });
-        const ok = Object.entries(data.rows).map(([u, row]) => actualizarFila(u, row)).every(Boolean);
-        if (!ok) return location.reload();
-        actualizarTotalPeriodo(data.total_periodo);
-      })
-      .catch(() => errorSinInteres(this, valor))
-      .finally(() => { this.disabled = false; checks.forEach(c => { c.disabled = false; }); });
-  });
-}
 </script>
 {% endblock %}
