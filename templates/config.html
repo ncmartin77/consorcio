@@ -138,26 +138,11 @@
               </div>
               <small class="text-muted">Se agrega automáticamente como gasto de cada mes y se cobra en las expensas (aporte del período).</small>
             </div>
-            <div class="col-md-4">
-              <label class="form-label fw-semibold">Saldo inicial del fondo $</label>
-              <div class="input-group">
-                <span class="input-group-text">$</span>
-                <input type="number" class="form-control" name="fondo_saldo_inicial" step="0.01"
-                       value="{{ cfg.get('fondo_saldo_inicial','0') or '0' }}">
-              </div>
-              <small class="text-muted">Dinero que ya tenía el fondo al empezar a usar el sistema.</small>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label fw-semibold">Al mes de</label>
-              <input type="month" class="form-control" name="fondo_saldo_inicial_periodo"
-                     value="{{ cfg.get('fondo_saldo_inicial_periodo','') }}">
-              <small class="text-muted">Se suman aportes y gastos de los meses siguientes.</small>
-            </div>
             <div class="col-12">
               <div class="alert alert-light border small mb-0">
                 <i class="bi bi-info-circle"></i>
-                <strong>Saldo del fondo</strong> = saldo inicial + aportes ya liquidados − gastos extraordinarios pagados con el fondo.
-                El saldo acumulado <strong>no</strong> se vuelve a cobrar: en las expensas solo va el aporte del mes.
+                El <strong>Fondo de Reserva</strong> de cada mes es el <strong>saldo de caja al cierre del mes anterior</strong>.
+                En las expensas solo se cobra el aporte mensual; los gastos extraordinarios pagados con el fondo no se cobran.
               </div>
             </div>
             <div class="col-12">

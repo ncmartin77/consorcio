@@ -120,11 +120,11 @@
     </div>
   </div>
   <div class="col-md-2">
-    <div class="card border-info text-center h-100" title="Saldo disponible = saldo anterior + aporte liquidado − gastos pagados con el fondo">
+    <div class="card border-info text-center h-100" title="Fondo de Reserva del mes = saldo de caja al cierre del mes anterior">
       <div class="card-body py-2 px-1">
         <div class="small text-info fw-bold">FONDO RESERVA</div>
         <div class="fw-bold {{ 'text-danger' if fondo.saldo < 0 else 'text-info' }}">$ {{ "%.2f"|format(fondo.saldo)|replace(".",",") }}</div>
-        <div class="text-muted" style="font-size:0.65rem">saldo disponible</div>
+        <div class="text-muted" style="font-size:0.65rem">saldo de caja al {{ fondo.fecha | fecha_ar }}</div>
         <div class="text-muted" style="font-size:0.6rem">
           aporte del mes $ {{ "%.2f"|format(fondo.aporte)|replace(".",",") }}
         </div>
@@ -534,29 +534,20 @@
     <div class="card-body p-0">
       <table class="table table-sm mb-0">
         <tbody>
-          <tr><td>Saldo anterior{% if fondo.saldo_inicial_periodo and fondo.saldo_anterior == fondo.saldo_inicial %} <span class="text-muted small">(saldo inicial al {{ fondo.saldo_inicial_periodo | mes_largo }})</span>{% endif %}</td>
-              <td class="text-end">$ {{ "%.2f"|format(fondo.saldo_anterior)|replace(".",",") }}</td></tr>
-          <tr><td>+ Aporte del período ({{ mes_gastos | mes_largo }})
-                {% if not fondo.aporte_liquidado %}<span class="badge bg-secondary">se suma al generar la liquidación</span>{% endif %}</td>
-              <td class="text-end text-success">{% if fondo.aporte_liquidado %}+ $ {{ "%.2f"|format(fondo.aporte)|replace(".",",") }}{% else %}<span class="text-muted">($ {{ "%.2f"|format(fondo.aporte)|replace(".",",") }})</span>{% endif %}</td></tr>
+          <tr class="fw-bold"><td>Fondo de Reserva {{ periodo | mes_largo }}
+                <div class="text-muted small fw-normal">= saldo de caja al {{ fondo.fecha | fecha_ar }}</div></td>
+              <td class="text-end {{ 'text-danger' if fondo.saldo < 0 else 'text-info' }}">$ {{ "%.2f"|format(fondo.saldo)|replace(".",",") }}</td></tr>
+          <tr><td>Aporte al fondo que se cobra en estas expensas</td>
+              <td class="text-end text-success">$ {{ "%.2f"|format(fondo.aporte)|replace(".",",") }}</td></tr>
           {% for g in desglose.extra_fondo %}
-          <tr><td class="ps-3">− {{ g.concepto }} <span class="text-muted small">pagado con el fondo</span></td>
-              <td class="text-end text-danger">− $ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td></tr>
-          {% else %}
-          <tr><td class="text-muted small">− Gastos pagados con el fondo</td><td class="text-end text-muted">$ 0,00</td></tr>
+          <tr><td class="ps-3">{{ g.concepto }} <span class="text-muted small">pagado con el fondo (no se cobra)</span></td>
+              <td class="text-end text-danger">$ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td></tr>
           {% endfor %}
         </tbody>
-        <tfoot class="table-light fw-bold">
-          <tr><td>SALDO DISPONIBLE DEL FONDO</td>
-              <td class="text-end {{ 'text-danger' if fondo.saldo < 0 else 'text-info' }}">$ {{ "%.2f"|format(fondo.saldo)|replace(".",",") }}</td></tr>
-        </tfoot>
       </table>
       <div class="small text-muted px-2 py-1 border-top">
-        Saldo = saldo anterior + aportes registrados − gastos pagados con el fondo. El saldo acumulado no se cobra en las expensas.
-        {% if not fondo.saldo_inicial_periodo and not fondo.saldo_inicial %}
-          <br><i class="bi bi-info-circle"></i> Sin saldo inicial cargado: configuralo en
-          <a href="{{ url_for('config') }}">Configuración → Fondo de Reserva</a>.
-        {% endif %}
+        El Fondo de Reserva del mes es el saldo de caja al cierre del mes anterior. Lo que se cobra del aporte y lo
+        que se paga con el fondo se reflejan en la caja cuando se registran.
       </div>
       {% if desglose.extra_cobrar %}
       <div class="alert alert-warning m-2 py-2 small">

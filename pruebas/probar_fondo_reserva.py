@@ -3,9 +3,9 @@ Prueba del fondo de reserva y gastos extraordinarios (v6.0) contra la base de PR
 
 1. Migración: gastos ordinarios cuya factura se pagó con el fondo pasan a "pagado con fondo"
    y se recalcula la liquidación que los cobraba.
-2. Saldo del fondo = saldo inicial + aportes liquidados − gastos pagados con el fondo.
-3. Extraordinario "pendiente": se cobra en las expensas siguientes y no toca el fondo.
-4. Extraordinario "con el fondo": no se cobra y se descuenta del saldo.
+2. Fondo de Reserva del mes X = saldo de caja al cierre del mes X-1 (v8.0).
+3. Extraordinario "pendiente": se cobra en las expensas siguientes.
+4. Extraordinario "con el fondo": no se cobra (sale de la caja cuando se paga).
 5. Pantallas y PDF.
 Deja la base como estaba (salvo la migración, que es el cambio buscado).
 Uso: probar_fondo_reserva.py [mes_gastos]   (por defecto el anterior al último liquidado)
@@ -53,14 +53,13 @@ for p in periodos_liq:
         print(f"    liquidación {p}: expensas {f(antes_exp[p])} → {f(d)} (diferencia {f(d - antes_exp[p])})")
 
 try:
-    # 2) Saldo inicial y fórmula
-    p0 = db._prev_periodo(db._prev_periodo(db._prev_periodo(MES)))
-    cliente.post("/config", data={"fondo_saldo_inicial": "500000", "fondo_saldo_inicial_periodo": p0})
-    print(f"\n[2] Saldo inicial del fondo: {f(500000)} al {p0}")
+    # 2) Fondo = saldo de caja al cierre del mes de gastos
+    print("\n[2] Fondo de Reserva = saldo de caja al cierre del mes anterior a la liquidación:")
     for m in (db._prev_periodo(MES), MES):
         r = db.get_resumen_fondo(m)
-        print(f"    gastos {m}: anterior {f(r['saldo_anterior'])} + aporte {f(r['aporte'])}"
-              f"{'' if r['aporte_liquidado'] else ' (no liquidado)'} − usos {f(r['usos'])} = saldo {f(r['saldo'])}")
+        caja, _, _ = db.get_saldo_caja(hasta_fecha=r["fecha"])
+        print(f"    liquidación {db._next_periodo(m)}: fondo {f(r['saldo'])} | caja al {r['fecha']} {f(caja)} "
+              f"{'✅' if round(caja, 2) == r['saldo'] else '❌'} | aporte {f(r['aporte'])} | pagado con fondo {f(r['usos'])}")
     base = db.get_resumen_fondo(MES)
     exp_base = suma_expensas(LIQ)
     d0 = db.get_desglose_gastos(MES)
@@ -89,7 +88,7 @@ try:
     print("    /gastos:", "Gastos extraordinarios" in h, "| 'Con el fondo':", "Con el fondo" in h,
           "| total a repartir:", "Total a repartir" in h)
     h = cliente.get(f"/liquidacion/{LIQ}").get_data(as_text=True)
-    print("    /liquidacion:", "SALDO DISPONIBLE DEL FONDO" in h, "| aporte del período:", "Aporte del período" in h)
+    print("    /liquidacion:", "= saldo de caja al" in h, "| aporte del período:", "Aporte del período" in h)
     r = cliente.get(f"/liquidacion/pdf/{LIQ}")
     print("    PDF resumen:", r.status_code, r.mimetype, len(r.data))
     print("    /plano:", cliente.get("/plano").status_code, "| /config:", cliente.get("/config").status_code)

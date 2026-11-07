@@ -1578,8 +1578,7 @@ def ensure_fondo_reserva_gasto(periodo: str):
 #                                como línea aparte; NO se descuenta del fondo.
 #   VARIABLE_FR                → extraordinario PAGADO CON EL FONDO: no se cobra en las
 #                                expensas y se descuenta del saldo del fondo.
-# Saldo del fondo = saldo inicial + aportes liquidados − gastos pagados con el fondo.
-# Un aporte cuenta cuando se generó la liquidación que lo cobra (gastos de P → liquidación P+1).
+# Fondo de Reserva del mes X = saldo de caja al cierre del mes X-1 (v8.0).
 
 TIPOS_EXTRAORDINARIOS = ("EXTRAORDINARIO", "VARIABLE_FR")
 TIPOS_NO_ORDINARIOS = ("FONDO_RESERVA",) + TIPOS_EXTRAORDINARIOS
@@ -1603,68 +1602,32 @@ def get_desglose_gastos(periodo: str, gastos: list = None) -> dict:
     }
 
 
-def _fondo_inicial(cfg: dict) -> tuple:
-    try:
-        saldo = float(cfg.get("fondo_saldo_inicial") or 0)
-    except ValueError:
-        saldo = 0.0
-    return saldo, (cfg.get("fondo_saldo_inicial_periodo") or "").strip()
-
-
 def get_resumen_fondo(mes_gastos: str, cfg: dict = None) -> dict:
     """
-    Fondo de reserva para el mes de gastos `mes_gastos` (base de la liquidación mes_gastos+1):
-    saldo anterior, aporte del período, gastos pagados con el fondo y saldo disponible.
+    Fondo de Reserva de la liquidación mes_gastos+1 (v8.0): es el SALDO DE CAJA al cierre de
+    `mes_gastos` (el fondo del mes X es el saldo de caja del mes X-1). Además devuelve el aporte
+    del mes (gasto FONDO_RESERVA, se cobra en las expensas) y lo pagado con el fondo
+    (VARIABLE_FR, no se cobra; sale de la caja cuando se paga), solo informativos.
     """
-    cfg = cfg if cfg is not None else get_config()
-    saldo_ini, p0 = _fondo_inicial(cfg)
-    # Solo períodos bien formados (AAAA-MM): un gasto con período vacío o "2026-9"
-    # rompía Gastos, Liquidación, Plano y el PDF (error 500).
+    y, m = int(mes_gastos[:4]), int(mes_gastos[5:7])
+    ultimo = date(y, m, _calendar.monthrange(y, m)[1])
+    saldo, _, _ = get_saldo_caja(hasta_fecha=ultimo.strftime("%Y-%m-%d"))
     filas = _fetchall(
-        "SELECT trim(periodo) AS periodo, tipo, concepto, COALESCE(importe, 0) AS importe FROM gastos "
-        "WHERE consorcio_id=%s AND tipo IN ('FONDO_RESERVA','VARIABLE_FR') "
-        "AND trim(periodo) ~ '^[0-9]{4}-(0[1-9]|1[0-2])$' ORDER BY periodo, id", (_cid(),))
-    liquidados = {r["periodo"] for r in _fetchall(
-        "SELECT DISTINCT periodo FROM liquidaciones WHERE consorcio_id=%s", (_cid(),))}
-
-    # Respecto del saldo inicial (al mes p0):
-    # - un APORTE entra al fondo cuando se cobra, o sea en la liquidación siguiente a su mes
-    #   (aporte de sep se cobra en oct): cuenta si esa liquidación es posterior a p0;
-    # - un GASTO pagado con el fondo sale en su propio mes: cuenta si su mes es posterior a p0.
-    def aporte_cuenta(periodo):
-        return not p0 or _next_periodo(periodo) > p0
-
-    def uso_cuenta(periodo):
-        return not p0 or periodo > p0
-
-    aportes_prev = sum(float(f["importe"]) for f in filas
-                       if f["tipo"] == "FONDO_RESERVA" and aporte_cuenta(f["periodo"]) and f["periodo"] < mes_gastos
-                       and _next_periodo(f["periodo"]) in liquidados)
-    usos_prev = sum(float(f["importe"]) for f in filas
-                    if f["tipo"] == "VARIABLE_FR" and uso_cuenta(f["periodo"]) and f["periodo"] < mes_gastos)
-    saldo_anterior = round(saldo_ini + aportes_prev - usos_prev, 2)
-
-    aporte = round(sum(float(f["importe"]) for f in filas
-                       if f["tipo"] == "FONDO_RESERVA" and f["periodo"] == mes_gastos), 2)
-    aporte_liquidado = aporte_cuenta(mes_gastos) and _next_periodo(mes_gastos) in liquidados
-    usos = round(sum(float(f["importe"]) for f in filas
-                     if f["tipo"] == "VARIABLE_FR" and f["periodo"] == mes_gastos), 2) if uso_cuenta(mes_gastos) else 0.0
-    saldo = round(saldo_anterior + (aporte if aporte_liquidado else 0) - usos, 2)
+        "SELECT tipo, COALESCE(importe, 0) AS importe FROM gastos WHERE consorcio_id=%s "
+        "AND tipo IN ('FONDO_RESERVA','VARIABLE_FR') AND trim(periodo)=%s", (_cid(), mes_gastos))
     return {
         "mes_gastos": mes_gastos,
-        "saldo_inicial": saldo_ini, "saldo_inicial_periodo": p0,
-        "saldo_anterior": saldo_anterior,
-        "aporte": aporte, "aporte_liquidado": aporte_liquidado,
-        "usos": usos, "saldo": saldo,
+        "fecha": ultimo.strftime("%Y-%m-%d"),
+        "saldo": round(saldo, 2),
+        "aporte": round(sum(float(f["importe"]) for f in filas if f["tipo"] == "FONDO_RESERVA"), 2),
+        "usos": round(sum(float(f["importe"]) for f in filas if f["tipo"] == "VARIABLE_FR"), 2),
     }
 
 
 def get_saldo_fondo() -> float:
-    """Saldo disponible del fondo hoy (todos los aportes liquidados y usos registrados)."""
-    ultimo = _fetchone("SELECT MAX(trim(periodo)) AS p FROM gastos WHERE consorcio_id=%s "
-                       "AND trim(periodo) ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'", (_cid(),))
-    mes = (ultimo and ultimo["p"]) or fecha_sistema().strftime("%Y-%m")
-    return get_resumen_fondo(mes)["saldo"]
+    """Fondo de Reserva vigente: saldo de caja al cierre del mes anterior a la fecha del sistema."""
+    hoy = fecha_sistema()
+    return get_resumen_fondo(_prev_periodo(hoy.strftime("%Y-%m")))["saldo"]
 
 
 def set_modo_extraordinario(gasto_id: int, modo: str) -> str | None:

@@ -467,8 +467,6 @@ def config():
             "tasa_mora": request.form.get("tasa_mora", "7"),
             "dia_vencimiento": request.form.get("dia_vencimiento", "15"),
             "fondo_reserva_mensual": request.form.get("fondo_reserva_mensual", "0"),
-            "fondo_saldo_inicial": request.form.get("fondo_saldo_inicial", "0").replace(",", ".").strip() or "0",
-            "fondo_saldo_inicial_periodo": request.form.get("fondo_saldo_inicial_periodo", "").strip(),
             "dias_cobro": request.form.get("dias_cobro", ""),
             "horario_cobro": request.form.get("horario_cobro", ""),
             "direccion_cobro": request.form.get("direccion_cobro", ""),
@@ -790,8 +788,7 @@ def _resumen_fondo_seguro(mes_gastos, cfg=None):
         app.logger.error(f"[fondo] Error calculando el saldo del fondo ({mes_gastos}): {traceback.format_exc()}")
         flash("No se pudo calcular el saldo del Fondo de Reserva: se muestra en 0. Avisá al administrador del sistema.",
               "warning")
-        return {"mes_gastos": mes_gastos, "saldo_inicial": 0.0, "saldo_inicial_periodo": "",
-                "saldo_anterior": 0.0, "aporte": 0.0, "aporte_liquidado": False, "usos": 0.0, "saldo": 0.0}
+        return {"mes_gastos": mes_gastos, "fecha": "", "saldo": 0.0, "aporte": 0.0, "usos": 0.0}
 
 
 @app.route("/gastos")

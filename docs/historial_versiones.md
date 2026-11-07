@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 7.3-0611
+**Versión actual:** 8.0-0611
 
 ---
 
@@ -334,12 +334,28 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ---
 
+### v8.x — Fondo de Reserva = saldo de caja
+
+#### v8.0-0611 — El Fondo de Reserva del mes es el saldo de caja del mes anterior
+
+**Lanzamiento:** 6 de noviembre
+**Versión actual**
+**Por qué es mayor:** cambia la regla de cálculo del Fondo de Reserva (aprobado por el usuario). La migración a Supabase Storage pasa a **9.0**.
+
+**Cambios:**
+
+- Regla aclarada por el usuario: el **Fondo de Reserva del mes X = saldo de caja al cierre del mes X-1** (ej.: liquidación de octubre → caja al 30/09 = $ 249.736,46). `get_resumen_fondo(mes_gastos)` devuelve ese saldo; `get_saldo_fondo()` usa el mes anterior a la fecha del sistema.
+- Deja de usarse el cálculo "saldo inicial + aportes liquidados − gastos con el fondo" (v6.0–v6.6) y los campos de saldo inicial del fondo en Configuración.
+- Sin cambios en lo que se cobra: el aporte mensual se sigue cobrando en las expensas y los extraordinarios pagados con el fondo siguen sin cobrarse.
+- Liquidación: tarjeta y panel del fondo muestran el saldo de caja al cierre del mes anterior, el aporte que se cobra y lo pagado con el fondo. Gastos y plano usan el mismo valor.
+
+---
+
 ### v7.x — Saldo a favor
 
 #### v7.3-0611 — PDF resumen sin "Fondo de Reserva disponible"
 
 **Lanzamiento:** 6 de noviembre
-**Versión actual**
 
 **Cambios:**
 

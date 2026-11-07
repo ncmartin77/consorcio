@@ -35,6 +35,21 @@ Se corrieron los cuatro scripts de `pruebas/` seguidos, contra la base de prueba
 
 ---
 
+## v8.0-0611 — Fondo de Reserva = saldo de caja del mes anterior
+
+| Caso | Esperado | Resultado |
+|---|---|---|
+| Producción (solo lectura), liquidación oct | fondo = caja al 30/09 = $ 249.736,46 | ✅ |
+| Producción (solo lectura), liquidación nov | fondo = caja al 31/10 = $ 249.736,46 (sin movimientos en oct) | ✅ |
+| Base de prueba, liquidación nov | fondo = caja al 31/10 = −$ 1.677.797,98 | ✅ |
+| Base de prueba, liquidación dic | fondo = caja al 30/11 = −$ 170.630,34 | ✅ |
+| Extraordinario pendiente / con el fondo | expensas +100.000 / sin cambio; el fondo (caja) no cambia hasta que se paga | ✅ |
+| Pantallas Gastos, Liquidación, plano, Configuración y PDF | cargan y muestran "= saldo de caja al …" | ✅ |
+
+`pruebas/probar_fondo_saldo_inicial.py` se eliminó (la regla de saldo inicial dejó de existir); `probar_fondo_reserva.py` se adaptó.
+
+---
+
 ## v7.3-0611 — PDF resumen sin "Fondo de Reserva disponible"
 
 PDF de octubre armado con datos de producción (solo lectura): el cuadro "Base de la expensa" muestra gastos ordinarios $ 1.371.401,82 + aporte $ 80.000 = $ 1.451.401,82, sin la línea del fondo disponible ✅ (revisado a la vista).
@@ -413,7 +428,6 @@ C:\Users\Maria\.venvs\consorcio\Scripts\python.exe pruebas\probar_fondo_reserva.
 | `probar_liquidacion_estados.py` | Pantalla de Liquidación abierta, cerrada y sin generar, con y sin fecha fijada | Cambia y restaura el estado de una liquidación y la fecha |
 | `probar_pagina_error.py` | Página de error 500 para admin y usuario común | No |
 | `probar_saldo_a_favor.py` | Pago de más, saldo a favor al mes siguiente, interés y mora con saldo a favor | Sí, y restaura liquidaciones y Caja |
-| `probar_fondo_saldo_inicial.py` | Saldo del fondo con saldo inicial al mismo mes que un aporte | Cambia y restaura la config del fondo |
 | `probar_fondo_reserva.py` | Migración, saldo del fondo, extraordinarios pendiente / con el fondo, pantallas y PDF | Sí: aplica la migración (permanente); el gasto de prueba se borra y la config se restaura |
 
 Cuando se agregue una prueba, sumar su sección arriba (la más nueva primero) y, si sirve repetirla, su script en `pruebas/`.
