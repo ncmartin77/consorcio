@@ -1,0 +1,589 @@
+{% extends "base.html" %}
+{% block title %}Cobranzas{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h4 class="mb-1"><i class="bi bi-cash-coin text-primary"></i> Cobranzas
+      {% if periodo %}— <span class="text-primary">Liquidación {{ periodo | mes_largo }}</span>{% endif %}</h4>
+    {% if periodo and cobrable %}
+      <span class="badge bg-success fs-6"><i class="bi bi-cash-stack"></i> En cobro</span>
+    {% elif periodo %}
+      <span class="badge bg-secondary fs-6"><i class="bi bi-eye"></i> Solo consulta</span>
+    {% endif %}
+  </div>
+  <div class="d-flex gap-2 align-items-center flex-wrap">
+    {% if cerradas %}
+    <select class="form-select form-select-sm" id="periodoSelector" style="width:auto"
+            title="Liquidaciones cerradas">
+      {% for p in cerradas %}
+      <option value="{{ p }}" {% if p == periodo %}selected{% endif %}>
+        {{ p | mes_largo }}{% if p == periodo_cobranza %} (en cobro){% endif %}
+      </option>
+      {% endfor %}
+    </select>
+    {% endif %}
+    {% if cobrable and pendientes > 0 %}
+    <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#modalPagoCompleto"
+            data-ayuda="Pago Completo: registrá el pago del saldo de todas las unidades pendientes en una sola operación.">
+      <i class="bi bi-check2-all"></i> Pago Completo
+    </button>
+    {% endif %}
+    {% if cobrable and es_admin and pagos %}
+    <form method="POST" action="{{ url_for('cobranzas_anular', periodo=periodo) }}" class="d-inline"
+          onsubmit="return confirm('¿Anular TODOS los pagos de la liquidación {{ periodo | mes_largo }}? Se borran también sus entradas en Caja. Se puede revertir desde el Log de Movimientos.')">
+      <button type="submit" class="btn btn-outline-danger btn-sm"
+              data-ayuda="Anulá todos los pagos de esta liquidación (y sus entradas en Caja). Solo administradores; queda en el Log de Movimientos.">
+        <i class="bi bi-x-octagon"></i> Anular todos
+      </button>
+    </form>
+    {% endif %}
+    {% if liq %}
+    <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#modalNotificarTodos"
+            data-ayuda="Enviá por WhatsApp a cada unidad lo que tiene que pagar (o el recibo si ya pagó).">
+      <i class="bi bi-whatsapp"></i> Notificar a todos
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+{% if not periodo_cobranza %}
+<div class="alert alert-warning">
+  <i class="bi bi-info-circle"></i> Todavía no hay liquidaciones <strong>cerradas</strong>. Se cobra sobre una
+  liquidación cerrada (monto fijo): cerrala en <a href="{{ url_for('liquidacion') }}" class="alert-link">Liquidación</a>
+  cuando cambie el mes y no haya más gastos para cargar.
+</div>
+{% else %}
+
+{% if not cobrable %}
+<div class="alert alert-secondary py-2 small">
+  <i class="bi bi-eye"></i> Consulta. Los pagos se registran solo sobre la última liquidación cerrada:
+  <a href="{{ url_for('cobranzas') }}" class="alert-link">{{ periodo_cobranza | mes_largo }}</a>.
+</div>
+{% else %}
+<div class="alert alert-info py-2 small">
+  <i class="bi bi-info-circle"></i> Lo que se cobre acá pasa a la liquidación de
+  <strong>{{ periodo | mes_largo }}</strong> siguiente como deuda anterior (o saldo a favor si pagan de más){% if liq_abierta %}
+  y se actualiza en la liquidación abierta hasta que se cierre{% endif %}. Lo que siga impago al vencimiento
+  (día {{ cfg.dia_vencimiento or 15 }}) genera interés en la liquidación siguiente.
+</div>
+{% endif %}
+
+{% set _saldo_total = namespace(v=0) %}
+{% for r in liq %}{% if r.tipo_pago != 'TOTAL' %}{% set _saldo_total.v = _saldo_total.v + (r.saldo_pendiente if r.tipo_pago == 'PARCIAL' else r.total_a_pagar) %}{% endif %}{% endfor %}
+<div class="row g-2 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="card border-primary text-center h-100"><div class="card-body py-2">
+      <div class="small text-primary fw-bold">TOTAL A COBRAR</div>
+      <div class="fw-bold">$ {{ "{:,.2f}".format(total_a_pagar).replace(",", "X").replace(".", ",").replace("X", ".") }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-success text-center h-100"><div class="card-body py-2">
+      <div class="small text-success fw-bold">COBRADO</div>
+      <div class="fw-bold text-success">$ {{ "{:,.2f}".format(total_cobrado).replace(",", "X").replace(".", ",").replace("X", ".") }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-danger text-center h-100"><div class="card-body py-2">
+      <div class="small text-danger fw-bold">SALDO PENDIENTE</div>
+      <div class="fw-bold text-danger">$ {{ "{:,.2f}".format(_saldo_total.v).replace(",", "X").replace(".", ",").replace("X", ".") }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-secondary text-center h-100"><div class="card-body py-2">
+      <div class="small text-secondary fw-bold">UNIDADES PENDIENTES</div>
+      <div class="fw-bold">{{ pendientes }} de {{ liq|length }}</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center py-2">
+    <span class="fw-semibold"><i class="bi bi-people"></i> Unidades</span>
+    <div class="form-check form-switch mb-0 small">
+      <input class="form-check-input" type="checkbox" id="soloPendientes">
+      <label class="form-check-label" for="soloPendientes">Solo pendientes</label>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-striped table-hover mb-0 small">
+        <thead class="table-primary">
+          <tr>
+            <th>UF</th>
+            <th>Prop./Inquilino</th>
+            <th class="text-end">Total a pagar</th>
+            <th class="text-end">Abonado</th>
+            <th class="text-end">Saldo</th>
+            <th class="text-center">Estado</th>
+            <th class="text-center">Último pago</th>
+            <th class="text-center">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in liq %}
+          {% set tipo = r.tipo_pago %}
+          <tr class="fila-uf {% if tipo == 'TOTAL' %}table-success{% elif tipo == 'PARCIAL' %}table-warning{% else %}table-danger{% endif %}"
+              data-tipo="{{ tipo }}">
+            <td><strong>{{ r.unidad }}</strong></td>
+            <td>{{ r.inquilino or r.propietario }}</td>
+            <td class="text-end fw-bold">$ {{ "%.2f"|format(r.total_a_pagar)|replace(".",",") }}</td>
+            <td class="text-end {% if r.monto_pagado > 0 %}text-success fw-semibold{% endif %}">
+              {% if r.monto_pagado > 0 %}$ {{ "%.2f"|format(r.monto_pagado)|replace(".",",") }}{% else %}—{% endif %}
+            </td>
+            <td class="text-end">
+              {% if tipo == 'TOTAL' and r.saldo_pendiente < 0 %}
+                <span class="text-success fw-semibold">$ {{ "%.2f"|format(-r.saldo_pendiente)|replace(".",",") }}</span>
+                <div class="text-success" style="font-size:0.65rem">a favor próx. liquidación</div>
+              {% elif tipo == 'TOTAL' %}—
+              {% elif tipo == 'PARCIAL' %}<span class="text-danger fw-semibold">$ {{ "%.2f"|format(r.saldo_pendiente)|replace(".",",") }}</span>
+              {% else %}<span class="text-danger fw-semibold">$ {{ "%.2f"|format(r.total_a_pagar)|replace(".",",") }}</span>{% endif %}
+            </td>
+            <td class="text-center">
+              {% if tipo == 'TOTAL' %}<span class="badge bg-success">Pagado</span>
+              {% elif tipo == 'PARCIAL' %}<span class="badge bg-warning text-dark">Parcial</span>
+              {% else %}<span class="badge bg-danger">Pendiente</span>{% endif %}
+              {% if r.pago_posterior %}
+                <div class="text-muted" style="font-size:0.65rem"
+                     title="Hay un pago con fecha posterior a la fecha del sistema: no se cuenta mientras esa fecha esté fijada.">
+                  <i class="bi bi-calendar-event"></i> pagó el {{ r.pago_posterior.fecha | fecha_ar }}
+                </div>
+              {% endif %}
+            </td>
+            <td class="text-center">{% if r.fecha_pago %}{{ r.fecha_pago | fecha_ar }}{% if r.pagos|length > 1 %}
+              <div class="text-muted" style="font-size:0.65rem">{{ r.pagos|length }} pagos</div>{% endif %}{% else %}—{% endif %}</td>
+            <td class="text-center text-nowrap">
+              {% if cobrable %}
+              <button class="btn btn-sm {% if tipo == 'PARCIAL' %}btn-warning{% elif tipo == 'TOTAL' %}btn-outline-success{% else %}btn-success{% endif %}"
+                      onclick='abrirModalPago({{ r|tojson }})'
+                      title="{% if tipo == 'TOTAL' %}Registrar otro pago (queda como saldo a favor){% elif tipo == 'PARCIAL' %}Agregar pago{% else %}Registrar pago{% endif %}">
+                <i class="bi {% if tipo == 'PARCIAL' %}bi-cash-stack{% else %}bi-cash{% endif %}"></i>
+              </button>
+              {% endif %}
+              {% if tipo != 'PENDIENTE' %}
+              <a href="{{ url_for('descargar_recibo', periodo=periodo, unidad=r.unidad) }}"
+                 class="btn btn-sm btn-outline-primary" title="Descargar recibo">
+                <i class="bi bi-receipt"></i>
+              </a>
+              {% endif %}
+              <button class="btn btn-sm btn-outline-success" onclick='enviarWA({{ r|tojson }})'
+                      title="Enviar por WhatsApp">
+                <i class="bi bi-whatsapp"></i>
+              </button>
+              {% if cobrable and es_admin and r.pagos %}
+              <form method="POST" action="{{ url_for('cobranzas_anular', periodo=periodo) }}" class="d-inline"
+                    onsubmit="return confirm('¿Anular todos los pagos de la UF {{ r.unidad }} en esta liquidación? Se borran también sus entradas en Caja.')">
+                <input type="hidden" name="unidad" value="{{ r.unidad }}">
+                <button class="btn btn-sm btn-outline-danger" title="Anular pagos de la unidad (solo admin)">
+                  <i class="bi bi-x-octagon"></i>
+                </button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-bold">
+          <tr>
+            <td colspan="2">TOTALES</td>
+            <td class="text-end">$ {{ "%.2f"|format(total_a_pagar)|replace(".",",") }}</td>
+            <td class="text-end text-success">$ {{ "%.2f"|format(total_cobrado)|replace(".",",") }}</td>
+            <td class="text-end text-danger">$ {{ "%.2f"|format(_saldo_total.v)|replace(".",",") }}</td>
+            <td colspan="3"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header py-2 fw-semibold"><i class="bi bi-clock-history"></i> Pagos registrados ({{ pagos|length }})</div>
+  <div class="card-body p-0">
+    {% if pagos %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0 small">
+        <thead class="table-light">
+          <tr><th>Fecha</th><th>UF</th><th>Nombre</th><th class="text-end">Monto</th>
+              <th class="text-end">Bonificación</th>{% if cobrable and es_admin %}<th></th>{% endif %}</tr>
+        </thead>
+        <tbody>
+          {% for p in pagos %}
+          <tr>
+            <td>{{ p.fecha | fecha_ar }}</td>
+            <td><strong>{{ p.unidad }}</strong></td>
+            <td>{{ p.persona }}</td>
+            <td class="text-end text-success">$ {{ "%.2f"|format(p.monto)|replace(".",",") }}</td>
+            <td class="text-end">{% if p.bonificacion > 0 %}$ {{ "%.2f"|format(p.bonificacion)|replace(".",",") }}
+              {% if p.bonif_motivo %}<div class="text-muted" style="font-size:0.65rem">{{ p.bonif_motivo }}</div>{% endif %}
+              {% else %}—{% endif %}</td>
+            {% if cobrable and es_admin %}
+            <td class="text-end">
+              <form method="POST" action="{{ url_for('cobranzas_anular', periodo=periodo) }}" class="d-inline"
+                    onsubmit="return confirm('¿Anular este pago de la UF {{ p.unidad }} ({{ p.fecha | fecha_ar }})? Se borra también su entrada en Caja.')">
+                <input type="hidden" name="pago_id" value="{{ p.id }}">
+                <button class="btn btn-sm btn-outline-danger py-0" title="Anular este pago (solo admin)">
+                  <i class="bi bi-x"></i>
+                </button>
+              </form>
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-muted small p-3">Todavía no hay pagos registrados en esta liquidación.</div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ===== MODAL PAGO COMPLETO ===== -->
+<div class="modal fade" id="modalPagoCompleto" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('cobranzas_pagar_todo', periodo=periodo) if periodo else '#' }}">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title"><i class="bi bi-check2-all"></i> Pago Completo</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-3 small">
+            Se registra el pago del saldo de las <strong>{{ pendientes }}</strong> unidad(es) pendientes.
+          </p>
+          <label class="form-label fw-semibold">Fecha de Pago *</label>
+          <input type="date" class="form-control" name="fecha_pago" value="{{ hoy_sistema }}"
+                 min="{{ periodo }}-01" max="{{ hoy_sistema }}" required>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success"><i class="bi bi-check2-all"></i> Confirmar Todo</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL PAGO ===== -->
+<div class="modal fade" id="modalPago" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <form method="POST" id="formPago">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title"><i class="bi bi-cash"></i> Registrar Pago</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <span class="fw-bold" id="mp_unidad"></span>
+            <span class="text-muted small ms-1" id="mp_ocupante"></span>
+          </div>
+          <div class="mb-3 small">
+            <div class="d-flex justify-content-between text-muted mb-1">
+              <span>Total a pagar:</span><strong id="mp_total" class="text-danger"></strong>
+            </div>
+            <div id="mp_ya_pagado_row" class="justify-content-between text-muted mb-1" style="display:none">
+              <span>Ya abonado:</span><strong id="mp_ya_pagado" class="text-success"></strong>
+            </div>
+            <div id="mp_saldo_row" class="justify-content-between text-muted mb-1" style="display:none">
+              <span>Saldo pendiente:</span><strong id="mp_saldo" class="text-warning"></strong>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Monto Abonado *</label>
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              <input type="number" class="form-control" name="monto_pagado" id="mp_monto"
+                     step="0.01" min="0.01" required>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-success w-100 mt-1"
+                    onclick="usarMontoTotal()">Pagar el saldo</button>
+          </div>
+          <div class="mb-2">
+            <label class="form-label fw-semibold">Fecha de Pago *</label>
+            <input type="date" class="form-control" name="fecha_pago" id="mp_fecha"
+                   min="{{ periodo }}-01" max="{{ hoy_sistema }}" required>
+          </div>
+          <div id="mp_aviso_parcial" class="alert alert-warning py-1 small mb-0" style="display:none">
+            <i class="bi bi-exclamation-triangle"></i>
+            El monto es menor al saldo → se registrará como <strong>pago parcial</strong>.
+          </div>
+          <div id="mp_aviso_favor" class="alert alert-success py-1 small mb-0" style="display:none">
+            <i class="bi bi-piggy-bank"></i>
+            Paga de más: queda pagado y <strong>$ <span id="mp_excedente"></span></strong> pasan como
+            <strong>saldo a favor</strong> a la liquidación siguiente.
+          </div>
+          <hr class="my-2">
+          <div class="mb-2">
+            <label class="form-label fw-semibold text-warning small">
+              <i class="bi bi-tag"></i> Bonificación (opcional)
+            </label>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text">$</span>
+              <input type="number" class="form-control" name="bonificacion" id="mp_bonif"
+                     step="0.01" min="0" placeholder="0.00">
+            </div>
+          </div>
+          <div class="mb-0">
+            <label class="form-label small text-muted">Motivo de la bonificación</label>
+            <input type="text" class="form-control form-control-sm" name="bonif_motivo"
+                   id="mp_bonif_motivo" placeholder="Ej: Error de cálculo mes anterior" maxlength="150">
+            <div class="form-text">Se registra como SALIDA en Caja Diaria, no cambia lo que se debe.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success"><i class="bi bi-check-circle"></i> Confirmar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL SIN CELULAR ===== -->
+<div class="modal fade" id="modalSinCelular" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header bg-warning text-dark py-2">
+        <h6 class="modal-title"><i class="bi bi-exclamation-triangle-fill"></i> Sin celular configurado</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-1">La unidad <strong id="sinCelularUnidad"></strong> no tiene celular registrado.</p>
+        <p class="small text-muted mb-0">Andá a <strong>Unidades → lápiz</strong> y completá el celular del propietario o inquilino para poder enviar WhatsApp.</p>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+        <button class="btn btn-primary btn-sm" onclick="irAEditarUnidad()">
+          <i class="bi bi-pencil-fill"></i> Editar contacto
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL WHATSAPP PREVIEW ===== -->
+<div class="modal fade" id="modalWAPreview" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white py-2">
+        <h6 class="modal-title" id="waPreviewTitulo"><i class="bi bi-whatsapp"></i> Enviar por WhatsApp</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pb-2">
+        <div class="mb-2 small text-muted" id="waPreviewDestinatario"></div>
+        <textarea class="form-control" id="waPreviewTexto" rows="15"
+                  style="font-size:0.82rem;font-family:monospace;white-space:pre;resize:vertical"></textarea>
+        <small class="text-muted">Podés editar el mensaje antes de enviarlo.</small>
+      </div>
+      <div class="modal-footer py-2 gap-2" id="waPreviewBotones">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL NOTIFICAR A TODOS ===== -->
+<div class="modal fade" id="modalNotificarTodos" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white py-2">
+        <h6 class="modal-title"><i class="bi bi-whatsapp"></i> Notificar a todos por WhatsApp</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-2">
+        <p class="small text-muted mb-2">Hacé click en <i class="bi bi-whatsapp text-success"></i> de cada unidad para abrir WhatsApp. Las unidades sin celular configurado aparecen en gris.</p>
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light"><tr>
+            <th>UF</th><th>Nombre</th><th>Celular</th><th class="text-end">Total</th><th class="text-center">Estado</th><th></th>
+          </tr></thead>
+          <tbody>
+          {% for r in liq %}
+          {% set u = unidades_map.get(r.unidad|string, {}) %}
+          {% set dest = u.get('envio_destinatario','propietario') %}
+          {% set celular = u.get('propietario_celular','') if dest == 'propietario' else (u.get('inquilino_celular','') if dest == 'inquilino' else (u.get('propietario_celular','') or u.get('inquilino_celular',''))) %}
+          {% set nombre = (u.get('inquilino','') or u.get('propietario','')) if dest == 'inquilino' else u.get('propietario','') %}
+          <tr class="{% if not celular %}text-muted{% endif %}">
+            <td><strong>{{ r.unidad }}</strong></td>
+            <td>{{ nombre or r.propietario }}</td>
+            <td>{{ celular or '<span class="badge bg-secondary">Sin celular</span>'|safe }}</td>
+            <td class="text-end">$ {{ "%.2f"|format(r.total_a_pagar)|replace(".",",") }}</td>
+            <td class="text-center">
+              {% if r.tipo_pago == 'TOTAL' %}<span class="badge bg-success">Pagado</span>
+              {% elif r.tipo_pago == 'PARCIAL' %}<span class="badge bg-warning text-dark">Parcial</span>
+              {% else %}<span class="badge bg-danger">Pendiente</span>{% endif %}
+            </td>
+            <td>
+              {% if celular %}
+              <button class="btn btn-sm btn-success" onclick='enviarWA({{ r|tojson }})' title="Enviar WhatsApp">
+                <i class="bi bi-whatsapp"></i>
+              </button>
+              {% else %}
+              <a href="{{ url_for('unidades') }}" class="btn btn-sm btn-outline-secondary" title="Configurar celular">
+                <i class="bi bi-pencil"></i>
+              </a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+const _sel = document.getElementById('periodoSelector');
+if (_sel) _sel.addEventListener('change', function() {
+  window.location.href = '{{ url_for("cobranzas") }}/' + this.value;
+});
+
+const _chkPend = document.getElementById('soloPendientes');
+if (_chkPend) _chkPend.addEventListener('change', function() {
+  document.querySelectorAll('tr.fila-uf').forEach(tr => {
+    tr.style.display = (this.checked && tr.dataset.tipo === 'TOTAL') ? 'none' : '';
+  });
+});
+
+function fmt(n) {
+  return '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+// ── Registrar pago ──────────────────────────────────────────────────────────
+let _saldoActual = 0;
+
+function _saldoDe(r) {
+  if (r.tipo_pago === 'TOTAL') return 0;
+  return r.tipo_pago === 'PARCIAL' ? r.saldo_pendiente : r.total_a_pagar;
+}
+
+function abrirModalPago(r) {
+  const saldo = _saldoDe(r);
+  _saldoActual = saldo;
+  document.getElementById('mp_unidad').textContent = 'UF ' + r.unidad;
+  document.getElementById('mp_ocupante').textContent = r.inquilino || r.propietario || '';
+  document.getElementById('mp_total').textContent = fmt(r.total_a_pagar);
+  const conPagos = r.monto_pagado > 0;
+  document.getElementById('mp_ya_pagado').textContent = fmt(r.monto_pagado);
+  document.getElementById('mp_ya_pagado_row').style.display = conPagos ? 'flex' : 'none';
+  document.getElementById('mp_saldo').textContent = fmt(saldo);
+  document.getElementById('mp_saldo_row').style.display = conPagos ? 'flex' : 'none';
+  document.getElementById('mp_monto').value = saldo > 0 ? saldo.toFixed(2) : '';
+  document.getElementById('mp_fecha').value = '{{ hoy_sistema }}';
+  document.getElementById('mp_aviso_parcial').style.display = 'none';
+  document.getElementById('mp_aviso_favor').style.display = 'none';
+  document.getElementById('mp_bonif').value = '';
+  document.getElementById('mp_bonif_motivo').value = '';
+  document.getElementById('formPago').action =
+    '{{ url_for("cobranzas_pagar", periodo=periodo or "x", unidad="__U__") }}'.replace('__U__', encodeURIComponent(r.unidad));
+  new bootstrap.Modal(document.getElementById('modalPago')).show();
+}
+
+function usarMontoTotal() {
+  if (_saldoActual > 0) document.getElementById('mp_monto').value = _saldoActual.toFixed(2);
+  document.getElementById('mp_monto').dispatchEvent(new Event('input'));
+}
+
+document.getElementById('mp_monto').addEventListener('input', function() {
+  const v = parseFloat(this.value) || 0;
+  document.getElementById('mp_aviso_parcial').style.display =
+    (v > 0 && v < _saldoActual) ? 'block' : 'none';
+  const exc = Math.round((v - _saldoActual) * 100) / 100;
+  document.getElementById('mp_aviso_favor').style.display = (v > 0 && exc > 0) ? 'block' : 'none';
+  document.getElementById('mp_excedente').textContent =
+    exc.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+});
+
+// ── WhatsApp ────────────────────────────────────────────────────────────────
+const _WA_EDIFICIO    = {{ consorcio_nombre | tojson }};
+const _WA_PERIODO     = {{ ((periodo | mes_largo) if periodo else '') | tojson }};
+const _WA_DIA_VENC    = {{ (cfg.dia_vencimiento or '15') | tojson }};
+const _WA_ALIAS       = {{ (cfg.alias_cbu or '') | tojson }};
+const _unidades_map   = {{ unidades_map | tojson }};
+const _recibo_tokens  = {{ recibo_tokens | tojson }};
+const _recibo_base    = {{ recibo_base_url | tojson }};
+
+function _buildWAMensaje(r) {
+  const tipo = r.tipo_pago || 'PENDIENTE';
+  const token = _recibo_tokens[String(r.unidad)] || '';
+  const urlRecibo = token ? `${_recibo_base}/${r.unidad}/${token}` : '';
+  const diaVenc = parseInt(_WA_DIA_VENC, 10);
+  let L = [];
+  L.push(`🏢 *${_WA_EDIFICIO}*  |  Unidad *${r.unidad}*`);
+  L.push(`📅 Expensas ${_WA_PERIODO}`);
+  L.push('');
+  if (tipo === 'TOTAL') {
+    L.push(`✅ *Pago registrado: ${fmt(r.monto_pagado)}*`);
+    L.push('¡Gracias por su pago!');
+  } else if (tipo === 'PARCIAL') {
+    L.push(`⚠️ *Saldo pendiente: ${fmt(r.saldo_pendiente)}*`);
+    L.push(`   Abonado ${fmt(r.monto_pagado)} de ${fmt(r.total_a_pagar)}`);
+  } else {
+    L.push(`💲 *Total a pagar: ${fmt(r.total_a_pagar)}*`);
+  }
+  if (tipo !== 'TOTAL') {
+    if (diaVenc > 0) L.push(`📆 Vencimiento: día ${diaVenc}`);
+    if (_WA_ALIAS)   L.push(`🏦 ${_WA_ALIAS}`);
+  }
+  if (urlRecibo) {
+    L.push('');
+    L.push(`🧾 Recibo: ${urlRecibo}`);
+  }
+  L.push('');
+  L.push(`_Administración_`);
+  return L.join('\n');
+}
+
+function enviarWA(r) {
+  const u = _unidades_map[String(r.unidad)] || {};
+  const dest = u.envio_destinatario || 'propietario';
+  let destinatarios = [];
+  if (dest === 'propietario' || dest === 'ambos') {
+    const cel = (u.propietario_celular || '').replace(/\D/g,'');
+    if (cel) destinatarios.push({ num: cel, nombre: u.propietario || 'Propietario' });
+  }
+  if (dest === 'inquilino' || dest === 'ambos') {
+    const cel = (u.inquilino_celular || '').replace(/\D/g,'');
+    if (cel) destinatarios.push({ num: cel, nombre: u.inquilino || 'Inquilino' });
+  }
+  if (!destinatarios.length) {
+    document.getElementById('sinCelularUnidad').textContent = r.unidad;
+    new bootstrap.Modal(document.getElementById('modalSinCelular')).show();
+    return;
+  }
+  document.getElementById('waPreviewTitulo').innerHTML =
+    '<i class="bi bi-whatsapp"></i> Unidad ' + r.unidad + ' — ' + destinatarios.map(d=>d.nombre).join(' / ');
+  document.getElementById('waPreviewDestinatario').innerHTML =
+    destinatarios.map(d => `<i class="bi bi-phone-fill text-success"></i> <strong>${d.nombre}</strong>: ${d.num}`).join('&nbsp;&nbsp;');
+  document.getElementById('waPreviewTexto').value = _buildWAMensaje(r);
+  const footer = document.getElementById('waPreviewBotones');
+  footer.innerHTML = '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>';
+  destinatarios.forEach(d => {
+    const label = destinatarios.length > 1 ? d.nombre : 'Abrir WhatsApp';
+    footer.innerHTML += `<button class="btn btn-success btn-sm" onclick="abrirWA('${d.num}')">
+      <i class="bi bi-whatsapp"></i> ${label}
+    </button>`;
+  });
+  new bootstrap.Modal(document.getElementById('modalWAPreview')).show();
+}
+
+function abrirWA(num) {
+  const texto = document.getElementById('waPreviewTexto').value;
+  window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(texto), '_blank');
+}
+
+function irAEditarUnidad() {
+  const num = document.getElementById('sinCelularUnidad').textContent;
+  window.location.href = '{{ url_for("unidades") }}?editar=' + encodeURIComponent(num);
+}
+</script>
+{% endblock %}

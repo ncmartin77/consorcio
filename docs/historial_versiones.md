@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 8.1-0611
+**Versión actual:** 9.0-0711
 
 ---
 
@@ -334,12 +334,41 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ---
 
+### v9.x — Cobranzas separada de Liquidación
+
+#### v9.0-0711 — Se cobra sobre la liquidación cerrada (pantalla Cobranzas)
+
+**Lanzamiento:** 7 de noviembre
+**Versión actual**
+**Por qué es mayor:** cambia qué significa "cerrada", dónde y cuándo se registran los pagos y la regla del interés, y los pagos pasan a una tabla nueva (migración automática). Aprobado por el usuario. La migración a Supabase Storage pasa a **10.0**.
+
+**Concepto nuevo (pedido del usuario):**
+
+| Momento | Liquidación | Pagos |
+|---|---|---|
+| Mes de los gastos | **Abierta**: se cargan gastos, el monto se recalcula | se cobra la última cerrada |
+| Cambia el mes, no hay más gastos | **Se cierra**: monto fijo | — |
+| Mes de la liquidación | Cerrada, no cambia | se cobra contra ella en **Cobranzas** |
+| Al generar / mientras está abierta la siguiente | lo impago pasa como deuda anterior (o saldo a favor) | cuando se cierra la siguiente, se cobra contra esa |
+
+**Cambios:**
+
+- **Pantalla nueva Cobranzas** (`/cobranzas`, menú al lado de Liquidación): registrar pago (monto, fecha = fecha del sistema, bonificación), pago completo, anular (admin; un pago, una unidad o todos), recibos, WhatsApp, "Notificar a todos", filtro "solo pendientes" e historial de pagos. Siempre cobra contra la **última liquidación cerrada**; las anteriores se pueden consultar.
+- **Liquidación** queda para generar, sin interés, extras, notas, cerrar/reabrir y PDF: sin botones de pago. Se **cierra** desde el día 1 del mes de la liquidación (según la fecha del sistema) y con la anterior cerrada; al cerrar se recalcula y el monto queda fijo. **Reabrir** solo admin y solo si no tiene pagos (y la siguiente no está cerrada).
+- **Tabla `pagos`** (fecha, monto, bonificación, vínculo con Caja), auditada. El estado de pago de cada fila (`monto_pagado`, `tipo_pago`, `saldo_pendiente`, `fecha_pago`) se calcula desde ahí. Migración automática (una vez por consorcio, `config.pagos_migrados`): los pagos viejos se vinculan con sus entradas "Expensas P - … - UF n" y bonificaciones de Caja.
+- **Deuda anterior** = total de la liquidación anterior − sus pagos (negativa = saldo a favor). Se actualiza en la liquidación abierta con cada pago hasta que se cierra.
+- **Interés** = tasa × lo que seguía **impago el día del vencimiento** de la liquidación anterior, cobrado en la siguiente (aunque después se cancele). Ya no hay recargo dentro de la misma liquidación. Saldo a favor sin interés; deuda de apertura sin interés el 1er mes.
+- **Caja:** el mes M se bloquea cuando se cierra la liquidación que lleva sus gastos (M+1). Editar/borrar en Caja el cobro de un pago actualiza/borra el pago.
+- **Fecha del sistema:** pagos (por defecto y como máximo), cierres, interés y deuda usan la fecha del sistema; los pagos con fecha posterior no se cuentan. Al cambiarla se recalculan las liquidaciones abiertas.
+- **Libre deuda:** según la última liquidación cerrada.
+
+---
+
 ### v8.x — Fondo de Reserva = saldo de caja
 
 #### v8.1-0611 — Saldo de caja a la fecha de cierre de la liquidación
 
 **Lanzamiento:** 6 de noviembre
-**Versión actual**
 
 **Cambios:**
 

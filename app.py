@@ -116,9 +116,9 @@ _DESC_AUDITORIA = {
     "toggle_sin_interes_todos": "Liquidación: activar/desactivar interés (todas)",
     "cerrar_liquidacion": "Liquidación: cerrar",
     "reabrir_liquidacion": "Liquidación: reabrir",
-    "pagar_todo": "Liquidación: pago completo",
-    "marcar_pagado": "Liquidación: registrar pago",
-    "anular_pagos": "Liquidación: anular pago(s)",
+    "cobranzas_pagar_todo": "Cobranzas: pago completo",
+    "cobranzas_pagar": "Cobranzas: registrar pago",
+    "cobranzas_anular": "Cobranzas: anular pago(s)",
     "notas_add": "Liquidación: agregar nota",
     "notas_delete": "Liquidación: eliminar nota",
     "extras_add": "Liquidación: agregar gasto extra",
@@ -148,6 +148,7 @@ def _contexto_auditoria():
         return
     try:
         db.ensure_libres_deuda()  # antes de la auditoría, para que la tabla reciba su trigger
+        db.ensure_pagos()
         db.ensure_auditoria()
         db.ensure_deuda_inicial_fecha()
         db.ensure_caja_factura_id()
@@ -166,6 +167,14 @@ def _contexto_auditoria():
                 app.logger.info(f"[v6.0] Gasto de {p_gasto} pasado a 'pagado con fondo'")
         except Exception as exc:
             app.logger.warning(f"[v6.0] Migración de gastos con fondo: {exc}")
+        try:
+            db.set_contexto_auditoria(session.get("usuario_email", ""),
+                                      "Migración v9.0: pagos de expensas a la tabla de pagos")
+            n_pagos = db.migrar_pagos_legacy()
+            if n_pagos:
+                app.logger.info(f"[v9.0] {n_pagos} pago(s) pasados a la tabla pagos")
+        except Exception as exc:
+            app.logger.warning(f"[v9.0] Migración de pagos: {exc}")
     desc = _DESC_AUDITORIA.get(request.endpoint, request.endpoint)
     if request.view_args:
         desc += " (" + ", ".join(f"{k}: {v}" for k, v in request.view_args.items()) + ")"
@@ -505,11 +514,11 @@ def fijar_fecha_sistema():
             flash("Fecha inválida.", "danger")
             return redirect(url_for("config") + "#fecha-sistema")
     db.save_config({"fecha_simulada": valor})
-    # Normaliza lo GUARDADO con la fecha real (la v5.7 guardaba intereses a la fecha fijada)
+    # Las liquidaciones abiertas se recalculan a la nueva fecha (deuda e interés según los pagos hasta ese día)
     db.recalcular_intereses_abiertas()
     if valor:
-        flash(f"El sistema muestra todo como si hoy fuera {fecha_ar(valor)}: intereses a esa fecha y "
-              f"sin contar los pagos registrados después. No se modifica ningún dato guardado.", "warning")
+        flash(f"El sistema trabaja como si hoy fuera {fecha_ar(valor)}: pagos, cierres e intereses usan esa "
+              f"fecha y no se cuentan los pagos registrados después.", "warning")
     else:
         flash("El sistema volvió a la fecha real.", "success")
     return redirect(url_for("config") + "#fecha-sistema")
@@ -940,7 +949,8 @@ def caja(periodo=None):
     except ValueError:
         page = 1
     per_page = 50
-    liq_cerrada = db.liq_esta_cerrada(periodo)
+    # v9.0: la Caja del mes se cierra al cerrar la liquidación que lleva sus gastos (mes siguiente)
+    liq_cerrada = db.caja_mes_bloqueado(periodo)
     movimientos, total = db.get_caja(periodo, page=page, per_page=per_page)
     total_pages = max(1, (total + per_page - 1) // per_page)
     # Summaries always over the full month (not just the page)
@@ -974,10 +984,19 @@ def caja(periodo=None):
 @app.route("/caja/save", methods=["POST"])
 def save_movimiento():
     periodo = request.form.get("periodo", _periodo_actual())
-    if db.liq_esta_cerrada(periodo):
-        flash(f"La liquidación de {periodo} está cerrada. No se pueden registrar movimientos.", "danger")
-        return redirect(url_for("caja", periodo=periodo))
     fecha = request.form.get("fecha", "")
+    row_num_chk = request.form.get("row_num")
+    meses = {fecha[:7]} if fecha else {periodo}
+    if row_num_chk and row_num_chk.isdigit():
+        previo = db._fetchone("SELECT fecha FROM caja WHERE id=%s AND consorcio_id=%s",
+                              (int(row_num_chk), db._cid()))
+        if previo and previo["fecha"]:
+            meses.add(previo["fecha"].strftime("%Y-%m"))
+    bloqueados = sorted(m for m in meses if db.caja_mes_bloqueado(m))
+    if bloqueados:
+        flash(f"La Caja de {', '.join(bloqueados)} está cerrada (se cerró la liquidación que lleva esos gastos). "
+              f"No se pueden registrar ni modificar movimientos.", "danger")
+        return redirect(url_for("caja", periodo=periodo))
     descripcion = request.form.get("descripcion", "").strip()
     tipo = request.form.get("tipo", "ENTRADA")
     categoria = request.form.get("categoria", "").strip()
@@ -1003,7 +1022,8 @@ def save_movimiento():
 def delete_movimiento(row_num, periodo):
     ok = db.delete_movimiento(row_num)
     if ok is False:
-        flash("No se puede eliminar: la liquidación del período correspondiente está cerrada.", "danger")
+        flash("No se puede eliminar: la Caja de ese mes está cerrada, o es el cobro de un pago que ya no se "
+              "puede anular (solo los de la última liquidación cerrada).", "danger")
     else:
         flash("Movimiento eliminado.", "success")
     return redirect(url_for("caja", periodo=periodo))
@@ -1018,7 +1038,8 @@ def eliminar_ultimo_movimiento():
         return redirect(url_for("caja", periodo=periodo))
     ok = db.delete_movimiento(ultimo["id"])
     if ok is False:
-        flash(f"No se puede eliminar: la liquidación del período {ultimo['fecha'][:7]} está cerrada.", "danger")
+        flash(f"No se puede eliminar: la Caja de {ultimo['fecha'][:7]} está cerrada o es el cobro de un "
+              f"pago que ya no se puede anular.", "danger")
     else:
         signo = "+" if ultimo["tipo"] == "ENTRADA" else "-"
         flash(
@@ -1041,25 +1062,13 @@ def liquidacion(periodo=None):
     else:
         _set_periodo_trabajo(periodo)
 
-    # Auto-aplicar mora si hoy superó el día de vencimiento y la liquidación está abierta
-    liq_generada_check = db.liquidacion_existe(periodo)
-    liq_cerrada_check = db.liq_esta_cerrada(periodo)
-    if liq_generada_check and not liq_cerrada_check:
-        # Ojo: no hacer "import calendar as _cal" acá. Un import dentro de la función vuelve
-        # local a _cal en TODA la función y, si este if no se ejecuta (liquidación cerrada o
-        # sin generar), más abajo daba UnboundLocalError. _cal ya está importado arriba.
-        cfg_check = db.get_config()
-        hoy_check = _fecha_hoy()
+    # Liquidación abierta: se mantiene al día (pagos de la anterior, interés al vencimiento).
+    # generar_liquidacion no escribe si nada cambió.
+    if db.liquidacion_existe(periodo) and not db.liq_esta_cerrada(periodo):
         try:
-            dia_venc = int(cfg_check.get("dia_vencimiento", 15) or 15)
-            yp, mp = int(periodo[:4]), int(periodo[5:7])
-            ultimo = _cal.monthrange(yp, mp)[1]
-            dia_real = ultimo if dia_venc <= 0 else min(dia_venc, ultimo)
-            from datetime import date as _date
-            if hoy_check > _date(yp, mp, dia_real):
-                db.generar_liquidacion(periodo)
-        except Exception:
-            pass
+            db.generar_liquidacion(periodo)
+        except Exception as exc:
+            app.logger.warning(f"Recalcular liquidación {periodo}: {exc}")
 
     liq = db.get_liquidacion(periodo)
     mes_gastos = db._prev_periodo(periodo)  # gastos del mes anterior
@@ -1069,9 +1078,6 @@ def liquidacion(periodo=None):
     total_deuda = sum(r["deuda_anterior"] for r in liq)
     pendientes = sum(1 for r in liq if r.get("tipo_pago", "PENDIENTE") not in ("TOTAL",))
     total_cobrado = sum(r.get("monto_pagado", 0) for r in liq)
-    # Saldo de caja al último día del período (o fecha elegida por el usuario)
-    yp, mp = int(periodo[:4]), int(periodo[5:7])
-    ultimo_dia = _cal.monthrange(yp, mp)[1]
     # Saldo de caja a la fecha de cierre de la liquidación (o a hoy si está abierta)
     saldo_al_default = db.fecha_corte_liquidacion(periodo).strftime("%Y-%m-%d")
     saldo_al = request.args.get("saldo_al", saldo_al_default)
@@ -1093,14 +1099,6 @@ def liquidacion(periodo=None):
     unidades = db.get_unidades(solo_activas=True)
     unidades_map = {str(u["numero"]): u for u in unidades}
     cfg = db.get_config()
-    cid = session.get("consorcio_id", "")
-    clave_firma = db.get_clave_firma()
-    url_app = cfg.get("url_app", "http://localhost:5000").rstrip("/")
-    recibo_tokens = {
-        str(r["unidad"]): _token_recibo_publico(clave_firma, cid, periodo, str(r["unidad"]))
-        for r in liq if r.get("tipo_pago", "PENDIENTE") != "PENDIENTE"
-    }
-    recibo_base_url = f"{url_app}/recibo/publico/{cid}/{periodo}"
     return render_template("liquidacion.html",
                            liq=liq,
                            gastos=gastos,
@@ -1126,8 +1124,8 @@ def liquidacion(periodo=None):
                            extras_por_unidad=extras_por_unidad,
                            unidades=unidades,
                            unidades_map=unidades_map,
-                           recibo_tokens=recibo_tokens,
-                           recibo_base_url=recibo_base_url)
+                           error_cierre=db.error_cierre(periodo) if (liq_generada and not liq_cerrada) else None,
+                           periodo_cobranza=db.periodo_cobranza())
 
 
 @app.route("/liquidacion/generar/<periodo>", methods=["POST"])
@@ -1155,25 +1153,26 @@ def generar_liquidacion(periodo):
 
 @app.route("/liquidacion/cerrar/<periodo>", methods=["POST"])
 def cerrar_liquidacion(periodo):
-    if not db.liquidacion_existe(periodo):
-        flash("No hay liquidación generada para cerrar.", "warning")
-    elif db.liq_esta_cerrada(periodo):
-        flash(f"La liquidación de {periodo} ya está cerrada.", "info")
-    else:
-        db.set_liq_estado(periodo, "CERRADA")
-        flash(f"Liquidación de {periodo} cerrada. Ya no se pueden registrar pagos.", "success")
-    return redirect(url_for("liquidacion", periodo=periodo))
+    err = db.cerrar_liquidacion(periodo)
+    if err:
+        flash(err, "warning")
+        return redirect(url_for("liquidacion", periodo=periodo))
+    flash(f"Liquidación de {mes_largo(periodo)} cerrada: el monto quedó fijo y ya se puede cobrar en Cobranzas.",
+          "success")
+    return redirect(url_for("cobranzas", periodo=periodo))
 
 
 @app.route("/liquidacion/reabrir/<periodo>", methods=["POST"])
 def reabrir_liquidacion(periodo):
-    if not db.liquidacion_existe(periodo):
-        flash("No hay liquidación generada para reabrir.", "warning")
-    elif not db.liq_esta_cerrada(periodo):
-        flash(f"La liquidación de {periodo} ya está abierta.", "info")
+    block = _require_admin()
+    if block:
+        return block
+    err = db.error_reapertura(periodo)
+    if err:
+        flash(err, "warning")
     else:
         db.set_liq_estado(periodo, "ABIERTA")
-        flash(f"Liquidación de {periodo} reabierta.", "success")
+        flash(f"Liquidación de {mes_largo(periodo)} reabierta.", "success")
     return redirect(url_for("liquidacion", periodo=periodo))
 
 
@@ -1182,24 +1181,11 @@ def toggle_sin_interes(periodo, unidad):
     if db.liq_esta_cerrada(periodo):
         return jsonify({"ok": False, "error": "Liquidación cerrada"}), 403
     valor = bool((request.get_json(silent=True) or {}).get("sin_interes", False))
-    res = _vista_sin_interes(periodo, db.aplicar_sin_interes(periodo, valor, unidad=unidad))
+    res = db.aplicar_sin_interes(periodo, valor, unidad=unidad)
     row = res["rows"].get(str(unidad))
     if not row:
         return jsonify({"ok": False, "error": "Unidad no encontrada en la liquidación"}), 404
     return jsonify({"ok": True, **row, "total_periodo": res["total_periodo"]})
-
-
-def _vista_sin_interes(periodo, res):
-    """Con fecha del sistema fijada, devuelve los montos simulados (los que muestra la pantalla)."""
-    if not db.get_fecha_simulada():
-        return res
-    sim = {str(r["unidad"]): r for r in db.get_liquidacion(periodo)}
-    claves = ("interes", "total_a_pagar", "saldo_pendiente", "tipo_pago")
-    rows = {u: {k: sim[u][k] for k in claves} for u in res["rows"] if u in sim}
-    for u, r in rows.items():
-        if r["tipo_pago"] == "PENDIENTE":
-            r["saldo_pendiente"] = r["total_a_pagar"]
-    return {"rows": rows, "total_periodo": round(sum(r["total_a_pagar"] for r in sim.values()), 2)}
 
 
 @app.route("/liquidacion/<periodo>/sin-interes-todos", methods=["POST"])
@@ -1207,75 +1193,100 @@ def toggle_sin_interes_todos(periodo):
     if db.liq_esta_cerrada(periodo):
         return jsonify({"ok": False, "error": "Liquidación cerrada"}), 403
     valor = bool((request.get_json(silent=True) or {}).get("sin_interes", False))
-    res = _vista_sin_interes(periodo, db.aplicar_sin_interes(periodo, valor))
+    res = db.aplicar_sin_interes(periodo, valor)
     return jsonify({"ok": True, "rows": res["rows"], "total_periodo": res["total_periodo"]})
 
 
-@app.route("/liquidacion/<periodo>/anular-pagos", methods=["POST"])
-def anular_pagos(periodo):
-    """Anula el pago de una unidad (form 'unidad') o de todo el período. Solo administradores."""
+# ---------------------------------------------------------------------------
+# COBRANZAS (v9.0): pagos de expensas sobre la última liquidación cerrada
+# ---------------------------------------------------------------------------
+
+@app.route("/cobranzas")
+@app.route("/cobranzas/<periodo>")
+def cobranzas(periodo=None):
+    actual = db.periodo_cobranza()
+    periodo = periodo or actual
+    liq = db.get_liquidacion(periodo) if periodo else []
+    cobrable = bool(periodo) and periodo == actual
+    cfg = db.get_config()
+    unidades_map = {str(u["numero"]): u for u in db.get_unidades(solo_activas=False)}
+    cid = session.get("consorcio_id", "")
+    clave_firma = db.get_clave_firma()
+    url_app = cfg.get("url_app", "http://localhost:5000").rstrip("/")
+    recibo_tokens = {
+        str(r["unidad"]): _token_recibo_publico(clave_firma, cid, periodo, str(r["unidad"]))
+        for r in liq if r.get("tipo_pago", "PENDIENTE") != "PENDIENTE"
+    }
+    pagos = []
+    for r in liq:
+        for p in r.get("pagos", []):
+            pagos.append({**p, "persona": r["inquilino"] or r["propietario"]})
+    pagos.sort(key=lambda p: (p["fecha"], p["id"]), reverse=True)
+    cerradas = [r["periodo"] for r in db._fetchall(
+        "SELECT periodo FROM liquidaciones_estado WHERE consorcio_id=%s AND estado='CERRADA' "
+        "ORDER BY periodo DESC LIMIT 24", (db._cid(),))]
+    return render_template(
+        "cobranzas.html", periodo=periodo, periodo_cobranza=actual, cobrable=cobrable,
+        liq=liq, pagos=pagos, cfg=cfg, unidades_map=unidades_map, cerradas=cerradas,
+        liq_abierta=db.liquidacion_existe(db._next_periodo(actual)) and not db.liq_esta_cerrada(db._next_periodo(actual)) if actual else False,
+        total_a_pagar=round(sum(r["total_a_pagar"] for r in liq), 2),
+        total_cobrado=round(sum(r["monto_pagado"] for r in liq), 2),
+        pendientes=sum(1 for r in liq if r["tipo_pago"] != "TOTAL"),
+        recibo_tokens=recibo_tokens,
+        recibo_base_url=f"{url_app}/recibo/publico/{cid}/{periodo}",
+    )
+
+
+@app.route("/cobranzas/<periodo>/pagar/<unidad>", methods=["POST"])
+def cobranzas_pagar(periodo, unidad):
+    def _num(campo):
+        try:
+            return float((request.form.get(campo) or "0").strip().replace(",", "."))
+        except ValueError:
+            return 0.0
+    fecha_pago = request.form.get("fecha_pago") or _fecha_hoy().strftime("%Y-%m-%d")
+    monto, bonif = _num("monto_pagado"), _num("bonificacion")
+    res = db.registrar_pago(periodo, unidad, monto, fecha_pago, bonif,
+                            (request.form.get("bonif_motivo") or "").strip())
+    if res.get("error"):
+        flash(res["error"], "danger")
+    elif res["tipo"] == "PARCIAL":
+        flash(f"UF {unidad}: pago parcial de ${monto:,.2f}. Saldo pendiente: ${res['saldo']:,.2f}.", "warning")
+    elif res["saldo"] < 0:
+        flash(f"UF {unidad}: pago total registrado. Pagó de más: queda un saldo a favor de "
+              f"$ {-res['saldo']:,.2f} para la liquidación siguiente.", "success")
+    else:
+        flash(f"UF {unidad}: pago total registrado.", "success")
+    if not res.get("error") and bonif > 0:
+        flash(f"Bonificación de ${bonif:,.2f} registrada en Caja Diaria.", "info")
+    return redirect(url_for("cobranzas", periodo=periodo))
+
+
+@app.route("/cobranzas/<periodo>/pagar-todo", methods=["POST"])
+def cobranzas_pagar_todo(periodo):
+    fecha_pago = request.form.get("fecha_pago") or _fecha_hoy().strftime("%Y-%m-%d")
+    n, err = db.pagar_todo(periodo, fecha_pago)
+    if err:
+        flash(err, "danger")
+    if n:
+        flash(f"{n} unidad(es) marcada(s) como pagadas.", "success")
+    elif not err:
+        flash("No hay unidades con saldo pendiente.", "info")
+    return redirect(url_for("cobranzas", periodo=periodo))
+
+
+@app.route("/cobranzas/<periodo>/anular", methods=["POST"])
+def cobranzas_anular(periodo):
+    """Anula un pago (form 'pago_id'), los de una unidad ('unidad') o todos. Solo administradores."""
     block = _require_admin()
     if block:
         return block
+    pago_id = request.form.get("pago_id", "").strip()
     unidad = request.form.get("unidad", "").strip()
-    ok, msg, _n = db.anular_pagos(periodo, [unidad] if unidad else None)
+    ok, msg, _n = db.anular_pagos(periodo, [unidad] if unidad else None,
+                                  pago_id=int(pago_id) if pago_id.isdigit() else None)
     flash(msg, "success" if ok else "warning")
-    return redirect(url_for("liquidacion", periodo=periodo))
-
-
-@app.route("/liquidacion/pagar-todo/<periodo>", methods=["POST"])
-def pagar_todo(periodo):
-    if db.liq_esta_cerrada(periodo):
-        flash(f"La liquidación de {periodo} está cerrada.", "danger")
-        return redirect(url_for("liquidacion", periodo=periodo))
-    fecha_pago = request.form.get("fecha_pago") or _fecha_hoy().strftime("%Y-%m-%d")
-    n = db.marcar_todos_pagado(periodo, fecha_pago)
-    if n:
-        flash(f"{n} unidad(es) marcada(s) como pagadas.", "success")
-    else:
-        flash("No hay unidades pendientes de pago.", "info")
-    return redirect(url_for("liquidacion", periodo=periodo))
-
-
-@app.route("/liquidacion/pagar/<periodo>/<unidad>", methods=["POST"])
-def marcar_pagado(periodo, unidad):
-    monto_str = request.form.get("monto_pagado", "0").strip().replace(",", ".")
-    fecha_pago = request.form.get("fecha_pago") or _fecha_hoy().strftime("%Y-%m-%d")
-    try:
-        monto = float(monto_str)
-    except ValueError:
-        monto = 0.0
-    resultado = db.marcar_pagado(periodo, unidad, monto, fecha_pago)
-    if resultado:
-        tipo = resultado["tipo"]
-        if tipo == "CERRADA":
-            flash(f"No se puede registrar el pago: la liquidación de {periodo} está cerrada.", "danger")
-        elif tipo == "PENDIENTE":
-            flash(f"Pago de UF {unidad} revertido.", "warning")
-        elif tipo == "PARCIAL":
-            flash(f"UF {unidad}: pago parcial de ${monto:,.2f}. Saldo pendiente: ${resultado['saldo']:,.2f}.", "warning")
-        else:
-            if resultado.get("saldo", 0) < 0:
-                flash(f"UF {unidad}: pago total registrado. Pagó de más: queda un saldo a favor de "
-                      f"$ {-resultado['saldo']:,.2f} para el mes siguiente.", "success")
-            else:
-                flash(f"UF {unidad}: pago total registrado.", "success")
-
-    # Bonificación opcional: SALIDA en Caja Diaria, no afecta la liquidación
-    bonif_str = request.form.get("bonificacion", "0").strip().replace(",", ".")
-    try:
-        bonif = float(bonif_str)
-    except ValueError:
-        bonif = 0.0
-    if bonif > 0 and tipo != "CERRADA":
-        motivo = (request.form.get("bonif_motivo") or "").strip()
-        desc = f"Bonificación UF {unidad} {periodo}"
-        if motivo:
-            desc += f" - {motivo}"
-        db.save_movimiento(fecha_pago, desc[:200], "SALIDA", "BONIFICACION", bonif)
-        flash(f"Bonificación de ${bonif:,.2f} registrada en Caja Diaria.", "info")
-
-    return redirect(url_for("liquidacion", periodo=periodo))
+    return redirect(url_for("cobranzas", periodo=periodo))
 
 
 # ---------------------------------------------------------------------------
@@ -1379,7 +1390,7 @@ def descargar_recibo(periodo, unidad):
     row = next((r for r in liq if str(r["unidad"]) == str(unidad)), None)
     if not row or row.get("tipo_pago", "PENDIENTE") == "PENDIENTE":
         flash("No hay pago registrado para esta unidad.", "warning")
-        return redirect(url_for("liquidacion", periodo=periodo))
+        return redirect(url_for("cobranzas", periodo=periodo))
     cfg = db.get_config()
     mes_gastos = db._prev_periodo(periodo)
     gastos = db.get_gastos(mes_gastos)

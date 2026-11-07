@@ -35,6 +35,58 @@ Se corrieron los cuatro scripts de `pruebas/` seguidos, contra la base de prueba
 
 ---
 
+## v9.0-0711 — Cobranzas separada de Liquidación (07/11/2026)
+
+Prueba `pruebas/probar_cobranzas.py`: crea un consorcio aislado en la base de prueba (3 UF: deuda de apertura 100 / 0 / −50, porcentajes 50/30/20, tasa 10 %, vencimiento día 10, gastos jul $ 1.000 y ago $ 2.000), recorre el ciclo completo y al final lo borra. Resultado: **35/35 OK** (una corrida anterior dio 33/35 por un corte de conexión de Supabase en medio de la prueba; se agregó el descarte de conexiones cerradas en el pool y se repitió).
+
+| Caso | Esperado | Resultado |
+|---|---|---|
+| L08 generada (deuda de apertura, sin interés el 1er mes) | {1: 600, 2: 300, 3: 150} | ✅ |
+| Pagar sobre liquidación ABIERTA | rechazado | ✅ |
+| Cerrar L08 con fecha 20/07 (no cambió el mes) | sigue ABIERTA | ✅ |
+| Pantalla Liquidación sin botones de pago | sin modalPago / Pago Completo | ✅ |
+| Cerrar L08 con fecha 01/08 | CERRADA, fecha de cierre 01/08 | ✅ |
+| Periodo en cobro | 2026-08 | ✅ |
+| Pago con fecha posterior a la fecha del sistema (05/08 con hoy 01/08) | rechazado | ✅ |
+| Estado de L08 tras los pagos | 1 TOTAL 650 / 2 TOTAL 300 / 3 PENDIENTE 0 | ✅ |
+| UF 1 pagó de más | saldo a favor 50 | ✅ |
+| Pagos y Caja | 4 pagos, 4 entradas Expensas + 1 bonificación | ✅ |
+| Pago con fecha en una Caja cerrada (julio, L08 cerrada) | rechazado | ✅ |
+| L09 abierta: deuda / interés / total | {'1': (-50.0, 0.0, 950.0), '2': (0.0, 20.0, 620.0), '3': (150.0, 15.0, 565.0)} | ✅ |
+| Pagar sobre L09 abierta | rechazado | ✅ |
+| Fecha 15/08: L08 UF 2 no cuenta el pago del 20/08 | PARCIAL 100, pagó el 20/08 | ✅ |
+| Fecha 15/08: L09 se recalcula a esa fecha | UF1 deuda 0 / UF2 deuda 200 + interés 20 | ✅ |
+| Cobranzas: fecha por defecto = fecha del sistema | value="2026-08-15" | ✅ |
+| Vuelta a 25/08: L09 UF 2 | deuda 0, total 620 | ✅ |
+| Anular el pago del 20/08 de UF 2 | se borra pago + entrada + bonificación; L09 UF2 deuda 200 | ✅ |
+| Revertir desde el Log el último pago | UF 2 vuelve a deber 200 en L09 | ✅ |
+| Cerrar L09 el 25/08 | rechazado (desde el 01/09) | ✅ |
+| Cerrar L09 el 02/09 | CERRADA, en cobro 2026-09 | ✅ |
+| Pagar sobre L08 (ya no es la última cerrada) | rechazado | ✅ |
+| Pago a L09 con fecha de agosto (Caja de agosto cerrada) | rechazado | ✅ |
+| Pago a L09 el 03/09 | UF 3 TOTAL | ✅ |
+| Reabrir L09 con pagos | rechazado | ✅ |
+| Reabrir L08 con L09 cerrada | rechazado | ✅ |
+| Editar en Caja el cobro de UF 3 (500, 04/09) | el pago acompaña: 500 el 04/09, PARCIAL | ✅ |
+| Borrar en Caja el cobro de UF 3 | se borra el pago | ✅ |
+| Borrar en Caja un cobro de agosto (Caja cerrada) | bloqueado | ✅ |
+| Pago completo de L09 | todas TOTAL | ✅ |
+| Libre deuda según la última cerrada (L09) | las 3 libres, período 2026-09 | ✅ |
+| Pantallas y PDFs | 200 en todas | ✅ |
+| Cobranzas de L08 (no es la última) | solo consulta, sin botón de pago | ✅ |
+| Migración de un pago viejo (200 en Caja + 100 sin entrada, bonificación) | 2 pagos: 200 vinculado a Caja + 100; bonificación 10 en el primero | ✅ |
+| Migración idempotente | 0 la segunda vez | ✅ |
+
+Ensayo de la migración de pagos (`pruebas/diagnostico_migracion_pagos.py`, Perú 376 en la base de prueba):
+
+| Caso | Esperado | Resultado |
+|---|---|---|
+| Pagos del sistema viejo (filas de liquidaciones) | 24 filas pasan a la tabla `pagos` | ✅ 24 pagos |
+| Vínculo con Caja | cada pago con su entrada "Expensas …" | ✅ 24 vinculados, 0 sueltos |
+| Montos por liquidación y unidad | iguales antes y después | ✅ sin diferencias ($ 1.783.511,98) |
+
+---
+
 ## v8.1-0611 — Saldo de caja a la fecha de cierre
 
 Reporte: el PDF decía "Saldo de caja al 31/10" pero se generó el 01/10 (fecha del sistema).
@@ -443,6 +495,8 @@ C:\Users\Maria\.venvs\consorcio\Scripts\python.exe pruebas\probar_fondo_reserva.
 | `probar_anular_pagos.py` | Anular pago por unidad y del período, fecha de pago con fecha fijada | Sí, y lo revierte todo desde el Log de Movimientos |
 | `probar_liquidacion_estados.py` | Pantalla de Liquidación abierta, cerrada y sin generar, con y sin fecha fijada | Cambia y restaura el estado de una liquidación y la fecha |
 | `probar_pagina_error.py` | Página de error 500 para admin y usuario común | No |
+| `probar_cobranzas.py` | Ciclo v9.0: cierre, cobro sobre la cerrada, deuda e interés, fecha del sistema, anulaciones, Caja, migración | Crea y borra un consorcio de prueba |
+| `diagnostico_migracion_pagos.py` | Migración de pagos viejos a la tabla `pagos` (compara montos) | Migra los pagos del consorcio de prueba (una sola vez) |
 | `probar_saldo_cierre.py` | Saldo de caja a la fecha de cierre (abierta / cerrada / reabierta) | Cambia y restaura estado y fecha |
 | `probar_saldo_a_favor.py` | Pago de más, saldo a favor al mes siguiente, interés y mora con saldo a favor | Sí, y restaura liquidaciones y Caja |
 | `probar_fondo_reserva.py` | Migración, saldo del fondo, extraordinarios pendiente / con el fondo, pantallas y PDF | Sí: aplica la migración (permanente); el gasto de prueba se borra y la config se restaura |

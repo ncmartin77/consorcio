@@ -21,26 +21,40 @@
     <input type="month" class="form-control form-control-sm" id="periodoSelector"
            value="{{ periodo }}">
     {% if liq_cerrada %}
+      <a href="{{ url_for('cobranzas', periodo=periodo) }}" class="btn btn-primary btn-sm"
+         data-ayuda="Registrá los pagos de esta liquidación en Cobranzas.">
+        <i class="bi bi-cash-coin"></i> Ir a Cobranzas
+      </a>
+      {% if es_admin %}
       <form method="POST" action="{{ url_for('reabrir_liquidacion', periodo=periodo) }}"
-            onsubmit="return confirm('¿Reabrir la liquidación de {{ periodo }}?')">
+            onsubmit="return confirm('¿Reabrir la liquidación de {{ periodo }}? Solo se puede si todavía no tiene pagos.')">
         <button type="submit" class="btn btn-outline-warning btn-sm">
           <i class="bi bi-unlock-fill"></i> Reabrir
         </button>
       </form>
+      {% endif %}
     {% elif liq_generada %}
       <form method="POST" action="{{ url_for('generar_liquidacion', periodo=periodo) }}">
         <button type="submit" class="btn btn-outline-secondary btn-sm"
-                data-ayuda="Recalculá la liquidación con los datos actuales (gastos, pagos, intereses). No borra pagos ya registrados.">
+                data-ayuda="Recalculá la liquidación con los datos actuales: gastos, pagos de la liquidación anterior e interés.">
           <i class="bi bi-arrow-clockwise"></i> Recalcular
         </button>
       </form>
+      {% if error_cierre %}
+      <span class="d-inline-block" tabindex="0" title="{{ error_cierre }}">
+        <button type="button" class="btn btn-warning btn-sm" disabled style="pointer-events:none">
+          <i class="bi bi-lock-fill"></i> Cerrar Liquidación
+        </button>
+      </span>
+      {% else %}
       <form method="POST" action="{{ url_for('cerrar_liquidacion', periodo=periodo) }}"
-            onsubmit="return confirm('¿Cerrar la liquidación de {{ periodo }}? Una vez cerrada no se podrán registrar más pagos.')">
+            onsubmit="return confirm('¿Cerrar la liquidación de {{ periodo | mes_largo }}? El monto queda fijo (no se cargan más gastos) y se empieza a cobrar en Cobranzas.')">
         <button type="submit" class="btn btn-warning btn-sm"
-                data-ayuda="Cerrá la liquidación: una vez cerrada no podrán registrarse más pagos en este período. Acción irreversible.">
+                data-ayuda="Cerrá la liquidación cuando cambió el mes y no hay más gastos: el monto queda fijo y se empieza a cobrar en Cobranzas.">
           <i class="bi bi-lock-fill"></i> Cerrar Liquidación
         </button>
       </form>
+      {% endif %}
     {% else %}
     <form method="POST" action="{{ url_for('generar_liquidacion', periodo=periodo) }}">
       <button type="submit" class="btn btn-success btn-sm"
@@ -50,36 +64,28 @@
       </button>
     </form>
     {% endif %}
-    {% if liq and not liq_cerrada and pendientes > 0 %}
-    <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#modalPagoCompleto"
-            data-ayuda="Pago Completo: marcá todas las unidades pendientes como pagadas en una sola operación.">
-      <i class="bi bi-check2-all"></i> Pago Completo
-    </button>
-    {% endif %}
-    {% set _con_pago = (liq|selectattr('monto_pagado')|list) + (liq|selectattr('pago_posterior')|list) %}
-    {% if es_admin and liq and not liq_cerrada and _con_pago %}
-    <form method="POST" action="{{ url_for('anular_pagos', periodo=periodo) }}" class="d-inline"
-          onsubmit="return confirm('¿Anular TODOS los pagos registrados de {{ periodo | mes_largo }}? Se borran también sus entradas en Caja. Se puede revertir desde el Log de Movimientos.')">
-      <button type="submit" class="btn btn-outline-danger btn-sm"
-              data-ayuda="Anulá todos los pagos de expensas de este período (y sus entradas en Caja). Solo administradores; queda en el Log de Movimientos.">
-        <i class="bi bi-x-octagon"></i> Anular todos los pagos
-      </button>
-    </form>
-    {% endif %}
     {% if liq %}
     <a href="{{ url_for('descargar_pdf', periodo=periodo) }}" class="btn btn-danger btn-sm"
        data-ayuda="Descargá el resumen completo del edificio en PDF: expensas de todas las unidades, totales y notas del período.">
       <i class="bi bi-file-earmark-pdf"></i> Resumen Edificio PDF
     </a>
     {% endif %}
-    {% if liq_generada and not liq_cerrada %}
-    <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#modalNotificarTodos"
-            data-ayuda="Enviá por WhatsApp la liquidación a todas las unidades que tienen celular configurado.">
-      <i class="bi bi-whatsapp"></i> Notificar a todos
-    </button>
-    {% endif %}
   </div>
 </div>
+
+{% if error_cierre and liq_generada and not liq_cerrada %}
+<div class="alert alert-light border py-1 small mb-2">
+  <i class="bi bi-info-circle"></i> {{ error_cierre }}
+</div>
+{% endif %}
+{% if liq_generada and not liq_cerrada %}
+<div class="alert alert-info py-1 small mb-3">
+  <i class="bi bi-info-circle"></i> Liquidación abierta: el monto todavía puede cambiar. Los pagos se registran en
+  <a href="{{ url_for('cobranzas') }}" class="alert-link">Cobranzas</a>{% if periodo_cobranza %}, contra la última
+  liquidación cerrada ({{ periodo_cobranza | mes_largo }}){% endif %}; la deuda anterior de esta liquidación se
+  actualiza con esos pagos hasta que se cierre.
+</div>
+{% endif %}
 
 <!-- ===== PANEL CAJA ===== -->
 <div class="row g-2 mb-3">
@@ -405,54 +411,15 @@
               {% endif %}
             </td>
             <td class="text-center text-nowrap">
-              {% if liq_cerrada %}
-                {% if tipo != 'PENDIENTE' %}
-                <a href="{{ url_for('descargar_recibo', periodo=periodo, unidad=r.unidad) }}"
-                   class="btn btn-sm btn-outline-primary" title="Descargar recibo">
-                  <i class="bi bi-receipt"></i>
-                </a>
-                {% else %}
-                <span class="text-muted small"><i class="bi bi-lock-fill"></i></span>
-                {% endif %}
-              {% elif tipo == 'PENDIENTE' %}
-              <button class="btn btn-sm btn-success"
-                      onclick='abrirModalPago({{ r|tojson }}, false)'
-                      title="Registrar pago">
-                <i class="bi bi-cash"></i>
-              </button>
-              {% elif tipo == 'PARCIAL' %}
-              <button class="btn btn-sm btn-warning"
-                      onclick='abrirModalPago({{ r|tojson }}, true)'
-                      title="Agregar pago adicional">
-                <i class="bi bi-cash-stack"></i>
-              </button>
+              {% if tipo != 'PENDIENTE' %}
               <a href="{{ url_for('descargar_recibo', periodo=periodo, unidad=r.unidad) }}"
                  class="btn btn-sm btn-outline-primary" title="Descargar recibo">
                 <i class="bi bi-receipt"></i>
               </a>
-              {% elif tipo == 'TOTAL' %}
-              <a href="{{ url_for('descargar_recibo', periodo=periodo, unidad=r.unidad) }}"
-                 class="btn btn-sm btn-outline-primary" title="Descargar recibo">
-                <i class="bi bi-receipt"></i>
-              </a>
-              {% endif %}
-              {% if es_admin and not liq_cerrada and (r.monto_pagado > 0 or r.pago_posterior) %}
-              <form method="POST" action="{{ url_for('anular_pagos', periodo=periodo) }}" class="d-inline"
-                    onsubmit="return confirm('¿Anular el pago de la UF {{ r.unidad }}? Se borra también su entrada en Caja.')">
-                <input type="hidden" name="unidad" value="{{ r.unidad }}">
-                <button class="btn btn-sm btn-outline-danger" title="Anular pago (solo admin)">
-                  <i class="bi bi-x-octagon"></i>
-                </button>
-              </form>
-              {% endif %}
-              {# WhatsApp/mail — solo si hay pago registrado #}
-              {% if liq_generada and r.tipo_pago != 'PENDIENTE' %}
-              <button class="btn btn-sm btn-outline-success"
-                      onclick='enviarWA({{ r|tojson }})'
-                      title="Enviar recibo por WhatsApp o mail">
-                <i class="bi bi-whatsapp"></i>
-              </button>
-              {% endif %}
+              {% elif liq_cerrada %}
+              <a href="{{ url_for('cobranzas', periodo=periodo) }}" class="btn btn-sm btn-outline-success"
+                 title="Registrar el pago en Cobranzas"><i class="bi bi-cash-coin"></i></a>
+              {% else %}<span class="text-muted">—</span>{% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -600,211 +567,6 @@
   </div>
 </div>
 
-<!-- ===== MODAL PAGO COMPLETO ===== -->
-<div class="modal fade" id="modalPagoCompleto" tabindex="-1">
-  <div class="modal-dialog modal-sm">
-    <div class="modal-content">
-      <form method="POST" action="{{ url_for('pagar_todo', periodo=periodo) }}">
-        <div class="modal-header bg-success text-white">
-          <h5 class="modal-title"><i class="bi bi-check2-all"></i> Pago Completo</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <p class="mb-3 small">
-            Se registrarán como <strong>pagadas</strong> las <strong>{{ pendientes }}</strong> unidad(es) pendientes, cada una por su total a pagar.
-          </p>
-          <label class="form-label fw-semibold">Fecha de Pago *</label>
-          <input type="date" class="form-control" name="fecha_pago" id="pc_fecha" required>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-success">
-            <i class="bi bi-check2-all"></i> Confirmar Todo
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-
-<!-- ===== MODAL PAGO ===== -->
-<div class="modal fade" id="modalPago" tabindex="-1">
-  <div class="modal-dialog modal-sm">
-    <div class="modal-content">
-      <form method="POST" id="formPago">
-        <div class="modal-header bg-success text-white">
-          <h5 class="modal-title"><i class="bi bi-cash"></i> Registrar Pago</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <div class="mb-2">
-            <span class="fw-bold" id="mp_unidad"></span>
-            <span class="text-muted small ms-1" id="mp_ocupante"></span>
-          </div>
-          <div class="mb-3 small">
-            <div class="d-flex justify-content-between text-muted mb-1">
-              <span>Total a pagar:</span>
-              <strong id="mp_total" class="text-danger"></strong>
-            </div>
-            <div id="mp_ya_pagado_row" class="d-flex justify-content-between text-muted mb-1" style="display:none">
-              <span>Ya abonado:</span>
-              <strong id="mp_ya_pagado" class="text-success"></strong>
-            </div>
-            <div id="mp_saldo_row" class="d-flex justify-content-between text-muted mb-1" style="display:none">
-              <span>Saldo pendiente:</span>
-              <strong id="mp_saldo" class="text-warning"></strong>
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold" id="mp_label_monto">Monto Abonado *</label>
-            <div class="input-group">
-              <span class="input-group-text">$</span>
-              <input type="number" class="form-control" name="monto_pagado" id="mp_monto"
-                     step="0.01" min="0.01" required>
-            </div>
-            <div class="d-flex gap-2 mt-1">
-              <button type="button" class="btn btn-sm btn-outline-success w-100"
-                      onclick="usarMontoTotal()">Pago total</button>
-            </div>
-          </div>
-          <div class="mb-2">
-            <label class="form-label fw-semibold">Fecha de Pago *</label>
-            <input type="date" class="form-control" name="fecha_pago" id="mp_fecha" required>
-          </div>
-          <div id="mp_aviso_parcial" class="alert alert-warning py-1 small mb-0" style="display:none">
-            <i class="bi bi-exclamation-triangle"></i>
-            El monto es menor al saldo → se registrará como <strong>pago parcial</strong>.
-          </div>
-          <div id="mp_aviso_favor" class="alert alert-success py-1 small mb-0" style="display:none">
-            <i class="bi bi-piggy-bank"></i>
-            Paga de más: queda pagado y <strong>$ <span id="mp_excedente"></span></strong> pasan como
-            <strong>saldo a favor</strong> al mes siguiente.
-          </div>
-          <hr class="my-2">
-          <div class="mb-2">
-            <label class="form-label fw-semibold text-warning small">
-              <i class="bi bi-tag"></i> Bonificación (opcional)
-            </label>
-            <div class="input-group input-group-sm">
-              <span class="input-group-text">$</span>
-              <input type="number" class="form-control" name="bonificacion" id="mp_bonif"
-                     step="0.01" min="0" placeholder="0.00">
-            </div>
-          </div>
-          <div class="mb-0">
-            <label class="form-label small text-muted">Motivo de la bonificación</label>
-            <input type="text" class="form-control form-control-sm" name="bonif_motivo"
-                   id="mp_bonif_motivo" placeholder="Ej: Error de cálculo mes anterior" maxlength="150">
-            <div class="form-text">Se registrará como SALIDA en Caja Diaria, no afecta la liquidación.</div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-success">
-            <i class="bi bi-check-circle"></i> Confirmar
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-
-<!-- ===== MODAL SIN CELULAR ===== -->
-<div class="modal fade" id="modalSinCelular" tabindex="-1">
-  <div class="modal-dialog modal-sm">
-    <div class="modal-content">
-      <div class="modal-header bg-warning text-dark py-2">
-        <h6 class="modal-title"><i class="bi bi-exclamation-triangle-fill"></i> Sin celular configurado</h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <p class="mb-1">La unidad <strong id="sinCelularUnidad"></strong> no tiene celular registrado.</p>
-        <p class="small text-muted mb-0">Andá a <strong>Unidades → lápiz</strong> y completá el celular del propietario o inquilino para poder enviar WhatsApp.</p>
-      </div>
-      <div class="modal-footer py-2">
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
-        <button class="btn btn-primary btn-sm" onclick="irAEditarUnidad()">
-          <i class="bi bi-pencil-fill"></i> Editar contacto
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ===== MODAL WHATSAPP PREVIEW ===== -->
-<div class="modal fade" id="modalWAPreview" tabindex="-1">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header bg-success text-white py-2">
-        <h6 class="modal-title" id="waPreviewTitulo"><i class="bi bi-whatsapp"></i> Enviar por WhatsApp</h6>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body pb-2">
-        <div class="mb-2 small text-muted" id="waPreviewDestinatario"></div>
-        <textarea class="form-control" id="waPreviewTexto" rows="15"
-                  style="font-size:0.82rem;font-family:monospace;white-space:pre;resize:vertical"></textarea>
-        <small class="text-muted">Podés editar el mensaje antes de enviarlo.</small>
-      </div>
-      <div class="modal-footer py-2 gap-2" id="waPreviewBotones">
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ===== MODAL NOTIFICAR A TODOS ===== -->
-<div class="modal fade" id="modalNotificarTodos" tabindex="-1">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header bg-success text-white py-2">
-        <h6 class="modal-title"><i class="bi bi-whatsapp"></i> Notificar a todos por WhatsApp</h6>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body p-2">
-        <p class="small text-muted mb-2">Hacé click en <i class="bi bi-whatsapp text-success"></i> de cada unidad para abrir WhatsApp. Las unidades sin celular configurado aparecen en gris.</p>
-        <table class="table table-sm table-hover mb-0">
-          <thead class="table-light"><tr>
-            <th>UF</th><th>Nombre</th><th>Celular</th><th class="text-end">Total</th><th class="text-center">Estado</th><th></th>
-          </tr></thead>
-          <tbody>
-          {% for r in liq %}
-          {% set u = unidades_map.get(r.unidad|string, {}) %}
-          {% set dest = u.get('envio_destinatario','propietario') %}
-          {% set celular = u.get('propietario_celular','') if dest == 'propietario' else (u.get('inquilino_celular','') if dest == 'inquilino' else (u.get('propietario_celular','') or u.get('inquilino_celular',''))) %}
-          {% set nombre = (u.get('inquilino','') or u.get('propietario','')) if dest == 'inquilino' else u.get('propietario','') %}
-          <tr class="{% if not celular %}text-muted{% endif %}">
-            <td><strong>{{ r.unidad }}</strong></td>
-            <td>{{ nombre or r.propietario }}</td>
-            <td>{{ celular or '<span class="badge bg-secondary">Sin celular</span>'|safe }}</td>
-            <td class="text-end">$ {{ "%.2f"|format(r.total_a_pagar)|replace(".",",") }}</td>
-            <td class="text-center">
-              {% if r.tipo_pago == 'TOTAL' %}<span class="badge bg-success">Pagado</span>
-              {% elif r.tipo_pago == 'PARCIAL' %}<span class="badge bg-warning text-dark">Parcial</span>
-              {% else %}<span class="badge bg-danger">Pendiente</span>{% endif %}
-            </td>
-            <td>
-              {% if celular %}
-              <button class="btn btn-sm btn-success" onclick="enviarWA({{ r|tojson }})" title="Enviar WhatsApp">
-                <i class="bi bi-whatsapp"></i>
-              </button>
-              {% else %}
-              <a href="{{ url_for('unidades') }}" class="btn btn-sm btn-outline-secondary" title="Configurar celular">
-                <i class="bi bi-pencil"></i>
-              </a>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      <div class="modal-footer py-2">
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 {% endblock %}
 {% block scripts %}
 <script>
@@ -813,11 +575,6 @@ document.getElementById('periodoSelector').addEventListener('change', function()
   window.location.href = '{{ url_for("liquidacion") }}/' + this.value;
 });
 
-const _hoy = '{{ hoy_sistema }}';
-const pcFecha = document.getElementById('pc_fecha');
-if (pcFecha) pcFecha.value = _hoy;
-
-let _saldoActual = 0;
 
 function fmt(v) {
   return '$ ' + parseFloat(v).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -840,56 +597,6 @@ function guardarEnvio() {
   fetch('/unidades/' + encodeURIComponent(unidad) + '/envio', { method: 'POST', body: fd })
     .then(r => { if (r.ok) location.reload(); });
 }
-
-function abrirModalPago(r, esParcial) {
-  // Si el interés se cambió sin recargar la página, usar los montos actualizados
-  if (_filasActualizadas[String(r.unidad)]) r = Object.assign({}, r, _filasActualizadas[String(r.unidad)]);
-  const saldo = r.saldo_pendiente > 0 ? r.saldo_pendiente : r.total_a_pagar;
-  _saldoActual = saldo;
-
-  document.getElementById('mp_unidad').textContent = 'UF ' + r.unidad;
-  document.getElementById('mp_ocupante').textContent = r.inquilino || r.propietario || '';
-  document.getElementById('mp_total').textContent = fmt(r.total_a_pagar);
-
-  const yaPagadoRow = document.getElementById('mp_ya_pagado_row');
-  const saldoRow = document.getElementById('mp_saldo_row');
-
-  if (esParcial) {
-    document.getElementById('mp_label_monto').textContent = 'Monto a agregar *';
-    document.getElementById('mp_ya_pagado').textContent = fmt(r.monto_pagado);
-    yaPagadoRow.style.display = 'flex';
-    document.getElementById('mp_saldo').textContent = fmt(saldo);
-    saldoRow.style.display = 'flex';
-  } else {
-    document.getElementById('mp_label_monto').textContent = 'Monto Abonado *';
-    yaPagadoRow.style.display = 'none';
-    saldoRow.style.display = 'none';
-  }
-
-  const input = document.getElementById('mp_monto');
-  input.value = saldo.toFixed(2);
-  document.getElementById('mp_fecha').value = '{{ hoy_sistema }}';
-  document.getElementById('mp_aviso_parcial').style.display = 'none';
-  document.getElementById('mp_bonif').value = '';
-  document.getElementById('mp_bonif_motivo').value = '';
-  document.getElementById('formPago').action = '/liquidacion/pagar/{{ periodo }}/' + r.unidad;
-  new bootstrap.Modal(document.getElementById('modalPago')).show();
-}
-
-function usarMontoTotal() {
-  document.getElementById('mp_monto').value = _saldoActual.toFixed(2);
-  document.getElementById('mp_aviso_parcial').style.display = 'none';
-}
-
-document.getElementById('mp_monto').addEventListener('input', function() {
-  const v = parseFloat(this.value) || 0;
-  document.getElementById('mp_aviso_parcial').style.display =
-    (v > 0 && v < _saldoActual) ? 'block' : 'none';
-  const exc = Math.round((v - _saldoActual) * 100) / 100;
-  document.getElementById('mp_aviso_favor').style.display = exc > 0 ? 'block' : 'none';
-  document.getElementById('mp_excedente').textContent =
-    exc.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-});
 
 // ── Notas ──────────────────────────────────────────────────────────────────
 function agregarNota() {
@@ -981,114 +688,12 @@ function eliminarExtra(eid, btn) {
     });
 }
 
-// ── WhatsApp ────────────────────────────────────────────────────────────────────────────
-const _WA_EDIFICIO    = {{ consorcio_nombre | tojson }};
-const _WA_PERIODO     = {{ (periodo | mes_largo) | tojson }};
-const _WA_DIA_VENC    = {{ (cfg.dia_vencimiento or '15') | tojson }};
-const _WA_ALIAS       = {{ (cfg.alias_cbu or '') | tojson }};
-const _unidades_map   = {{ unidades_map | tojson }};
-const _recibo_tokens  = {{ recibo_tokens | tojson }};
-const _recibo_base    = {{ recibo_base_url | tojson }};
-
-function fmt(n) {
-  return '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
-}
-
-function _buildWAMensaje(r, nombre) {
-  const tipo = r.tipo_pago || 'PENDIENTE';
-  const token = _recibo_tokens[String(r.unidad)] || '';
-  const urlRecibo = token ? `${_recibo_base}/${r.unidad}/${token}` : '';
-  const diaVenc = parseInt(_WA_DIA_VENC, 10);
-  let L = [];
-  L.push(`🏢 *${_WA_EDIFICIO}*  |  Unidad *${r.unidad}*`);
-  L.push(`📅 ${_WA_PERIODO}`);
-  L.push('');
-  if (tipo === 'TOTAL') {
-    L.push(`✅ *Pago registrado: ${fmt(r.monto_pagado)}*`);
-    L.push('¡Gracias por su pago!');
-  } else if (tipo === 'PARCIAL') {
-    L.push(`⚠️ *Saldo pendiente: ${fmt(r.saldo_pendiente)}*`);
-    L.push(`   Abonado ${fmt(r.monto_pagado)} de ${fmt(r.total_a_pagar)}`);
-    if (diaVenc > 0) L.push(`📆 Vencimiento: día ${diaVenc}`);
-    if (_WA_ALIAS)   L.push(`🏦 ${_WA_ALIAS}`);
-  }
-  if (urlRecibo) {
-    L.push('');
-    L.push(`🧾 Recibo: ${urlRecibo}`);
-  }
-  L.push('');
-  L.push(`_Administración_`);
-  return L.join('\n');
-}
-
-function enviarWA(r) {
-  const u = _unidades_map[String(r.unidad)] || {};
-  const dest = u.envio_destinatario || 'propietario';
-
-  let destinatarios = [];
-  if (dest === 'propietario' || dest === 'ambos') {
-    const cel = (u.propietario_celular || '').replace(/\D/g,'');
-    if (cel) destinatarios.push({ num: cel, nombre: u.propietario || 'Propietario' });
-  }
-  if (dest === 'inquilino' || dest === 'ambos') {
-    const cel = (u.inquilino_celular || '').replace(/\D/g,'');
-    if (cel) destinatarios.push({ num: cel, nombre: u.inquilino || 'Inquilino' });
-  }
-
-  if (!destinatarios.length) {
-    const sinCelular = document.getElementById('modalSinCelular');
-    if (sinCelular) {
-      document.getElementById('sinCelularUnidad').textContent = r.unidad;
-      new bootstrap.Modal(sinCelular).show();
-    } else {
-      alert('⚠️ La unidad ' + r.unidad + ' no tiene celular configurado.\nAndá a Unidades → lápiz → completá el celular del propietario o inquilino.');
-    }
-    return;
-  }
-
-  const nombrePrincipal = destinatarios[0].nombre;
-  const texto = _buildWAMensaje(r, nombrePrincipal);
-
-  // Título
-  document.getElementById('waPreviewTitulo').innerHTML =
-    '<i class="bi bi-whatsapp"></i> Unidad ' + r.unidad + ' — ' + destinatarios.map(d=>d.nombre).join(' / ');
-
-  // Info destinatario
-  document.getElementById('waPreviewDestinatario').innerHTML =
-    destinatarios.map(d => `<i class="bi bi-phone-fill text-success"></i> <strong>${d.nombre}</strong>: ${d.num}`).join('&nbsp;&nbsp;');
-
-  // Mensaje editable
-  document.getElementById('waPreviewTexto').value = texto;
-
-  // Botones: uno por destinatario
-  const footer = document.getElementById('waPreviewBotones');
-  footer.innerHTML = '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>';
-  destinatarios.forEach(d => {
-    const label = destinatarios.length > 1 ? d.nombre : 'Abrir WhatsApp';
-    footer.innerHTML += `<button class="btn btn-success btn-sm" onclick="abrirWA('${d.num}')">
-      <i class="bi bi-whatsapp"></i> ${label}
-    </button>`;
-  });
-
-  new bootstrap.Modal(document.getElementById('modalWAPreview')).show();
-}
-
-function abrirWA(num) {
-  const texto = document.getElementById('waPreviewTexto').value;
-  window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(texto), '_blank');
-}
-
-function irAEditarUnidad() {
-  const num = document.getElementById('sinCelularUnidad').textContent;
-  window.location.href = '{{ url_for("unidades") }}?editar=' + encodeURIComponent(num);
-}
-
 // ── Sin interés ──────────────────────────────────────────────────────────────
 function formatPesos(v) {
   return v === 0 ? '—' : '$ ' + v.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
-// Montos recalculados sin recargar la página (los usa abrirModalPago)
+// Montos recalculados sin recargar la página
 const _filasActualizadas = {};
 
 function pesos(v) {

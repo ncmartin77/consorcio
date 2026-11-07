@@ -44,8 +44,16 @@
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'liquidacion' %}active{% endif %}"
              href="{{ url_for('liquidacion', periodo=periodo_trabajo) if periodo_trabajo else url_for('liquidacion') }}"
-             data-ayuda="Liquidación: generá y administrá las liquidaciones de expensas por período. Registrá pagos, cerrá el período y descargá el resumen PDF.">
+             data-ayuda="Liquidación: generá la liquidación de expensas del período, cerrala cuando cambió el mes y descargá el resumen PDF.">
             <i class="bi bi-receipt"></i> Liquidación
+          </a>
+        </li>
+
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'cobranzas' %}active{% endif %}"
+             href="{{ url_for('cobranzas') }}"
+             data-ayuda="Cobranzas: registrá los pagos de expensas sobre la última liquidación cerrada, recibos y avisos por WhatsApp.">
+            <i class="bi bi-cash-coin"></i> Cobranzas
           </a>
         </li>
 
