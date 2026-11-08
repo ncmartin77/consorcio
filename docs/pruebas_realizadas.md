@@ -22,6 +22,23 @@ Las más recientes van primero. Los scripts para repetirlas están en [`pruebas/
 
 ---
 
+## v9.4-0811 — Gasto vinculado a su factura y observación del pago (08/11/2026)
+
+`pruebas/probar_factura_vinculo.py` contra la base de prueba, fecha del sistema 08/11/2026 (gastos 2026-11 → liquidación 2026-12, abierta). Resultado: **16/16 OK**; la base quedó como al inicio. `probar_factura_con_fondo.py` repetida: 14/14 OK.
+
+| Caso | Esperado | Resultado |
+|---|---|---|
+| Guardar factura sin proveedor | se guarda (antes error 500) | ✅ |
+| Pagar factura | un gasto vinculado a la factura | ✅ |
+| Observación del pago | guardada y visible en Facturas | ✅ |
+| Borrar la factura | el gasto queda, sin factura; Gastos Mensuales ofrece "Emitir factura de este gasto" | ✅ |
+| Emitir desde el gasto y pagar | factura vinculada, sigue un solo gasto, total +2500 (no +5000) | ✅ |
+| Borrar el pago en Caja y repagar | factura PENDIENTE → PAGADA, sigue un solo gasto | ✅ |
+| Recurrente: borrar factura y emitirla de nuevo | reutiliza el gasto que quedó; al pagar sigue uno solo | ✅ |
+| Limpieza | total de gastos como al inicio | ✅ |
+
+---
+
 ## v9.3-0811 — Pagar factura con el Fondo de Reserva (08/11/2026)
 
 `pruebas/probar_factura_con_fondo.py` contra la base de prueba, fecha del sistema 08/11/2026 (gastos 2026-11 → liquidación 2026-12, abierta). Resultado: **14/14 OK**; la base quedó como al inicio.

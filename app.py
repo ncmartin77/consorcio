@@ -150,6 +150,7 @@ def _contexto_auditoria():
         db.ensure_auditoria()
         db.ensure_deuda_inicial_fecha()
         db.ensure_caja_factura_id()
+        db.ensure_factura_vinculos()
         db.ensure_liq_sin_interes()
         db.ensure_liq_fecha_cierre()
     except Exception as exc:
@@ -165,6 +166,14 @@ def _contexto_auditoria():
                 app.logger.info(f"[v6.0] Gasto de {p_gasto} pasado a 'pagado con fondo'")
         except Exception as exc:
             app.logger.warning(f"[v6.0] Migración de gastos con fondo: {exc}")
+        try:
+            db.set_contexto_auditoria(session.get("usuario_email", ""),
+                                      "Migración v9.4: vincular gastos con su factura")
+            n_vinc = db.vincular_gastos_facturas_legacy()
+            if n_vinc:
+                app.logger.info(f"[v9.4] {n_vinc} gasto(s) vinculados con su factura")
+        except Exception as exc:
+            app.logger.warning(f"[v9.4] Vínculo gastos-facturas: {exc}")
         try:
             db.set_contexto_auditoria(session.get("usuario_email", ""),
                                       "Migración v9.0: pagos de expensas a la tabla de pagos")
@@ -1609,12 +1618,14 @@ def save_factura():
         "categoria": request.form.get("categoria", "").strip(),
         "numero_factura": request.form.get("numero_factura", "").strip(),
         "extraordinario": 1 if request.form.get("extraordinario") else 0,
+        "gasto_id": request.form.get("gasto_id", "").strip() or None,
     }
     if not data["descripcion"] or not data["fecha"]:
         flash("Fecha y descripción son obligatorias.", "danger")
         return redirect(url_for("facturas"))
     db.save_factura(data)
-    flash("Factura guardada.", "success")
+    flash("Factura guardada." + (" Quedó vinculada al gasto: al pagarla no se duplica."
+                                 if data["gasto_id"] else ""), "success")
     return redirect(url_for("facturas"))
 
 
@@ -1628,7 +1639,8 @@ def pagar_factura(fid):
             flash(f"La fecha de pago ({fecha_pago}) no puede ser anterior a la fecha de emisión de la factura ({fecha_emision}).", "danger")
             return redirect(url_for("facturas"))
     con_fondo = bool(request.form.get("con_fondo"))
-    ok = db.pagar_factura(fid, fecha_pago, con_fondo=con_fondo)
+    ok = db.pagar_factura(fid, fecha_pago, con_fondo=con_fondo,
+                          observacion=request.form.get("observacion", ""))
     if ok:
         periodo = fecha_pago[:7]
         if con_fondo:

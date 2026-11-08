@@ -341,6 +341,14 @@ def ensure_caja_factura_id():
                     "ALTER TABLE caja ADD COLUMN IF NOT EXISTS factura_id INTEGER")
 
 
+def ensure_factura_vinculos():
+    """v9.4: gasto ↔ factura (gastos.factura_id) y observación del pago de la factura."""
+    _ensure_columna("gastos.factura_id",
+                    "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS factura_id INTEGER")
+    _ensure_columna("facturas.observacion",
+                    "ALTER TABLE facturas ADD COLUMN IF NOT EXISTS observacion TEXT")
+
+
 def ensure_liq_sin_interes():
     _ensure_columna("liquidaciones.sin_interes",
                     "ALTER TABLE liquidaciones ADD COLUMN IF NOT EXISTS sin_interes BOOLEAN DEFAULT FALSE")
@@ -448,7 +456,10 @@ def delete_unidad(numero):
 
 def get_gastos(periodo: str) -> list:
     rows = _fetchall(
-        "SELECT id, periodo, concepto, importe, tipo FROM gastos WHERE consorcio_id=%s AND periodo=%s ORDER BY id",
+        "SELECT g.id, g.periodo, g.concepto, g.importe, g.tipo, f.id AS factura_id, "
+        "f.estado AS factura_estado FROM gastos g "
+        "LEFT JOIN facturas f ON f.id = g.factura_id AND f.consorcio_id = g.consorcio_id "
+        "WHERE g.consorcio_id=%s AND g.periodo=%s ORDER BY g.id",
         (_cid(), periodo)
     )
     return [{
@@ -457,6 +468,8 @@ def get_gastos(periodo: str) -> list:
         "concepto": r["concepto"] or "",
         "importe": float(r["importe"]),
         "tipo": r["tipo"] or "FIJO",
+        "factura_id": r["factura_id"],
+        "factura_estado": r["factura_estado"] or "",
     } for r in rows]
 
 
@@ -1339,6 +1352,7 @@ def _fac_dict(r) -> dict:
         "numero_factura": r["numero_factura"] or "",
         "extraordinario": bool(r["extraordinario"]),
         "archivo_pdf": r["archivo_pdf"] or "",
+        "observacion": r.get("observacion") or "",
     }
 
 
@@ -1390,7 +1404,7 @@ def save_factura(data: dict) -> int:
     fid = data.get("id")
 
     _VALS = (
-        fecha, data.get("proveedor_id"),
+        fecha, (str(data.get("proveedor_id") or "").strip() or None),  # "" (sin proveedor) → NULL
         data.get("proveedor_nombre", "") or "",
         data.get("descripcion", "") or "",
         float(data.get("importe") or 0),
@@ -1419,22 +1433,86 @@ def save_factura(data: dict) -> int:
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
     """, (_cid(),) + _VALS)
 
+    # Factura emitida desde un gasto ya cargado (Gastos Mensuales): se vincula a ese gasto.
+    gasto_id = data.get("gasto_id")
+    if gasto_id and vincular_gasto_factura(int(gasto_id), new_id):
+        return new_id
+
     desc = (data.get("descripcion") or "").strip()
     if desc and fecha:
         for gr in get_gastos_recurrentes():
             if gr["concepto"].strip().upper() == desc.upper():
-                save_gasto(str(fecha)[:7], gr["concepto"], float(data.get("importe") or 0), "FIJO")
+                periodo = str(fecha)[:7]
+                importe = float(data.get("importe") or 0)
+                # Si quedó el gasto de una factura borrada, se reutiliza en vez de duplicarlo.
+                huerfano = _fetchone(
+                    "SELECT id FROM gastos WHERE consorcio_id=%s AND trim(periodo)=%s "
+                    "AND upper(trim(concepto))=upper(trim(%s)) AND factura_id IS NULL "
+                    "AND tipo <> 'FONDO_RESERVA' ORDER BY id LIMIT 1", (_cid(), periodo, gr["concepto"]))
+                if not (huerfano and vincular_gasto_factura(huerfano["id"], new_id)):
+                    _exec("INSERT INTO gastos (consorcio_id, periodo, concepto, importe, tipo, factura_id) "
+                          "VALUES (%s,%s,%s,%s,%s,%s)", (_cid(), periodo, gr["concepto"], importe, "FIJO", new_id))
                 break
 
     return new_id
 
 
-def pagar_factura(fid: int, fecha_pago: str, con_fondo: bool = False) -> bool:
+def vincular_gasto_factura(gasto_id: int, fid: int) -> bool:
+    """Vincula un gasto sin factura a la factura `fid`. False si el gasto no existe o ya tiene factura."""
+    row = _fetchone("SELECT id FROM gastos WHERE id=%s AND consorcio_id=%s AND factura_id IS NULL "
+                    "AND tipo <> 'FONDO_RESERVA'", (gasto_id, _cid()))
+    if not row:
+        return False
+    _exec("UPDATE gastos SET factura_id=%s WHERE id=%s AND consorcio_id=%s", (fid, gasto_id, _cid()))
+    return True
+
+
+_vinculos_legacy_ok: set = set()
+
+
+def vincular_gastos_facturas_legacy() -> int:
+    """
+    Una vez por proceso y consorcio (v9.4): vincula los gastos anteriores a la v9.4 con la factura
+    que los generó (mismo concepto e importe; mes de pago o, para recurrentes, mes de la factura).
+    Así esos gastos no muestran el botón "emitir factura" y pagar no los duplica.
+    """
+    cid = _cid()
+    if cid in _vinculos_legacy_ok:
+        return 0
+    with _columnas_lock:
+        if cid in _vinculos_legacy_ok:
+            return 0
+        pares = _fetchall("""
+            SELECT g.id AS gid, f.id AS fid
+            FROM gastos g
+            JOIN facturas f ON f.consorcio_id = g.consorcio_id
+             AND f.importe = g.importe
+             AND upper(trim(g.concepto)) = upper(trim(left(coalesce(nullif(f.descripcion,''),
+                                                                 f.proveedor_nombre, ''), 100)))
+             AND trim(g.periodo) IN (to_char(f.fecha_pago,'YYYY-MM'), to_char(f.fecha,'YYYY-MM'))
+            WHERE g.consorcio_id = %s AND g.factura_id IS NULL AND g.tipo <> 'FONDO_RESERVA'
+              AND NOT EXISTS (SELECT 1 FROM gastos g2 WHERE g2.consorcio_id = f.consorcio_id
+                              AND g2.factura_id = f.id)
+            ORDER BY g.id, f.id
+        """, (cid,))
+        usados_g, usados_f, n = set(), set(), 0
+        for p in pares:
+            if p["gid"] in usados_g or p["fid"] in usados_f:
+                continue
+            _exec("UPDATE gastos SET factura_id=%s WHERE id=%s AND consorcio_id=%s", (p["fid"], p["gid"], cid))
+            usados_g.add(p["gid"]); usados_f.add(p["fid"]); n += 1
+        _vinculos_legacy_ok.add(cid)
+        return n
+
+
+def pagar_factura(fid: int, fecha_pago: str, con_fondo: bool = False, observacion: str = "") -> bool:
     """
     Marca la factura como PAGADA y registra la salida en Caja.
     con_fondo=True (pagada con el Fondo de Reserva): la factura y el movimiento de caja quedan
     con categoría FONDO_RESERVA y el gasto se registra como VARIABLE_FR, que NO entra en la
     liquidación (solo se informa en "Gastos con Fondo de Reserva").
+    Si la factura ya tiene un gasto vinculado (gastos.factura_id, v9.4) se reutiliza: no se duplica.
+    `observacion`: nota libre del pago (se guarda en la factura).
     """
     row = _fetchone("SELECT * FROM facturas WHERE id=%s AND consorcio_id=%s", (fid, _cid()))
     if not row:
@@ -1446,12 +1524,13 @@ def pagar_factura(fid: int, fecha_pago: str, con_fondo: bool = False) -> bool:
 
     es_fr = (row["categoria"] or "").upper() == "FONDO_RESERVA"
     categoria = "FONDO_RESERVA" if con_fondo else (row["categoria"] or "Proveedor")
+    obs = (observacion or "").strip()[:500] or None
     if con_fondo:
-        _exec("UPDATE facturas SET estado='PAGADA', fecha_pago=%s, categoria='FONDO_RESERVA' "
-              "WHERE id=%s AND consorcio_id=%s", (fecha_dt, fid, _cid()))
+        _exec("UPDATE facturas SET estado='PAGADA', fecha_pago=%s, categoria='FONDO_RESERVA', observacion=%s "
+              "WHERE id=%s AND consorcio_id=%s", (fecha_dt, obs, fid, _cid()))
     else:
-        _exec("UPDATE facturas SET estado='PAGADA', fecha_pago=%s WHERE id=%s AND consorcio_id=%s",
-              (fecha_dt, fid, _cid()))
+        _exec("UPDATE facturas SET estado='PAGADA', fecha_pago=%s, observacion=%s "
+              "WHERE id=%s AND consorcio_id=%s", (fecha_dt, obs, fid, _cid()))
 
     proveedor = row["proveedor_nombre"] or f"Proveedor ID {row['proveedor_id']}"
     nro = row["numero_factura"] or ""
@@ -1467,32 +1546,35 @@ def pagar_factura(fid: int, fecha_pago: str, con_fondo: bool = False) -> bool:
         _exec("UPDATE caja SET factura_id=%s WHERE id=%s", (fid, last["id"]))
 
     concepto = row["descripcion"] or proveedor
+    vinculado = _fetchone("SELECT id, periodo, tipo FROM gastos WHERE consorcio_id=%s AND factura_id=%s "
+                          "ORDER BY id LIMIT 1", (_cid(), fid))
     es_recurrente = any(gr["concepto"].strip().upper() == concepto.strip().upper()
                         for gr in get_gastos_recurrentes())
-    if es_fr:
-        # Factura de un gasto VARIABLE_FR ya cargado en Gastos Mensuales: no duplicar.
+    if not vinculado and es_recurrente and row["fecha"]:
+        # Recurrente anterior a la v9.4: su gasto se cargó al guardar la factura, sin vínculo.
+        vinculado = _fetchone(
+            "SELECT id, periodo, tipo FROM gastos WHERE consorcio_id=%s AND trim(periodo)=%s "
+            "AND upper(trim(concepto))=upper(trim(%s)) AND factura_id IS NULL "
+            "AND tipo <> 'FONDO_RESERVA' ORDER BY id DESC LIMIT 1",
+            (_cid(), str(row["fecha"])[:7], concepto))
+        if vinculado:
+            _exec("UPDATE gastos SET factura_id=%s WHERE id=%s", (fid, vinculado["id"]))
+    if vinculado:
+        if liq_esta_cerrada(_next_periodo(vinculado["periodo"].strip())):
+            return True  # ya liquidado en un período cerrado: no se toca
+        tipo = "VARIABLE_FR" if con_fondo else vinculado["tipo"]
+        _exec("UPDATE gastos SET tipo=%s, importe=%s WHERE id=%s AND consorcio_id=%s",
+              (tipo, importe, vinculado["id"], _cid()))
+        return True
+    if es_fr and not con_fondo:
+        # Factura FONDO_RESERVA sin gasto vinculado (anterior a la v9.4): no se crea gasto.
         return True
     if con_fondo:
-        # Si la factura es de un gasto recurrente, su gasto ya se cargó como ordinario al
-        # guardarla: pasa a VARIABLE_FR (si su liquidación sigue abierta) en vez de duplicarlo.
-        if es_recurrente and row["fecha"]:
-            per_fac = str(row["fecha"])[:7]
-            g = _fetchone(
-                "SELECT id FROM gastos WHERE consorcio_id=%s AND trim(periodo)=%s "
-                "AND upper(trim(concepto))=upper(trim(%s)) AND importe=%s "
-                "AND tipo NOT IN ('FONDO_RESERVA','VARIABLE_FR') ORDER BY id DESC LIMIT 1",
-                (_cid(), per_fac, concepto, importe))
-            if g and not liq_esta_cerrada(_next_periodo(per_fac)):
-                _exec("UPDATE gastos SET tipo='VARIABLE_FR' WHERE id=%s AND consorcio_id=%s",
-                      (g["id"], _cid()))
-                return True
-            if g:
-                return True  # ya liquidado en un período cerrado: no se toca
-        save_gasto(fecha_dt.strftime("%Y-%m"), concepto[:100], importe, "VARIABLE_FR")
-        return True
-    if not es_recurrente:
+        tipo = "VARIABLE_FR"
+    else:
         tipo = "EXTRAORDINARIO" if row["extraordinario"] else (row["categoria"] or "FIJO")
-        save_gasto(fecha_dt.strftime("%Y-%m"), concepto[:100], importe, tipo)
+    _exec("INSERT INTO gastos (consorcio_id, periodo, concepto, importe, tipo, factura_id) "
+          "VALUES (%s,%s,%s,%s,%s,%s)", (_cid(), fecha_dt.strftime("%Y-%m"), concepto[:100], importe, tipo, fid))
     return True
 
 
@@ -1518,6 +1600,8 @@ def delete_factura(fid) -> bool:
         return False
     # Delete linked caja entry (payment movement)
     _exec("DELETE FROM caja WHERE factura_id=%s AND consorcio_id=%s", (fid, _cid()))
+    # El gasto queda (se puede volver a emitir su factura desde Gastos Mensuales), sin vínculo.
+    _exec("UPDATE gastos SET factura_id=NULL WHERE factura_id=%s AND consorcio_id=%s", (fid, _cid()))
     _exec("DELETE FROM facturas WHERE id=%s AND consorcio_id=%s", (fid, _cid()))
     return True
 

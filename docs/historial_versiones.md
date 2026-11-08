@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 9.3-0811
+**Versión actual:** 9.4-0811
 
 ---
 
@@ -336,10 +336,25 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v9.x — Cobranzas separada de Liquidación
 
-#### v9.3-0811 — Pagar una factura con el Fondo de Reserva
+#### v9.4-0811 — Gasto vinculado a su factura y observación del pago
 
 **Lanzamiento:** 8 de noviembre
 **Versión actual**
+
+**Cambios (pedido del usuario):**
+
+- **Borrar una factura (o su pago) ya no deja el gasto "trabado":** cada gasto queda vinculado a la factura que lo generó (`gastos.factura_id`). Al borrar la factura el gasto queda sin vínculo y en Gastos Mensuales aparece el botón **"Emitir factura de este gasto"** en cualquier gasto sin factura (antes solo en los Variables). Los gastos con factura muestran un ícono verde.
+- Emitir la factura desde el gasto la vincula: al pagarla se actualiza ese mismo gasto, **no se duplica**. Lo mismo al borrar el pago en Caja y volver a pagar, y al volver a emitir la factura de un gasto recurrente.
+- Los gastos anteriores se vinculan solos con su factura (mismo concepto e importe, mes de pago o de la factura), una vez por consorcio.
+- **Observación del pago:** el modal Registrar Pago de Facturas tiene un campo "Observación" (`facturas.observacion`), que se muestra debajo de la descripción en la lista.
+- Fix: guardar una factura **sin proveedor** daba error 500 (proveedor vacío → NULL).
+- Prueba: `pruebas/probar_factura_vinculo.py` (16/16 OK) y `probar_factura_con_fondo.py` (14/14 OK).
+
+---
+
+#### v9.3-0811 — Pagar una factura con el Fondo de Reserva
+
+**Lanzamiento:** 8 de noviembre
 
 **Cambios (pedido del usuario):**
 
