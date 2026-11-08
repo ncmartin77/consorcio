@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 9.6-0811
+**Versión actual:** 9.7-0811
 
 ---
 
@@ -336,10 +336,18 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v9.x — Cobranzas separada de Liquidación
 
-#### v9.6-0811 — Planilla de liquidación horizontal
+#### v9.7-0811 — "MONTO A PAGAR" en la planilla
 
 **Lanzamiento:** 8 de noviembre
 **Versión actual**
+
+**Cambios (pedido del usuario):** en la tabla de UF del PDF de liquidación, la última columna se llama **MONTO A PAGAR** (en mayúsculas) en lugar de "Saldo". Prueba: `pruebas/probar_pdf_planilla.py` 15/15 OK y revisión visual (también con columna Interés).
+
+---
+
+#### v9.6-0811 — Planilla de liquidación horizontal
+
+**Lanzamiento:** 8 de noviembre
 
 **Cambios (pedido del usuario), PDF resumen de la liquidación:**
 

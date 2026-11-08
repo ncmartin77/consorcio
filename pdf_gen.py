@@ -396,7 +396,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
                                spaceAfter=4)))
     con_interes = any(float(r.get("interes") or 0) for r in liquidacion_rows)
     uf_header = ["UF", "Descripción", "Prop./Inquilino", "%", "Liquidado mes ant.", "Pago anterior",
-                 "Deuda", "Expensas", "Total", "Pagado", "Saldo"]
+                 "Deuda", "Expensas", "Total", "Pagado", "MONTO A PAGAR"]
     if con_interes:
         uf_header.insert(7, "Interés")
     uf_data = [uf_header]
