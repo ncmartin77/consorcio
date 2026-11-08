@@ -1429,7 +1429,13 @@ def save_factura(data: dict) -> int:
     return new_id
 
 
-def pagar_factura(fid: int, fecha_pago: str) -> bool:
+def pagar_factura(fid: int, fecha_pago: str, con_fondo: bool = False) -> bool:
+    """
+    Marca la factura como PAGADA y registra la salida en Caja.
+    con_fondo=True (pagada con el Fondo de Reserva): la factura y el movimiento de caja quedan
+    con categoría FONDO_RESERVA y el gasto se registra como VARIABLE_FR, que NO entra en la
+    liquidación (solo se informa en "Gastos con Fondo de Reserva").
+    """
     row = _fetchone("SELECT * FROM facturas WHERE id=%s AND consorcio_id=%s", (fid, _cid()))
     if not row:
         return False
@@ -1438,15 +1444,23 @@ def pagar_factura(fid: int, fecha_pago: str) -> bool:
     except (ValueError, TypeError):
         fecha_dt = fecha_sistema()
 
-    _exec("UPDATE facturas SET estado='PAGADA', fecha_pago=%s WHERE id=%s AND consorcio_id=%s",
-          (fecha_dt, fid, _cid()))
+    es_fr = (row["categoria"] or "").upper() == "FONDO_RESERVA"
+    categoria = "FONDO_RESERVA" if con_fondo else (row["categoria"] or "Proveedor")
+    if con_fondo:
+        _exec("UPDATE facturas SET estado='PAGADA', fecha_pago=%s, categoria='FONDO_RESERVA' "
+              "WHERE id=%s AND consorcio_id=%s", (fecha_dt, fid, _cid()))
+    else:
+        _exec("UPDATE facturas SET estado='PAGADA', fecha_pago=%s WHERE id=%s AND consorcio_id=%s",
+              (fecha_dt, fid, _cid()))
 
     proveedor = row["proveedor_nombre"] or f"Proveedor ID {row['proveedor_id']}"
     nro = row["numero_factura"] or ""
     desc = f"Pago factura {nro} - {proveedor} - {row['descripcion'] or ''}"
+    if con_fondo:
+        desc = f"[Fondo de Reserva] {desc}"
     importe = float(row["importe"]) if row["importe"] else 0.0
     save_movimiento(fecha=fecha_pago, descripcion=desc[:200], tipo="SALIDA",
-                    categoria=row["categoria"] or "Proveedor", importe=importe)
+                    categoria=categoria, importe=importe)
     # Link the caja entry back to this factura
     last = _fetchone("SELECT id FROM caja WHERE consorcio_id=%s ORDER BY id DESC LIMIT 1", (_cid(),))
     if last:
@@ -1455,8 +1469,28 @@ def pagar_factura(fid: int, fecha_pago: str) -> bool:
     concepto = row["descripcion"] or proveedor
     es_recurrente = any(gr["concepto"].strip().upper() == concepto.strip().upper()
                         for gr in get_gastos_recurrentes())
-    es_fr = (row["categoria"] or "").upper() == "FONDO_RESERVA"
-    if not es_recurrente and not es_fr:
+    if es_fr:
+        # Factura de un gasto VARIABLE_FR ya cargado en Gastos Mensuales: no duplicar.
+        return True
+    if con_fondo:
+        # Si la factura es de un gasto recurrente, su gasto ya se cargó como ordinario al
+        # guardarla: pasa a VARIABLE_FR (si su liquidación sigue abierta) en vez de duplicarlo.
+        if es_recurrente and row["fecha"]:
+            per_fac = str(row["fecha"])[:7]
+            g = _fetchone(
+                "SELECT id FROM gastos WHERE consorcio_id=%s AND trim(periodo)=%s "
+                "AND upper(trim(concepto))=upper(trim(%s)) AND importe=%s "
+                "AND tipo NOT IN ('FONDO_RESERVA','VARIABLE_FR') ORDER BY id DESC LIMIT 1",
+                (_cid(), per_fac, concepto, importe))
+            if g and not liq_esta_cerrada(_next_periodo(per_fac)):
+                _exec("UPDATE gastos SET tipo='VARIABLE_FR' WHERE id=%s AND consorcio_id=%s",
+                      (g["id"], _cid()))
+                return True
+            if g:
+                return True  # ya liquidado en un período cerrado: no se toca
+        save_gasto(fecha_dt.strftime("%Y-%m"), concepto[:100], importe, "VARIABLE_FR")
+        return True
+    if not es_recurrente:
         tipo = "EXTRAORDINARIO" if row["extraordinario"] else (row["categoria"] or "FIJO")
         save_gasto(fecha_dt.strftime("%Y-%m"), concepto[:100], importe, tipo)
     return True

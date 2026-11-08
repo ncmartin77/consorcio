@@ -14,7 +14,7 @@
 | **Deploy** | https://consorcio-soo4.onrender.com (Render.com free tier, auto-deploy desde master) |
 | **Directorio local** | `/home/norberto/consorcio` |
 | **Git en WSL** | `"/mnt/c/Program Files/Git/bin/git.exe"` (siempre con ruta completa) |
-| **Version actual** | `5.5-0411` (en `version.txt`) |
+| **Version actual** | `9.3-0811` (en `version.txt`) |
 | **Supabase Project ID** | `eboskmenitazzwfobwkiq` (region: ca-central-1) |
 | **MCP Supabase config** | `~/.mcp.json` (token `sb_secret_*` en `headers.Authorization`) |
 | **Consorcio activo en DB** | `consorcio_id = '28693516'` |
@@ -74,6 +74,7 @@
 - **`get_facturas()`** devuelve tupla `(lista, total)` — no olvidar el unpacking.
 - **`get_caja()`** devuelve tupla `(lista, total)`.
 - **`tojson` en `onclick`**: NO usar `{{ obj|tojson }}` dentro de atributos HTML con comillas dobles — usar atributos `data-*` en su lugar.
+- **Pagar factura con el fondo** (v9.3, pedido del usuario): switch "Pagar con Fondo de Reserva" en el modal de pago de Facturas; `pagar_factura(..., con_fondo=True)` deja factura y caja con categoria FONDO_RESERVA y el gasto como VARIABLE_FR (no entra en la liquidacion). Recurrente: el gasto FIJO ya cargado pasa a VARIABLE_FR.
 - **FONDO_RESERVA**: `save_gasto` fue corregido para permitir actualizar solo el importe (antes bloqueaba edicion).
 - **`factura_en_liquidacion`**: usa `liq_esta_cerrada()`, NO `liquidacion_existe()`.
 - **Interes al cerrar (v9.2, regla del usuario; reemplaza v9.0 y v9.1)**: abierta = sin interes (generar_liquidacion pone 0). Al cerrar, ventana con switch por unidad (`propuesta_intereses`: unidades con deuda_anterior > 0, interes = tasa × deuda anterior); `cerrar_liquidacion(periodo, con_interes=[ufs])` suma el interes al total de las tildadas (las demas sin_interes=TRUE) y congela. Cobranzas NO cobra interes (las columnas `pagos.interes`/`interes_caja_id` quedan de la v9.1, solo se muestran/anulan).

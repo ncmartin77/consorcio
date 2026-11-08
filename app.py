@@ -1578,7 +1578,13 @@ def facturas():
     provs = db.get_proveedores()
     total_pendiente = db.get_total_pendiente_facturas()
     gastos_recurrentes = db.get_gastos_recurrentes()
+    try:
+        saldo_fondo = db.get_saldo_fondo()
+    except Exception:
+        app.logger.exception("No se pudo calcular el saldo del fondo de reserva")
+        saldo_fondo = None
     return render_template("facturas.html", facturas=lista, proveedores=provs,
+                           saldo_fondo=saldo_fondo,
                            estado_filtro=estado, mes_filtro=mes,
                            total_pendiente=total_pendiente,
                            gastos_recurrentes=gastos_recurrentes,
@@ -1621,10 +1627,17 @@ def pagar_factura(fid):
         if fecha_emision and fecha_pago < fecha_emision:
             flash(f"La fecha de pago ({fecha_pago}) no puede ser anterior a la fecha de emisión de la factura ({fecha_emision}).", "danger")
             return redirect(url_for("facturas"))
-    ok = db.pagar_factura(fid, fecha_pago)
+    con_fondo = bool(request.form.get("con_fondo"))
+    ok = db.pagar_factura(fid, fecha_pago, con_fondo=con_fondo)
     if ok:
         periodo = fecha_pago[:7]
-        flash("Factura pagada. Se registró en Caja Diaria y Gastos Mensuales.", "success")
+        if con_fondo:
+            flash("Factura pagada con el Fondo de Reserva. Se registró en Caja Diaria y no se "
+                  "cobra en la liquidación.", "success")
+            if factura and str(factura.get("fecha") or "")[:7] not in ("", periodo):
+                _recalcular_liq_si_posible(str(factura["fecha"])[:7])
+        else:
+            flash("Factura pagada. Se registró en Caja Diaria y Gastos Mensuales.", "success")
         _recalcular_liq_si_posible(periodo)
     else:
         flash("No se encontró la factura.", "danger")

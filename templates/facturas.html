@@ -286,6 +286,19 @@
           <label class="form-label fw-semibold">Fecha de Pago *</label>
           <input type="date" class="form-control" name="fecha_pago" id="pagar_fecha" required>
           <small class="text-muted">Se registrará automáticamente como salida en Caja Diaria.</small>
+          <div class="form-check form-switch mt-3 p-2 ps-5 rounded border border-warning bg-warning-subtle">
+            <input class="form-check-input" type="checkbox" name="con_fondo" value="1" id="pagar_con_fondo">
+            <label class="form-check-label fw-semibold" for="pagar_con_fondo">
+              <i class="bi bi-piggy-bank"></i> Pagar con Fondo de Reserva
+            </label>
+            <div class="small text-muted">
+              No genera gasto para la liquidación: se descuenta del fondo
+              {% if saldo_fondo is not none %}(disponible: <strong>$ {{ "{:,.2f}".format(saldo_fondo).replace(",", "X").replace(".", ",").replace("X", ".") }}</strong>){% endif %}.
+            </div>
+            <div class="small text-danger d-none" id="pagar_fondo_aviso">
+              <i class="bi bi-exclamation-triangle"></i> El importe supera el saldo del fondo.
+            </div>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -360,6 +373,14 @@ function pagarFactura(fid, proveedor, importe, fechaEmision) {
   const fechaInput = document.getElementById('pagar_fecha');
   fechaInput.min = fechaEmision || '';
   if (fechaInput.value < (fechaEmision || '')) fechaInput.value = fechaEmision;
+  const chkFondo = document.getElementById('pagar_con_fondo');
+  const avisoFondo = document.getElementById('pagar_fondo_aviso');
+  const saldoFondo = {{ saldo_fondo if saldo_fondo is not none else 'null' }};
+  chkFondo.checked = false;
+  avisoFondo.classList.add('d-none');
+  chkFondo.onchange = function() {
+    avisoFondo.classList.toggle('d-none', !(chkFondo.checked && saldoFondo !== null && importe > saldoFondo));
+  };
   new bootstrap.Modal(document.getElementById('modalPagar')).show();
 }
 </script>

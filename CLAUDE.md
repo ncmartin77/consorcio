@@ -133,6 +133,7 @@ templates/                ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 - Excluded from `total_gastos` in `get_total_gastos()` and `generar_liquidacion()` → does not affect expensa distribution.
 - Has a receipt button: opens `#modalFacturaVariable` with `categoria` pre-filled as `"FONDO_RESERVA"`.
 - When the factura is paid, `pagar_factura()` creates a CAJA SALIDA with `categoria=FONDO_RESERVA` (standard factura flow), and skips the duplicate `save_gasto()` call (detected via `factura.categoria == "FONDO_RESERVA"`).
+- **Pay any factura with the fund (v9.3):** the Registrar Pago modal in Facturas has a "Pagar con Fondo de Reserva" switch (`con_fondo`). `pagar_factura(fid, fecha, con_fondo=True)` sets the factura and the Caja SALIDA to categoria `FONDO_RESERVA` and saves the gasto as `VARIABLE_FR` (not charged in the liquidación); for a recurring-concept factura the FIJO gasto created on save is switched to `VARIABLE_FR` instead (if its liquidación is open).
 - PDF resumen includes a "GASTOS CON FONDO DE RESERVA" section (amber style) when VARIABLE_FR gastos exist for the period.
 
 **Notas del período** (`NOTAS_PERIODO` sheet): text notices/announcements for a specific period. `tipo=AVISO` (highlighted) or `tipo=INFO`. Added/deleted via AJAX routes `POST /liquidacion/<periodo>/notas/add` and `POST /liquidacion/<periodo>/notas/<id>/delete`. Blocked if liquidación is CERRADA. Shown in UI and in resumen PDF.

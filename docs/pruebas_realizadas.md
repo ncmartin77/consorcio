@@ -22,6 +22,23 @@ Las más recientes van primero. Los scripts para repetirlas están en [`pruebas/
 
 ---
 
+## v9.3-0811 — Pagar factura con el Fondo de Reserva (08/11/2026)
+
+`pruebas/probar_factura_con_fondo.py` contra la base de prueba, fecha del sistema 08/11/2026 (gastos 2026-11 → liquidación 2026-12, abierta). Resultado: **14/14 OK**; la base quedó como al inicio.
+
+| Caso | Esperado | Resultado |
+|---|---|---|
+| Pantalla Facturas | switch "Pagar con Fondo de Reserva" en el modal | ✅ |
+| Pagar factura común con el fondo | PAGADA, categoría FONDO_RESERVA | ✅ |
+| Caja | salida de $ 12.345,67 con categoría FONDO_RESERVA | ✅ |
+| Gasto | uno solo, tipo VARIABLE_FR (en "con fondo" del desglose) | ✅ |
+| Total de gastos de la liquidación | sin cambios ($ 1.316.352,34) | ✅ |
+| Control: pagar sin el fondo | gasto FIJO, total sube $ 1.000 | ✅ |
+| Factura de gasto recurrente pagada con el fondo | el gasto FIJO cargado al guardarla pasa a VARIABLE_FR, sin duplicar | ✅ |
+| Limpieza | total de gastos como al inicio | ✅ |
+
+---
+
 ## Corrida completa de los scripts — 06/11/2026 (sobre v5.8)
 
 Se corrieron los cuatro scripts de `pruebas/` seguidos, contra la base de prueba, para dejar constancia de que reproducen todo lo de abajo.

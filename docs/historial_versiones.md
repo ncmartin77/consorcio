@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 9.2-0711
+**Versión actual:** 9.3-0811
 
 ---
 
@@ -336,10 +336,23 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v9.x — Cobranzas separada de Liquidación
 
+#### v9.3-0811 — Pagar una factura con el Fondo de Reserva
+
+**Lanzamiento:** 8 de noviembre
+**Versión actual**
+
+**Cambios (pedido del usuario):**
+
+- El modal **Registrar Pago** de Facturas tiene el switch **"Pagar con Fondo de Reserva"**, con el saldo disponible del fondo y un aviso si el importe lo supera (no bloquea).
+- Pagada con el fondo, la factura queda con categoría `FONDO_RESERVA`, la salida de Caja también (descripción "[Fondo de Reserva] ...") y el gasto se registra como `VARIABLE_FR`: **no genera gasto para la liquidación**; se ve en "Gastos con Fondo de Reserva".
+- Si la factura es de un gasto recurrente (cargado como ordinario al guardarla), ese gasto pasa a `VARIABLE_FR` en vez de duplicarse, si su liquidación sigue abierta.
+- Prueba: `pruebas/probar_factura_con_fondo.py` (14/14 OK).
+
+---
+
 #### v9.2-0711 — El interés se decide al cerrar la liquidación
 
 **Lanzamiento:** 7 de noviembre
-**Versión actual**
 
 **Cambios (regla del usuario, reemplaza a la v9.1):**
 
