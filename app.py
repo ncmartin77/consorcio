@@ -1357,9 +1357,11 @@ def descargar_pdf(periodo):
     except Exception:
         app.logger.exception("[pdf] resumen de caja")
         caja_mes = None
+    # Liquidación anterior por UF: "Liquidado mes ant." y "Pago anterior" en la planilla
+    anterior = {str(r["unidad"]): r for r in db.get_liquidacion(mes_gastos_pdf)}
     pdf_bytes = generar_pdf_resumen_edificio(liq, gastos, cfg, periodo, saldo_caja, fondo,
                                              notas=notas, extras=extras, logo_bytes=_logo_bytes,
-                                             caja_mes=caja_mes)
+                                             caja_mes=caja_mes, anterior=anterior)
     _meses_pdf = ["enero","febrero","marzo","abril","mayo","junio",
                   "julio","agosto","septiembre","octubre","noviembre","diciembre"]
     _mes_str = _meses_pdf[int(periodo[5:7]) - 1] + "_" + periodo[:4]

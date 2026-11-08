@@ -5,11 +5,11 @@ Formato basado en ejemplo.pdf: una página por unidad.
 import io
 from datetime import date
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import (
-    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable, PageBreak, Image as RLImage
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable, PageBreak, KeepTogether, Image as RLImage
 )
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 import qrcode
@@ -309,17 +309,21 @@ def generar_pdf_liquidacion(liquidacion_rows: list, gastos: list, config: dict, 
 def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: dict,
                                   periodo: str, saldo_caja: float, fondo_reserva: float,
                                   notas: list = None, extras: list = None,
-                                  logo_bytes: bytes = None, caja_mes: dict = None) -> bytes:
+                                  logo_bytes: bytes = None, caja_mes: dict = None,
+                                  anterior: dict = None) -> bytes:
     """
-    PDF único de resumen para el edificio:
-    - Tabla de todas las unidades (UF, %, expensas, deuda, total, estado)
+    PDF único de resumen para el edificio (A4 horizontal, v9.6):
+    - Tabla de todas las unidades (UF, %, liquidado y pago del mes anterior, deuda, expensas,
+      total, estado) y, debajo, el cuadro de totales (gastos, a cobrar, cobrado, pendiente)
     - Detalle de gastos del mes
     - Saldo en caja y fondo de reserva
+    `anterior`: {unidad: fila de la liquidación anterior} para "Liquidado mes ant." y "Pago anterior".
     """
+    anterior = anterior or {}
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4,
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4),
                             rightMargin=1.2*cm, leftMargin=1.2*cm,
-                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+                            topMargin=1.2*cm, bottomMargin=1.2*cm)
     styles = getSampleStyleSheet()
     c_azul = colors.HexColor("#1a3a5c")
     c_verde = colors.HexColor("#155724")
@@ -345,23 +349,23 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
     story = []
 
     # Encabezado
-    logo_img = _make_logo_image(logo_bytes, max_height_cm=1.8)
+    logo_img = _make_logo_image(logo_bytes, max_height_cm=1.5)
     if logo_img:
         enc_t = Table(
             [[logo_img,
-              [Paragraph(edificio.upper(), st("tit", fontSize=14, fontName="Helvetica-Bold",
+              [Paragraph(edificio.upper(), st("tit", fontSize=14, leading=18, fontName="Helvetica-Bold",
                                               alignment=TA_CENTER, textColor=c_azul)),
                Paragraph(f"LIQUIDACIÓN DE EXPENSAS — {mes_nombre}",
                          st("sub", fontSize=10, fontName="Helvetica-Bold",
                             alignment=TA_CENTER, textColor=c_azul))],
               ""]],
-            colWidths=[3*cm, 12.6*cm, 3*cm]
+            colWidths=[3*cm, 21.3*cm, 3*cm]  # A4 horizontal: ancho útil 27.3 cm
         )
         enc_t.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "MIDDLE"),
                                     ("BOTTOMPADDING", (0,0), (-1,-1), 4)]))
         story.append(enc_t)
     else:
-        story.append(Paragraph(edificio.upper(), st("tit", fontSize=14, fontName="Helvetica-Bold",
+        story.append(Paragraph(edificio.upper(), st("tit", fontSize=14, leading=18, fontName="Helvetica-Bold",
                                                      alignment=TA_CENTER, textColor=c_azul)))
         story.append(Paragraph(f"LIQUIDACIÓN DE EXPENSAS — {mes_nombre}",
                                 st("sub", fontSize=10, fontName="Helvetica-Bold",
@@ -369,12 +373,12 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
     story.append(HRFlowable(width="100%", thickness=2, color=c_azul))
     story.append(Spacer(1, 0.3*cm))
 
-    # Resumen financiero en 4 cajas
+    # Resumen financiero en 4 cajas (se agrega debajo de la tabla de unidades)
     res_data = [
         ["TOTAL GASTOS", "TOTAL A COBRAR", "COBRADO", "PENDIENTE"],
         [_fmt(total_gastos), _fmt(total_a_cobrar), _fmt(total_cobrado), _fmt(total_pendiente)],
     ]
-    res_t = Table(res_data, colWidths=[4.5*cm]*4)
+    res_t = Table(res_data, colWidths=[6.8*cm]*4)  # = 27.2 cm
     res_t.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), c_azul), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
         ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,0), 8),
@@ -385,19 +389,28 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         ("GRID", (0,0), (-1,-1), 0.4, colors.grey),
         ("TOPPADDING", (0,0), (-1,-1), 5), ("BOTTOMPADDING", (0,0), (-1,-1), 5),
     ]))
-    story.append(res_t)
-    story.append(Spacer(1, 0.4*cm))
 
     # Tabla de unidades
     story.append(Paragraph("DETALLE POR UNIDAD FUNCIONAL",
                             st("h", fontSize=9, fontName="Helvetica-Bold", textColor=c_azul,
                                spaceAfter=4)))
     con_interes = any(float(r.get("interes") or 0) for r in liquidacion_rows)
-    uf_header = ["UF", "Descripción", "Prop./Inquilino", "%", "Expensas", "Deuda", "Total", "Pagado", "Saldo"]
+    uf_header = ["UF", "Descripción", "Prop./Inquilino", "%", "Liquidado mes ant.", "Pago anterior",
+                 "Deuda", "Expensas", "Total", "Pagado", "Saldo"]
     if con_interes:
-        uf_header.insert(6, "Interés")
+        uf_header.insert(7, "Interés")
     uf_data = [uf_header]
+    total_liq_ant = total_pago_ant = 0.0
     for r in liquidacion_rows:
+        ant = anterior.get(str(r["unidad"]))
+        if ant:
+            liq_ant = float(ant.get("total_a_pagar") or 0)
+            pago_ant = float(ant.get("monto_pagado") or 0)
+            total_liq_ant += liq_ant
+            total_pago_ant += pago_ant
+            liq_ant_txt, pago_ant_txt = _fmt(liq_ant), (_fmt(pago_ant) if pago_ant else "—")
+        else:
+            liq_ant_txt = pago_ant_txt = "—"
         ocupante = r.get("inquilino") or r.get("propietario") or "—"
         tipo = r.get("tipo_pago", "PENDIENTE")
         if tipo == "TOTAL":
@@ -411,33 +424,37 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
             saldo_display = _fmt(r["total_a_pagar"])  # aún no pagó nada → debe el total
         fila_uf = [
             str(r["unidad"]),
-            r["descripcion"][:18],
-            ocupante[:20],
+            r["descripcion"][:20 if con_interes else 24],
+            ocupante[:22 if con_interes else 26],
             f"{r['pct_aplicado']:.3f}%",
-            _fmt(r["expensas"]),
+            liq_ant_txt,
+            pago_ant_txt,
             _fmt(r["deuda_anterior"]) if r["deuda_anterior"] else "—",
+            _fmt(r["expensas"]),
             _fmt(r["total_a_pagar"]),
             est,
             saldo_display,
         ]
         if con_interes:
-            fila_uf.insert(6, _fmt(r["interes"]) if r.get("interes") else "—")
+            fila_uf.insert(7, _fmt(r["interes"]) if r.get("interes") else "—")
         uf_data.append(fila_uf)
     # Fila totales
     # Total de la columna Deuda (neto: un saldo a favor, negativo, resta)
     total_deuda = round(sum(float(r.get("deuda_anterior") or 0) for r in liquidacion_rows), 2)
     fila_tot = ["TOTAL", "", "", "100%",
-                _fmt(total_gastos), _fmt(total_deuda) if total_deuda else "—", _fmt(total_a_cobrar),
+                _fmt(round(total_liq_ant, 2)) if anterior else "—",
+                _fmt(round(total_pago_ant, 2)) if anterior else "—",
+                _fmt(total_deuda) if total_deuda else "—", _fmt(total_gastos), _fmt(total_a_cobrar),
                 _fmt(total_cobrado), _fmt(total_pendiente)]
     if con_interes:
-        fila_tot.insert(6, _fmt(round(sum(float(r.get("interes") or 0) for r in liquidacion_rows), 2)))
+        fila_tot.insert(7, _fmt(round(sum(float(r.get("interes") or 0) for r in liquidacion_rows), 2)))
     uf_data.append(fila_tot)
 
-    # A4 ancho útil = 21 - 2*1.2 = 18.6 cm → repartir entre 9 cols
-    # Columnas de importes más anchas para que entren los totales (ej. $ 1.316.352,34)
-    col_w = [0.9*cm, 2.6*cm, 2.6*cm, 1.4*cm, 2.3*cm, 2.3*cm, 2.3*cm, 1.6*cm, 2.2*cm]  # = 18.2 cm
+    # A4 horizontal: ancho útil = 29.7 - 2*1.2 = 27.3 cm → 11 columnas (12 con interés)
+    # Columnas de importes anchas para que entren los totales (ej. $ 1.316.352,34)
+    col_w = [1.0*cm, 3.2*cm, 3.4*cm, 1.6*cm, 2.6*cm, 2.6*cm, 2.5*cm, 2.6*cm, 2.7*cm, 2.4*cm, 2.6*cm]  # = 27.2 cm
     if con_interes:
-        col_w = [0.9*cm, 2.0*cm, 2.0*cm, 1.3*cm, 2.2*cm, 2.2*cm, 1.8*cm, 2.3*cm, 1.6*cm, 2.2*cm]  # = 18.5 cm
+        col_w = [1.0*cm, 2.8*cm, 3.0*cm, 1.4*cm, 2.5*cm, 2.5*cm, 2.4*cm, 1.8*cm, 2.5*cm, 2.6*cm, 2.2*cm, 2.5*cm]  # = 27.2 cm
     uf_t = Table(uf_data, colWidths=col_w, repeatRows=1)
     n = len(uf_data)
     uf_t.setStyle(TableStyle([
@@ -451,10 +468,12 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         ("ALIGN", (0,0), (0,-1), "CENTER"),
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
         ("GRID", (0,0), (-1,-1), 0.3, colors.grey),
-        ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+        ("TOPPADDING", (0,0), (-1,-1), 1), ("BOTTOMPADDING", (0,0), (-1,-1), 1),
         ("LEFTPADDING", (0,0), (-1,-1), 3),
     ]))
     story.append(uf_t)
+    story.append(Spacer(1, 0.2*cm))
+    story.append(KeepTogether([res_t]))  # totales inmediatamente debajo de la tabla de unidades, sin partirse
     story.append(Spacer(1, 0.5*cm))
 
     # Gastos ordinarios del mes (sin aporte al fondo ni extraordinarios) + cuadros a la derecha
@@ -469,7 +488,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         gasto_data.append([g["concepto"], _rotulo.get(g.get("tipo", ""), g.get("tipo", "")), _fmt(g["importe"])])
     gasto_data.append(["TOTAL GASTOS ORDINARIOS", "", _fmt(total_ordinarios)])
 
-    gt = Table(gasto_data, colWidths=[6.5*cm, 2.0*cm, 2.5*cm])  # = 11.0 cm
+    gt = Table(gasto_data, colWidths=[10.5*cm, 2.5*cm, 3.0*cm])  # = 16.0 cm
     ng = len(gasto_data)
     gt.setStyle(TableStyle([
         ("SPAN", (0,0), (-1,0)), ("ALIGN", (0,0), (-1,0), "CENTER"),
@@ -496,7 +515,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
     base_data.append(["= Total a repartir", _fmt(total_gastos)])
     nb = len(base_data)
     fila_total = nb - 1
-    bt = Table(base_data, colWidths=[4.6*cm, 2.6*cm])
+    bt = Table(base_data, colWidths=[7.4*cm, 3.4*cm])
     bt.setStyle(TableStyle([
         ("SPAN", (0,0), (-1,0)), ("ALIGN", (0,0), (-1,0), "CENTER"),
         ("BACKGROUND", (0,0), (-1,0), c_azul), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
@@ -527,7 +546,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
     else:
         caja_data = [["INGRESOS Y EGRESOS"], ["Saldo en Caja", _fmt(saldo_caja)]]
     nc = len(caja_data)
-    ct = Table(caja_data, colWidths=[4.6*cm, 2.6*cm])  # = 7.2 cm
+    ct = Table(caja_data, colWidths=[7.4*cm, 3.4*cm])  # = 10.8 cm
     ct.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), c_verde), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
         ("SPAN", (0,0), (-1,0)), ("ALIGN", (0,0), (-1,0), "CENTER"),
@@ -541,7 +560,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
     ]))
 
     derecha = [bt, Spacer(1, 0.3*cm), ct]
-    combo = Table([[gt, derecha]], colWidths=[11.1*cm, 7.4*cm])  # = 18.5 cm
+    combo = Table([[gt, derecha]], colWidths=[16.2*cm, 11.1*cm])  # = 27.3 cm
     combo.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
         ("LEFTPADDING", (1,0), (1,0), 8),
@@ -560,7 +579,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
             fr_data.append([g["concepto"], _fmt(g["importe"])])
         total_fr = sum(g["importe"] for g in gastos_fr)
         fr_data.append(["TOTAL", _fmt(total_fr)])
-        fr_t = Table(fr_data, colWidths=[13.5*cm, 5.0*cm])
+        fr_t = Table(fr_data, colWidths=[21.2*cm, 6.0*cm])
         nfr = len(fr_data)
         fr_t.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#856404")),
@@ -587,7 +606,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
             label = "AVISO" if n.get("tipo") == "AVISO" else "INFO"
             notas_data.append([label, n.get("texto", "")])
         nn = len(notas_data)
-        nt = Table(notas_data, colWidths=[2.5*cm, 16.0*cm])
+        nt = Table(notas_data, colWidths=[2.5*cm, 24.7*cm])
         nt.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), c_azul), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
             ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,-1), 8),
@@ -609,7 +628,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         for e in extras:
             ex_data.append([f"UF {e['unidad']}", e["descripcion"], _fmt(e["monto"])])
         ex_data.append(["TOTAL", "", _fmt(sum(float(e["monto"]) for e in extras))])
-        ex_t = Table(ex_data, colWidths=[2.0*cm, 13.5*cm, 3.0*cm])
+        ex_t = Table(ex_data, colWidths=[2.0*cm, 22.2*cm, 3.0*cm])
         nex = len(ex_data)
         ex_t.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), c_rojo), ("TEXTCOLOR", (0,0), (-1,0), colors.white),

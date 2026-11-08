@@ -214,7 +214,7 @@ Costo estimado: $0/mes dentro del free tier de GCP.
 ## PDF generation
 
 `pdf_gen.py` exposes three functions called directly from `app.py` routes:
-- `generar_pdf_resumen_edificio()` — full building summary (all units)
+- `generar_pdf_resumen_edificio()` — full building summary (all units). **A4 landscape (v9.6)**; UF table columns: UF, Descripción, Prop./Inquilino, %, Liquidado mes ant., Pago anterior, Deuda, [Interés], Expensas, Total, Pagado, Saldo (`anterior={unidad: row}` = previous liquidación, passed by the `descargar_pdf` route); the Total gastos / a cobrar / cobrado / pendiente box goes right below the UF table (KeepTogether)
 - `generar_recibo_pago()` — individual payment receipt per unit
 - `generar_pdf_liquidacion()` — detailed liquidation (currently unused in routes)
 

@@ -22,6 +22,22 @@ Las más recientes van primero. Los scripts para repetirlas están en [`pruebas/
 
 ---
 
+## v9.6-0811 — Planilla de liquidación horizontal (08/11/2026)
+
+`pruebas/probar_pdf_planilla.py` contra la base de prueba: descarga el PDF de las liquidaciones 2026-10, 2026-11 y 2026-12. Resultado: **15/15 OK**. Además se renderizaron las páginas a imagen y se revisaron a ojo (también una variante con interés ficticio en 2 UF, generada en memoria sin tocar la base).
+
+| Caso | Esperado | Resultado |
+|---|---|---|
+| PDF de cada liquidación | 200, application/pdf | ✅ |
+| Orientación | A4 horizontal | ✅ |
+| Columnas nuevas | "Liquidado mes ant." y "Pago anterior" | ✅ |
+| Cuadro de totales | debajo de la tabla de UF | ✅ |
+| Primera liquidación (2026-10, sin anterior) | columnas nuevas con "—" | ✅ (visual) |
+| 24 UF + totales | en la primera hoja | ✅ (visual) |
+| Con columna Interés | todo entra en una hoja, sin superposiciones | ✅ (visual) |
+
+---
+
 ## v9.4-0811 — Gasto vinculado a su factura y observación del pago (08/11/2026)
 
 `pruebas/probar_factura_vinculo.py` contra la base de prueba, fecha del sistema 08/11/2026 (gastos 2026-11 → liquidación 2026-12, abierta). Resultado: **16/16 OK**; la base quedó como al inicio. `probar_factura_con_fondo.py` repetida: 14/14 OK.
