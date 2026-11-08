@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 9.4-0811
+**Versión actual:** 9.5-0811
 
 ---
 
@@ -336,10 +336,18 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v9.x — Cobranzas separada de Liquidación
 
-#### v9.4-0811 — Gasto vinculado a su factura y observación del pago
+#### v9.5-0811 — Registro del reset de datos de Perú 376
 
 **Lanzamiento:** 8 de noviembre
 **Versión actual**
+
+**Cambios:** sin cambios de código. Se documenta en `docs/memoria_sesion_claude.md` el reset de movimientos de Perú 376 en producción pedido por el usuario (gastos, facturas, caja y liquidaciones borrados; apertura en cero; fecha del sistema 01/10/2026), revertible desde el Log de Movimientos.
+
+---
+
+#### v9.4-0811 — Gasto vinculado a su factura y observación del pago
+
+**Lanzamiento:** 8 de noviembre
 
 **Cambios (pedido del usuario):**
 
