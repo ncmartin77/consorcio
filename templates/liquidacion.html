@@ -123,11 +123,11 @@
     </div>
   </div>
   <div class="col-md-2">
-    <div class="card border-info text-center h-100" title="Fondo de Reserva del mes = saldo de caja al cierre del mes anterior">
+    <div class="card border-info text-center h-100" title="Saldo efectivo del Fondo de Reserva (libro del fondo): inicial + aportes cobrados + otros ingresos − pagos con el fondo">
       <div class="card-body py-2 px-1">
         <div class="small text-info fw-bold">FONDO RESERVA</div>
         <div class="fw-bold {{ 'text-danger' if fondo.saldo < 0 else 'text-info' }}">$ {{ "%.2f"|format(fondo.saldo)|replace(".",",") }}</div>
-        <div class="text-muted" style="font-size:0.65rem">saldo de caja al {{ fondo.fecha | fecha_ar }}</div>
+        <div class="text-muted" style="font-size:0.65rem">saldo efectivo al {{ fondo.fecha | fecha_ar }}</div>
         <div class="text-muted" style="font-size:0.6rem">
           aporte del mes $ {{ "%.2f"|format(fondo.aporte)|replace(".",",") }}
         </div>
@@ -478,7 +478,7 @@
       <table class="table table-sm mb-0">
         <tbody>
           <tr class="fw-bold"><td>Fondo de Reserva {{ periodo | mes_largo }}
-                <div class="text-muted small fw-normal">= saldo de caja al {{ fondo.fecha | fecha_ar }}</div></td>
+                <div class="text-muted small fw-normal">saldo efectivo al {{ fondo.fecha | fecha_ar }}</div></td>
               <td class="text-end {{ 'text-danger' if fondo.saldo < 0 else 'text-info' }}">$ {{ "%.2f"|format(fondo.saldo)|replace(".",",") }}</td></tr>
           <tr><td>Aporte al fondo que se cobra en estas expensas</td>
               <td class="text-end text-success">$ {{ "%.2f"|format(fondo.aporte)|replace(".",",") }}</td></tr>
@@ -486,11 +486,19 @@
           <tr><td class="ps-3">{{ g.concepto }} <span class="text-muted small">pagado con el fondo (no se cobra)</span></td>
               <td class="text-end text-danger">$ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td></tr>
           {% endfor %}
+          {% if fondo.pendiente_cobro %}
+          <tr class="text-muted"><td>Aportes pendientes de cobro (no disponibles)</td>
+              <td class="text-end">$ {{ "%.2f"|format(fondo.pendiente_cobro)|replace(".",",") }}</td></tr>
+          {% endif %}
+          {% if fondo.compromisos %}
+          <tr class="text-muted"><td>Compromisos sin pagar</td>
+              <td class="text-end">$ {{ "%.2f"|format(fondo.compromisos)|replace(".",",") }}</td></tr>
+          {% endif %}
         </tbody>
       </table>
       <div class="small text-muted px-2 py-1 border-top">
-        El Fondo de Reserva del mes es el saldo de caja al cierre del mes anterior. Lo que se cobra del aporte y lo
-        que se paga con el fondo se reflejan en la caja cuando se registran.
+        Saldo efectivo = saldo inicial + aportes cobrados + otros ingresos − pagos con el fondo.
+        <a href="{{ url_for('fondo_reserva') }}">Ver el libro del fondo</a>.
       </div>
       {% if desglose.extra_cobrar %}
       <div class="alert alert-warning m-2 py-2 small">
@@ -556,12 +564,12 @@
         <div class="modal-body">
           <p class="small mb-2">Al cerrar, el monto queda <strong>fijo</strong> (no se cargan más gastos) y se empieza a
             cobrar en Cobranzas. Antes, decidí a qué unidades con deuda se les ajusta el <strong>interés</strong>
-            ({{ tasa_mora }} % de la deuda anterior).</p>
+            ({{ tasa_mora }} % mensual sobre el <strong>capital</strong> adeudado{{ ", capitalizando intereses" if capitaliza else "; los intereses impagos no generan nuevo interés" }}).</p>
           {% if propuesta_interes %}
           <table class="table table-sm align-middle mb-1">
             <thead class="table-light">
               <tr>
-                <th>UF</th><th>Nombre</th><th class="text-end">Deuda anterior</th><th class="text-end">Interés</th>
+                <th>UF</th><th>Nombre</th><th class="text-end">Deuda anterior</th><th class="text-end" title="Intereses impagos de meses anteriores (no generan interés)">de la cual intereses</th><th class="text-end">Capital</th><th class="text-end">Interés</th>
                 <th class="text-center">
                   <div class="form-check form-switch d-inline-block mb-0" title="Todas / ninguna">
                     <input class="form-check-input" type="checkbox" id="intTodas" checked>
@@ -575,6 +583,8 @@
                 <td><strong>{{ p.unidad }}</strong></td>
                 <td>{{ p.persona }}</td>
                 <td class="text-end">$ {{ "%.2f"|format(p.deuda)|replace(".",",") }}</td>
+                <td class="text-end text-muted">$ {{ "%.2f"|format(p.deuda_interes)|replace(".",",") }}</td>
+                <td class="text-end">$ {{ "%.2f"|format(p.capital)|replace(".",",") }}</td>
                 <td class="text-end text-danger">$ {{ "%.2f"|format(p.interes)|replace(".",",") }}</td>
                 <td class="text-center">
                   <div class="form-check form-switch d-inline-block mb-0">
@@ -586,7 +596,7 @@
               {% endfor %}
             </tbody>
             <tfoot class="fw-bold">
-              <tr><td colspan="3">Total de intereses</td><td class="text-end text-danger" id="intTotal"></td><td></td></tr>
+              <tr><td colspan="5">Total de intereses</td><td class="text-end text-danger" id="intTotal"></td><td></td></tr>
             </tfoot>
           </table>
           <div class="form-text">Los montos son con la deuda de hoy; se recalculan al confirmar si entra algún pago antes.</div>

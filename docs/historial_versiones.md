@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 9.8-0911
+**Versión actual:** 10.0-0911
 
 ---
 
@@ -334,12 +334,34 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ---
 
+### v10.x — Lineamientos jurídicos (Paraná, Entre Ríos)
+
+#### v10.0-0911 — Interés sin capitalizar, libro del fondo, clasificación de gastos, exportación y alertas
+
+**Lanzamiento:** 9 de noviembre
+**Versión actual**
+
+**Por qué es versión mayor:** cambian reglas de cálculo que alteran resultados (interés y saldo del Fondo de Reserva). Confirmado por el usuario ("hagamos del 1 al 5", tras el ejemplo del interés y el aviso de 10.0).
+
+**Cambios (puntos 1 a 5 del análisis del documento "Lineamientos jurídicos para el sistema de consorcios"):**
+
+1. **Interés sin capitalizar (CCyC 770 y 903).** La liquidación guarda aparte qué parte de la deuda anterior son intereses impagos (`liquidaciones.deuda_interes`); el interés del cierre se calcula sobre el **capital** (deuda anterior − intereses impagos). Los pagos se imputan primero a intereses. La tasa se registra **con fecha de vigencia y fundamento** (tabla `tasas_mora`, Configuración → Intereses por mora); cada liquidación usa la vigente el día 1 de su mes y, al cerrar, queda congelada (`liquidaciones.tasa_aplicada`). No se pueden cargar ni borrar tasas con vigencia en un período ya cerrado. Switch "Capitalizar intereses" (apagado por defecto). Ejemplo: 3 meses sin pagar $100.000 al 3 % → enero $418.000 (antes $418.362,70).
+2. **Libro del Fondo de Reserva (§4).** Reemplaza la regla v8.0 (fondo = saldo de caja): saldo efectivo = saldo inicial (nuevo campo en Apertura) + aportes **cobrados** + otros ingresos al fondo − pagos con el fondo. Aportes liquidados sin cobrar y compromisos (facturas a pagar con el fondo) se muestran aparte. Pantalla nueva **Más → Fondo de Reserva** y cuadro en el PDF de la liquidación. El saldo para pagar facturas con el fondo sale del libro.
+3. **Exportación completa del consorcio (J09).** **Más → Exportación completa** (solo admin): ZIP con todas las tablas del consorcio en CSV y JSON, el Log de Movimientos, los comprobantes y un LEEME. Sin usuarios ni la clave de firma de recibos. Reemplaza el botón Backup (de la época Excel).
+4. **Clasificación del gasto (§3.1, CCyC 2048).** Campos separados: naturaleza (ordinaria/extraordinaria), frecuencia (recurrente/no recurrente), con qué se paga (expensas/fondo) y respaldo (acta, autorización). El `tipo` de siempre se deduce de ellos; un gasto pagado con el fondo conserva su naturaleza. Los gastos anteriores toman la clasificación de su tipo. El PDF separa ordinarios y extraordinarios y muestra la frecuencia.
+5. **Administración y alertas (§6, §7).** Configuración → Administración: CUIT, domicilio, mandato (desde/hasta, instrumento), registro de administradores Ord. 9.131 (estado, organismo, número, fecha), cierre del ejercicio y ascensor. **Más → Vencimientos y alertas** con badge en el menú: plazos legales (rendición anual 60 días, certificado de deuda 3 días hábiles, datos personales 10 días / 5 hábiles, reclamos 48 h hábiles, entrega de documentación 15 hábiles, certificado mensual del ascensor), mandato por vencer, registro no inscripto. El PDF muestra CUIT y registro (solo afirma la inscripción si el estado es Inscripto).
+
+6. **Documentación.** Manual de usuario reescrito para la v10.0 (el anterior decía v5.0, no tenía Cobranzas y explicaba al revés el signo de la deuda inicial) y visible dentro de la app en **Más → Ayuda y manual** (`/ayuda`). Diagramas técnicos (arquitectura, datos, estados, cálculos, secuencias) en `docs/diagramas.md`, que no se muestran en la app (pedido del usuario).
+
+- Prueba: `pruebas/probar_v10.py` (50/50 OK) y las anteriores.
+
+---
+
 ### v9.x — Cobranzas separada de Liquidación
 
 #### v9.8-0911 — Arreglos de seguridad
 
 **Lanzamiento:** 9 de noviembre
-**Versión actual**
 
 **Cambios (revisión de seguridad pedida por el usuario):**
 

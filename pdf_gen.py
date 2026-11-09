@@ -306,6 +306,18 @@ def generar_pdf_liquidacion(liquidacion_rows: list, gastos: list, config: dict, 
     return buffer.getvalue()
 
 
+def _texto_registro_admin(config: dict) -> str:
+    """Leyenda del registro de administradores (Ord. Paraná 9.131). Solo afirma la inscripción
+    si el estado es INSCRIPTO; "en trámite" o "pendiente" se informan como tales (lineamientos §6)."""
+    estado = (config.get("registro_estado") or "").upper()
+    numero = config.get("registro_numero") or ""
+    if estado == "INSCRIPTO":
+        return "<b>Registro de Administradores</b> N° " + numero if numero else "<b>Registro de Administradores:</b> inscripto"
+    if estado == "EN_TRAMITE":
+        return "<b>Registro de Administradores:</b> inscripción en trámite"
+    return ""
+
+
 def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: dict,
                                   periodo: str, saldo_caja: float, fondo_reserva: float,
                                   notas: list = None, extras: list = None,
@@ -478,18 +490,45 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
 
     # Gastos ordinarios del mes (sin aporte al fondo ni extraordinarios) + cuadros a la derecha
     mes_gastos_txt = _mes_nombre_largo(_prev_periodo_helper(periodo)).title()
-    _rotulo = {"FIJO": "Fijo", "VARIABLE": "Variable"}
+    # v10.0: la columna muestra la habitualidad (frecuencia); la naturaleza separa las secciones
+    _rotulo = {"FIJO": "Recurrente", "VARIABLE": "No recurrente"}
+    _rot_hab = {"RECURRENTE": "Recurrente", "NO_RECURRENTE": "No recurrente"}
     ordinarios = [g for g in gastos_normal if g.get("tipo") not in ("FONDO_RESERVA", "EXTRAORDINARIO")]
+    extraordinarios = [g for g in gastos_normal if g.get("tipo") == "EXTRAORDINARIO"]
     aporte_fr = round(sum(g["importe"] for g in gastos_normal if g.get("tipo") == "FONDO_RESERVA"), 2)
-    extra_cobrar = round(sum(g["importe"] for g in gastos_normal if g.get("tipo") == "EXTRAORDINARIO"), 2)
+    extra_cobrar = round(sum(g["importe"] for g in extraordinarios), 2)
     total_ordinarios = round(sum(g["importe"] for g in ordinarios), 2)
-    gasto_data = [[f"Gastos Ordinarios — {mes_gastos_txt}", "", ""], ["Concepto", "Tipo", "Importe"]]
+    gasto_data = [[f"Gastos Ordinarios — {mes_gastos_txt}", "", ""], ["Concepto", "Frecuencia", "Importe"]]
     for g in ordinarios:
-        gasto_data.append([g["concepto"], _rotulo.get(g.get("tipo", ""), g.get("tipo", "")), _fmt(g["importe"])])
+        rot = _rot_hab.get(g.get("habitualidad") or "", _rotulo.get(g.get("tipo", ""), g.get("tipo", "")))
+        gasto_data.append([g["concepto"], rot, _fmt(g["importe"])])
     gasto_data.append(["TOTAL GASTOS ORDINARIOS", "", _fmt(total_ordinarios)])
+    if extraordinarios:
+        gasto_data.append([f"Gastos Extraordinarios — {mes_gastos_txt}", "", ""])
+        fila_tit_extra = len(gasto_data) - 1
+        for g in extraordinarios:
+            txt = g["concepto"] + (f" ({g['respaldo']})" if g.get("respaldo") else "")
+            gasto_data.append([Paragraph(txt, st("gx", fontSize=8)),
+                               _rot_hab.get(g.get("habitualidad") or "", ""), _fmt(g["importe"])])
+        gasto_data.append(["TOTAL GASTOS EXTRAORDINARIOS", "", _fmt(extra_cobrar)])
+    else:
+        fila_tit_extra = None
 
     gt = Table(gasto_data, colWidths=[10.5*cm, 2.5*cm, 3.0*cm])  # = 16.0 cm
     ng = len(gasto_data)
+    estilo_extra = []
+    if fila_tit_extra is not None:
+        t_ord = fila_tit_extra - 1
+        estilo_extra = [
+            ("FONTNAME", (0,t_ord), (-1,t_ord), "Helvetica-Bold"),
+            ("BACKGROUND", (0,t_ord), (-1,t_ord), colors.HexColor("#e8f0fe")),
+            ("SPAN", (0,fila_tit_extra), (-1,fila_tit_extra)),
+            ("ALIGN", (0,fila_tit_extra), (-1,fila_tit_extra), "CENTER"),
+            ("BACKGROUND", (0,fila_tit_extra), (-1,fila_tit_extra), c_rojo),
+            ("TEXTCOLOR", (0,fila_tit_extra), (-1,fila_tit_extra), colors.white),
+            ("FONTNAME", (0,fila_tit_extra), (-1,fila_tit_extra), "Helvetica-Bold"),
+            ("BACKGROUND", (0,fila_tit_extra+1), (-1,ng-2), colors.HexColor("#fff5f5")),
+        ]
     gt.setStyle(TableStyle([
         ("SPAN", (0,0), (-1,0)), ("ALIGN", (0,0), (-1,0), "CENTER"),
         ("BACKGROUND", (0,0), (-1,0), c_azul), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
@@ -504,7 +543,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         ("GRID", (0,0), (-1,-1), 0.3, colors.grey),
         ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3),
         ("LEFTPADDING", (0,0), (-1,-1), 4),
-    ]))
+    ] + estilo_extra))
 
     # Base de cálculo de la expensa
     base_data = [["BASE DE LA EXPENSA"],
@@ -560,6 +599,34 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
     ]))
 
     derecha = [bt, Spacer(1, 0.3*cm), ct]
+
+    # Fondo de Reserva (v10.0): saldo efectivo según el libro del fondo, aparte de lo liquidado
+    # sin cobrar y de los compromisos pendientes de pago (lineamientos §4)
+    if isinstance(fondo_reserva, dict) and "saldo" in fondo_reserva:
+        fr_ = fondo_reserva
+        f_fecha = fr_.get("fecha") or ""
+        fdata = [["FONDO DE RESERVA"],
+                 [f"Saldo efectivo al {f_fecha[8:10]}/{f_fecha[5:7]}/{f_fecha[:4]}" if f_fecha else "Saldo efectivo",
+                  _fmt(fr_["saldo"])],
+                 [f"Aporte liquidado ({mes_gastos_txt})", _fmt(fr_.get("aporte", 0))]]
+        if fr_.get("usos"):
+            fdata.append(["Gastos pagados con el fondo en el mes", _fmt(fr_["usos"])])
+        fdata.append(["Aportes pendientes de cobro (no disponibles)", _fmt(fr_.get("pendiente_cobro", 0))])
+        if fr_.get("compromisos"):
+            fdata.append(["Compromisos aprobados sin pagar", _fmt(fr_["compromisos"])])
+        ft = Table(fdata, colWidths=[7.4*cm, 3.4*cm])
+        ft.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#856404")), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+            ("SPAN", (0,0), (-1,0)), ("ALIGN", (0,0), (-1,0), "CENTER"),
+            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,-1), 8),
+            ("FONTNAME", (0,1), (-1,1), "Helvetica-Bold"),
+            ("BACKGROUND", (0,1), (-1,1), colors.HexColor("#fff3cd")),
+            ("ALIGN", (1,1), (1,-1), "RIGHT"),
+            ("GRID", (0,0), (-1,-1), 0.3, colors.grey),
+            ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+            ("LEFTPADDING", (0,0), (-1,-1), 6),
+        ]))
+        derecha += [Spacer(1, 0.3*cm), ft]
     combo = Table([[gt, derecha]], colWidths=[16.2*cm, 11.1*cm])  # = 27.3 cm
     combo.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
@@ -652,6 +719,11 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         res_line1.append(f"<b>ADMINISTRACIÓN:</b> {admin_res}")
     if telefono_res:
         res_line1.append(f"<b>CEL.</b> {telefono_res}")
+    if config.get("admin_cuit"):
+        res_line1.append(f"<b>CUIT</b> {config.get('admin_cuit')}")
+    _reg = _texto_registro_admin(config)
+    if _reg:
+        res_line1.append(_reg)
     res_line2 = []
     if direccion_cobro_res:
         res_line2.append(f"<b>DIRECCIÓN:</b> {direccion_cobro_res}")

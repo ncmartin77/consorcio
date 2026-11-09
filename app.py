@@ -8,7 +8,7 @@ import base64
 import hmac as _hmac_mod
 import hashlib
 import calendar as _cal
-from datetime import date
+from datetime import date, datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, session, g, abort
 import io
 from authlib.integrations.flask_client import OAuth
@@ -192,6 +192,11 @@ _DESC_AUDITORIA = {
     "reset_datos": "Configuración: resetear datos",
     "fijar_fecha_sistema": "Configuración: fecha del sistema",
     "rollback_checkpoint": "Checkpoint: rollback",
+    "add_tasa_mora": "Configuración: registrar tasa de mora",
+    "delete_tasa_mora": "Configuración: eliminar tasa de mora",
+    "vencimiento_add": "Vencimientos: registrar",
+    "vencimiento_cumplido": "Vencimientos: marcar cumplido",
+    "vencimiento_delete": "Vencimientos: eliminar",
 }
 
 
@@ -203,6 +208,7 @@ def _contexto_auditoria():
     try:
         db.ensure_libres_deuda()  # antes de la auditoría, para que la tabla reciba su trigger
         db.ensure_pagos()
+        db.ensure_v10()           # tablas nuevas antes de la auditoría (reciben su trigger)
         db.ensure_auditoria()
         db.ensure_deuda_inicial_fecha()
         db.ensure_caja_factura_id()
@@ -265,6 +271,12 @@ def inject_version():
         fecha_fijada = db.get_fecha_simulada() if cid else None
     except Exception:  # páginas públicas sin consorcio activo
         fecha_fijada = None
+    alertas_n = 0
+    if cid and session.get("usuario_id") and request.endpoint not in _PUBLIC_ENDPOINTS:
+        try:   # v10.0: vencidos o por vencer (≤ 7 días) para el badge del menú
+            alertas_n = sum(1 for a in db.get_alertas() if a["nivel"] in ("danger", "warning"))
+        except Exception:
+            alertas_n = 0
     return {
         "app_version": _ver,
         "app_env": db._APP_ENV,
@@ -280,6 +292,7 @@ def inject_version():
         "fecha_sistema_fijada": fecha_fijada,
         # "Hoy" que proponen los formularios (fecha del sistema si está fijada)
         "hoy_sistema": (fecha_fijada or date.today()).strftime("%Y-%m-%d"),
+        "alertas_n": alertas_n,
     }
 
 
@@ -552,9 +565,30 @@ def config():
             "direccion_cobro": request.form.get("direccion_cobro", ""),
             "texto_anuncio": request.form.get("texto_anuncio", ""),
             "url_app": request.form.get("url_app", "http://localhost:5000"),
+            # v10.0: administrador, mandato y registro (Ord. 9.131), ejercicio y ascensor
+            "admin_cuit": request.form.get("admin_cuit", ""),
+            "admin_domicilio": request.form.get("admin_domicilio", ""),
+            "admin_mandato_desde": request.form.get("admin_mandato_desde", ""),
+            "admin_mandato_hasta": request.form.get("admin_mandato_hasta", ""),
+            "admin_designacion": request.form.get("admin_designacion", ""),
+            "registro_organismo": request.form.get("registro_organismo", ""),
+            "registro_numero": request.form.get("registro_numero", ""),
+            "registro_fecha": request.form.get("registro_fecha", ""),
+            "registro_estado": request.form.get("registro_estado", ""),
+            "ejercicio_cierre": request.form.get("ejercicio_cierre", ""),
         }
         # Cada form de Configuración manda solo sus campos: no pisar los que no vienen
         data = {k: v for k, v in data.items() if k in request.form}
+        if "form_administracion" in request.form:   # checkbox: si no viene, está apagado
+            data["tiene_ascensor"] = "1" if request.form.get("tiene_ascensor") else "0"
+        if "form_intereses" in request.form:
+            data["capitalizar_intereses"] = "1" if request.form.get("capitalizar_intereses") else "0"
+        if data.get("registro_estado") and data["registro_estado"] not in db.ESTADOS_REGISTRO:
+            data.pop("registro_estado")
+        if data.get("ejercicio_cierre") and not re.fullmatch(r"(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])",
+                                                             data["ejercicio_cierre"]):
+            flash("Cierre de ejercicio inválido: usá el formato MM-DD (ej. 12-31).", "danger")
+            data.pop("ejercicio_cierre")
         # Solo lo envía el form del resumen: si no viene, no se pisa el valor guardado
         if "libre_deuda_validez_dias" in request.form:
             try:
@@ -569,7 +603,36 @@ def config():
     categorias = db.get_categorias()
     gastos_recurrentes = db.get_gastos_recurrentes()
     return render_template("config.html", cfg=cfg, categorias=categorias,
-                           gastos_recurrentes=gastos_recurrentes)
+                           gastos_recurrentes=gastos_recurrentes,
+                           tasas_mora=db.get_tasas_mora(), tasa_vigente=db.tasa_mora(cfg),
+                           estados_registro=db.ESTADOS_REGISTRO)
+
+
+@app.route("/config/tasa-mora/add", methods=["POST"])
+def add_tasa_mora():
+    """v10.0: la tasa de mora se registra con fecha de vigencia y fundamento."""
+    tasa = _importe(request.form.get("tasa", "").replace(",", "."), minimo=0.0)
+    if tasa is None or tasa > 100:
+        flash("La tasa debe ser un número entre 0 y 100.", "danger")
+        return redirect(url_for("config") + "#intereses")
+    err = db.add_tasa_mora(request.form.get("vigente_desde", ""), tasa,
+                           (request.form.get("fundamento") or "").strip()[:500])
+    if err:
+        flash(err, "danger")
+    else:
+        db.save_config({"tasa_mora": str(db.tasa_mora())})   # compatibilidad: tasa vigente hoy
+        db.recalcular_intereses_abiertas()
+        flash("Tasa de mora registrada.", "success")
+    return redirect(url_for("config") + "#intereses")
+
+
+@app.route("/config/tasa-mora/<int:tid>/delete", methods=["POST"])
+def delete_tasa_mora(tid):
+    err = db.delete_tasa_mora(tid)
+    flash(err or "Tasa eliminada.", "danger" if err else "success")
+    if not err:
+        db.save_config({"tasa_mora": str(db.tasa_mora())})
+    return redirect(url_for("config") + "#intereses")
 
 
 @app.route("/config/fecha-sistema", methods=["POST"])
@@ -972,14 +1035,30 @@ def save_gasto():
         flash("Tipo de gasto inválido.", "danger")
         return redirect(url_for("gastos", periodo=periodo))
 
+    # v10.0: clasificación en campos separados (naturaleza / habitualidad / financiación + respaldo).
+    # El tipo que usa el cálculo se deduce de ellos. Sin estos campos (form anterior) se usa el tipo.
+    clasificacion = None
+    if request.form.get("naturaleza") and not (previo and previo["tipo"] == "FONDO_RESERVA"):
+        clasificacion = {
+            "naturaleza": request.form.get("naturaleza"),
+            "habitualidad": request.form.get("habitualidad") or "NO_RECURRENTE",
+            "financiacion": request.form.get("financiacion") or "EXPENSAS",
+            "respaldo": request.form.get("respaldo", ""),
+        }
+        if (clasificacion["naturaleza"] not in db.NATURALEZAS
+                or clasificacion["habitualidad"] not in db.HABITUALIDADES
+                or clasificacion["financiacion"] not in db.FINANCIACIONES):
+            flash("Clasificación del gasto inválida.", "danger")
+            return redirect(url_for("gastos", periodo=periodo))
     # Extraordinario: pagado con el fondo (VARIABLE_FR, no se cobra y se descuenta del fondo)
     # o a cobrar en las expensas siguientes (EXTRAORDINARIO, no toca el fondo).
-    if tipo == "EXTRAORDINARIO" and request.form.get("modo_extraordinario") == "FONDO":
+    elif tipo == "EXTRAORDINARIO" and request.form.get("modo_extraordinario") == "FONDO":
         tipo = "VARIABLE_FR"
     elif usar_fondo_reserva and tipo == "VARIABLE":  # compatibilidad con el form anterior
         tipo = "VARIABLE_FR"
 
-    db.save_gasto(periodo, concepto, importe, tipo, int(row_num) if row_num else None)
+    db.save_gasto(periodo, concepto, importe, tipo, int(row_num) if row_num else None,
+                  clasificacion=clasificacion)
     _recalcular_liq_si_posible(periodo)
     return redirect(url_for("gastos", periodo=periodo))
 
@@ -1227,8 +1306,9 @@ def liquidacion(periodo=None):
                            unidades=unidades,
                            unidades_map=unidades_map,
                            error_cierre=db.error_cierre(periodo) if (liq_generada and not liq_cerrada) else None,
-                           propuesta_interes=db.propuesta_intereses(liq, cfg) if (liq_generada and not liq_cerrada) else [],
-                           tasa_mora=db.tasa_mora(cfg),
+                           propuesta_interes=db.propuesta_intereses(liq, cfg, periodo) if (liq_generada and not liq_cerrada) else [],
+                           tasa_mora=db.tasa_mora(cfg, periodo),
+                           capitaliza=db.capitaliza_intereses(cfg),
                            periodo_cobranza=db.periodo_cobranza())
 
 
@@ -1910,16 +1990,27 @@ def apertura():
             elif key.startswith("fecha_deuda_"):
                 numero = key[12:]
                 fechas[numero] = val.strip() or None
+        fondo_inicial = None
+        if (request.form.get("fondo_saldo_inicial") or "").strip():   # vacío = no se toca
+            fondo_inicial = _importe(request.form["fondo_saldo_inicial"].strip().replace(",", "."),
+                                     minimo=float("-inf"))
+            if fondo_inicial is None:
+                flash("El saldo inicial del Fondo de Reserva debe ser un número.", "danger")
+                return redirect(url_for("apertura"))
         try:
             fecha_caja = request.form.get("saldo_inicial_caja_fecha", "").strip()
-            db.save_apertura(saldo_inicial, deudas, fechas, fecha_caja)
+            db.save_apertura(saldo_inicial, deudas, fechas, fecha_caja, fondo_inicial=fondo_inicial,
+                             fondo_fecha=request.form.get("fondo_saldo_inicial_fecha", "").strip() or fecha_caja)
             flash(f"Saldos iniciales guardados. Saldo de caja: $ {saldo_inicial:,.2f}", "success")
         except Exception as e:
             flash(f"Error al guardar: {e}", "danger")
         return redirect(url_for("apertura"))
     saldo_inicial, fecha_caja, unidades = db.get_apertura()
+    cfg = db.get_config()
     return render_template("apertura.html", saldo_inicial=saldo_inicial,
-                           fecha_caja=fecha_caja, unidades=unidades)
+                           fecha_caja=fecha_caja, unidades=unidades,
+                           fondo_inicial=cfg.get("fondo_saldo_inicial", ""),
+                           fondo_fecha=cfg.get("fondo_saldo_inicial_fecha", ""))
 
 
 # ---------------------------------------------------------------------------
@@ -2022,6 +2113,163 @@ def backup():
         as_attachment=True,
         download_name=f"backup_{nombre_safe}_{fecha}.zip"
     )
+
+
+# ---------------------------------------------------------------------------
+# EXPORTACIÓN COMPLETA DEL CONSORCIO (v10.0)
+# ---------------------------------------------------------------------------
+
+@app.route("/exportar")
+def exportar_consorcio():
+    """ZIP con todas las tablas del consorcio (CSV + JSON), los comprobantes adjuntos y un LEEME.
+    Sirve de respaldo y para entregar la documentación en un cambio de administración (CCyC 2067).
+    Solo administradores: contiene datos personales (Ley 25.326)."""
+    block = _require_admin()
+    if block:
+        return block
+    import csv
+    import json as _json
+    import zipfile
+    from decimal import Decimal
+
+    def _txt(v):
+        if v is None:
+            return ""
+        if isinstance(v, (date, datetime)):
+            return v.isoformat()
+        if isinstance(v, (dict, list)):
+            return _json.dumps(v, ensure_ascii=False, default=str)
+        return str(v)
+
+    datos = db.exportar_consorcio()
+    cfg = db.get_config()
+    cid = session.get("consorcio_id", "consorcio")
+    c = db.get_consorcio(cid)
+    nombre = c["nombre"] if c else cid
+    ahora = datetime.now()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        resumen = []
+        completo = {}
+        for tabla, (cols, filas) in sorted(datos.items()):
+            s = io.StringIO()
+            w = csv.writer(s, delimiter=";")
+            w.writerow(cols)
+            for f in filas:
+                w.writerow([_txt(v) for v in f])
+            zf.writestr(f"datos/{tabla}.csv", "﻿" + s.getvalue())   # BOM: Excel abre bien los acentos
+            completo[tabla] = [{k: (float(v) if isinstance(v, Decimal) else v) for k, v in zip(cols, f)} for f in filas]
+            resumen.append(f"  - datos/{tabla}.csv: {len(filas)} fila(s)")
+        zf.writestr("datos/consorcio_completo.json",
+                    _json.dumps(completo, ensure_ascii=False, indent=1, default=str))
+        n_comp = 0
+        facturas_dir = db.get_facturas_dir()
+        if os.path.isdir(facturas_dir):
+            for root, _dirs, files in os.walk(facturas_dir):
+                for fname in files:
+                    fpath = os.path.join(root, fname)
+                    zf.write(fpath, os.path.join("comprobantes", os.path.relpath(fpath, facturas_dir)))
+                    n_comp += 1
+        leeme = [
+            f"EXPORTACIÓN COMPLETA — {nombre}",
+            f"Generada el {ahora.strftime('%d/%m/%Y %H:%M')} por {session.get('usuario_email', '')}",
+            f"Versión del sistema: {_leer_version()}",
+            f"Fecha del sistema: {_fecha_hoy().strftime('%d/%m/%Y')}",
+            "",
+            "Contenido:",
+            *resumen,
+            "  - datos/consorcio_completo.json: las mismas tablas en un solo archivo JSON",
+            f"  - comprobantes/: {n_comp} archivo(s) adjunto(s) a facturas",
+            "",
+            "Notas:",
+            "  - Los CSV usan ';' como separador y fechas AAAA-MM-DD.",
+            "  - audit_log es el Log de Movimientos (últimos 180 días): quién cambió qué y cuándo.",
+            "  - No incluye usuarios ni permisos de la aplicación, ni la clave con que se firman los recibos.",
+            "  - Contiene datos personales (Ley 25.326): guardar y transmitir con confidencialidad.",
+            "  - Este archivo es un respaldo de los registros del sistema. No reemplaza los libros",
+            "    rubricados ni la documentación original exigida por el CCyC (art. 2067).",
+            "",
+            f"Edificio: {cfg.get('edificio_nombre', '')} — {cfg.get('edificio_direccion', '')}",
+            f"Administración: {cfg.get('administrador', '')}",
+        ]
+        zf.writestr("LEEME.txt", "﻿" + "\r\n".join(leeme))
+    buf.seek(0)
+    nombre_safe = re.sub(r"[^a-z0-9_]", "", nombre.lower().replace(" ", "_"))
+    return send_file(buf, mimetype="application/zip", as_attachment=True,
+                     download_name=f"exportacion_{nombre_safe}_{ahora.strftime('%Y%m%d_%H%M')}.zip")
+
+
+def _leer_version():
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "version.txt")) as f:
+            return f.read().strip()
+    except Exception:
+        return "?"
+
+
+# ---------------------------------------------------------------------------
+# LIBRO DEL FONDO DE RESERVA (v10.0)
+# ---------------------------------------------------------------------------
+
+@app.route("/fondo")
+def fondo_reserva():
+    try:
+        libro = db.get_libro_fondo()
+    except Exception:
+        app.logger.exception("[fondo] libro del fondo")
+        flash("No se pudo calcular el libro del Fondo de Reserva. Avisá al administrador del sistema.", "danger")
+        return redirect(url_for("liquidacion"))
+    return render_template("fondo.html", libro=libro)
+
+
+# ---------------------------------------------------------------------------
+# VENCIMIENTOS Y ALERTAS (v10.0)
+# ---------------------------------------------------------------------------
+
+@app.route("/vencimientos")
+def vencimientos():
+    return render_template("vencimientos.html", alertas=db.get_alertas(), vencimientos=db.get_vencimientos(),
+                           tipos=db.TIPOS_VENCIMIENTO)
+
+
+@app.route("/vencimientos/add", methods=["POST"])
+def vencimiento_add():
+    err = db.add_vencimiento(request.form.get("tipo", ""), request.form.get("fecha_inicio", ""),
+                             request.form.get("descripcion", ""), request.form.get("fecha_vencimiento", ""),
+                             request.form.get("observacion", ""))
+    flash(err or "Vencimiento registrado.", "danger" if err else "success")
+    return redirect(url_for("vencimientos"))
+
+
+@app.route("/vencimientos/<int:vid>/cumplido", methods=["POST"])
+def vencimiento_cumplido(vid):
+    fecha = "" if request.form.get("accion") == "desmarcar" else (request.form.get("fecha") or _fecha_hoy().strftime("%Y-%m-%d"))
+    if not db.set_vencimiento_cumplido(vid, fecha):
+        flash("Fecha inválida.", "danger")
+    return redirect(url_for("vencimientos"))
+
+
+@app.route("/vencimientos/<int:vid>/delete", methods=["POST"])
+def vencimiento_delete(vid):
+    db.delete_vencimiento(vid)
+    flash("Vencimiento eliminado.", "success")
+    return redirect(url_for("vencimientos"))
+
+
+# ---------------------------------------------------------------------------
+# AYUDA: manual de usuario (v10.0)
+# ---------------------------------------------------------------------------
+
+@app.route("/ayuda")
+def ayuda():
+    """Muestra docs/manual_usuario.md dentro de la app (el Markdown se dibuja en el navegador):
+    el repo es la única fuente del manual. Los diagramas técnicos (docs/diagramas.md) no van acá."""
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "docs", "manual_usuario.md"), encoding="utf-8") as f:
+            texto = f.read()
+    except OSError:
+        texto = "# Manual no disponible\n\nNo se encontró `docs/manual_usuario.md`."
+    return render_template("ayuda.html", texto=texto)
 
 
 # ---------------------------------------------------------------------------

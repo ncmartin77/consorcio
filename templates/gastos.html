@@ -26,7 +26,7 @@
             <tr>
               <th>Concepto</th>
               <th class="text-end">Importe</th>
-              <th class="text-center">Tipo</th>
+              <th class="text-center">Frecuencia</th>
               <th></th>
             </tr>
           </thead>
@@ -36,13 +36,14 @@
               <td>{{ g.concepto }}</td>
               <td class="text-end fw-semibold">$ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td>
               <td class="text-center">
-                {% if g.tipo == 'FIJO' %}
-                  <span class="badge bg-primary">Fijo</span>
-                {% elif g.tipo == 'VARIABLE' %}
-                  <span class="badge bg-warning text-dark">Variable</span>
+                {% if g.tipo == 'FONDO_RESERVA' %}
+                  <span class="badge bg-success">Aporte al fondo</span>
+                {% elif g.habitualidad == 'RECURRENTE' %}
+                  <span class="badge bg-primary">Recurrente</span>
                 {% else %}
-                  <span class="badge bg-secondary">{{ g.tipo }}</span>
+                  <span class="badge bg-warning text-dark">No recurrente</span>
                 {% endif %}
+                {% if g.respaldo %}<i class="bi bi-file-earmark-check text-success" title="Respaldo: {{ g.respaldo }}"></i>{% endif %}
               </td>
               <td>
                 {% if g.tipo == 'FONDO_RESERVA' %}
@@ -170,9 +171,9 @@
   <div class="col-lg-8 mt-3">
     <div class="card shadow-sm border-warning">
       <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center flex-wrap gap-1">
-        <span><i class="bi bi-exclamation-diamond"></i> Gastos extraordinarios</span>
+        <span><i class="bi bi-exclamation-diamond"></i> Gastos extraordinarios y pagados con el fondo</span>
         <span class="small">
-          Fondo disponible: <strong class="{{ 'text-danger' if resumen_fondo.saldo < 0 }}">$ {{ "%.2f"|format(resumen_fondo.saldo)|replace(".",",") }}</strong>
+          Fondo (saldo efectivo): <strong class="{{ 'text-danger' if resumen_fondo.saldo < 0 }}">$ {{ "%.2f"|format(resumen_fondo.saldo)|replace(".",",") }}</strong>
         </span>
       </div>
       <div class="card-body p-0">
@@ -188,7 +189,10 @@
           <tbody>
             {% for g in extraordinarios %}
             <tr>
-              <td>{{ g.concepto }}</td>
+              <td>{{ g.concepto }}
+                <span class="badge {{ 'bg-danger' if g.naturaleza == 'EXTRAORDINARIA' else 'bg-secondary' }} ms-1" style="font-size:.65rem">{{ 'Extraordinaria' if g.naturaleza == 'EXTRAORDINARIA' else 'Ordinaria' }}</span>
+                {% if g.respaldo %}<div class="text-muted" style="font-size:.7rem"><i class="bi bi-file-earmark-check"></i> {{ g.respaldo }}</div>{% endif %}
+              </td>
               <td class="text-end fw-semibold">$ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td>
               <td class="text-center">
                 {% if g.tipo == 'VARIABLE_FR' %}
@@ -236,7 +240,7 @@
             </tr>
             {% else %}
             <tr><td colspan="4" class="text-center text-muted py-3">
-              Sin gastos extraordinarios en {{ periodo | mes_largo }}. Agregalos con "Agregar gasto" → tipo <em>Extraordinario</em>.
+              Sin gastos extraordinarios en {{ periodo | mes_largo }}. Agregalos con "Agregar gasto" → naturaleza <em>Extraordinaria</em> o pagado <em>con el Fondo de Reserva</em>.
             </td></tr>
             {% endfor %}
           </tbody>
@@ -251,7 +255,7 @@
         </table>
         {% if resumen_fondo.saldo < 0 %}
         <div class="alert alert-danger m-2 py-2 small">
-          <i class="bi bi-exclamation-triangle-fill"></i> El saldo de caja (Fondo de Reserva) quedó negativo.
+          <i class="bi bi-exclamation-triangle-fill"></i> El saldo efectivo del Fondo de Reserva quedó negativo.
         </div>
         {% endif %}
       </div>
@@ -431,31 +435,48 @@
                      step="0.01" min="0" required>
             </div>
           </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Tipo</label>
-            <select class="form-select" id="gasto_tipo" name="tipo" onchange="onTipoChange()">
-              <option value="FIJO">Fijo</option>
-              <option value="VARIABLE">Variable</option>
-              <option value="FONDO_RESERVA">Aporte al Fondo de Reserva</option>
-              <option value="EXTRAORDINARIO">Extraordinario</option>
-            </select>
+          {# v10.0: tres clasificaciones independientes (CCyC 2048). Ordinario no es sinónimo de recurrente. #}
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label fw-semibold">Naturaleza</label>
+              <select class="form-select" id="gasto_naturaleza" name="naturaleza">
+                <option value="ORDINARIA">Ordinaria</option>
+                <option value="EXTRAORDINARIA">Extraordinaria</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-semibold">Frecuencia</label>
+              <select class="form-select" id="gasto_habitualidad" name="habitualidad">
+                <option value="RECURRENTE">Recurrente (todos los meses)</option>
+                <option value="NO_RECURRENTE">No recurrente</option>
+              </select>
+            </div>
+            <div class="col-12 form-text mt-0">
+              Una reparación necesaria de bienes comunes puede ser <strong>ordinaria</strong> aunque sea cara o no se repita.
+            </div>
           </div>
-          <div class="mb-3" id="div_extraordinario" style="display:none">
-            <label class="form-label fw-semibold">¿Cómo se paga?</label>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">¿Con qué se paga?</label>
             <div class="form-check">
-              <input class="form-check-input" type="radio" name="modo_extraordinario" id="modo_cobrar" value="COBRAR" checked>
-              <label class="form-check-label" for="modo_cobrar">
-                Dejarlo pendiente: se cobra en las expensas siguientes
-                <span class="text-muted small d-block">Línea aparte en la liquidación. No se descuenta del fondo.</span>
+              <input class="form-check-input" type="radio" name="financiacion" id="fin_expensas" value="EXPENSAS" checked>
+              <label class="form-check-label" for="fin_expensas">
+                Se cobra en las expensas siguientes
+                <span class="text-muted small d-block">Si es extraordinario va en una línea aparte. No toca el fondo.</span>
               </label>
             </div>
             <div class="form-check">
-              <input class="form-check-input" type="radio" name="modo_extraordinario" id="modo_fondo" value="FONDO">
-              <label class="form-check-label" for="modo_fondo">
-                Pagarlo con el Fondo de Reserva
-                <span class="text-muted small d-block">Se descuenta del saldo del fondo y <strong>no</strong> se cobra en las expensas.</span>
+              <input class="form-check-input" type="radio" name="financiacion" id="fin_fondo" value="FONDO_RESERVA">
+              <label class="form-check-label" for="fin_fondo">
+                Con el Fondo de Reserva
+                <span class="text-muted small d-block">Sale del fondo y <strong>no</strong> se cobra en las expensas.</span>
               </label>
             </div>
+          </div>
+          <div class="mb-1">
+            <label class="form-label fw-semibold">Respaldo de la decisión <span class="text-muted fw-normal">(opcional)</span></label>
+            <input type="text" class="form-control" id="gasto_respaldo" name="respaldo" maxlength="500"
+                   placeholder="Ej: Acta de asamblea 15/03/2026 · Autorización del consejo">
+            <div class="form-text">Recomendado para gastos extraordinarios y usos del fondo (CCyC 2048 y 2064).</div>
           </div>
         </div>
         <div class="modal-footer">
@@ -690,9 +711,11 @@ document.querySelector('input[name="p"]').addEventListener('change', function() 
   window.location.href = '{{ url_for("gastos") }}/' + this.value;
 });
 
-function onTipoChange() {
-  const tipo = document.getElementById('gasto_tipo').value;
-  document.getElementById('div_extraordinario').style.display = (tipo === 'EXTRAORDINARIO') ? 'block' : 'none';
+function _setClasificacion(nat, hab, fin, resp) {
+  document.getElementById('gasto_naturaleza').value = nat || 'ORDINARIA';
+  document.getElementById('gasto_habitualidad').value = hab || 'RECURRENTE';
+  document.getElementById(fin === 'FONDO_RESERVA' ? 'fin_fondo' : 'fin_expensas').checked = true;
+  document.getElementById('gasto_respaldo').value = resp || '';
 }
 
 function editarGasto(g) {
@@ -701,16 +724,7 @@ function editarGasto(g) {
   document.getElementById('gasto_row_num').value = g.row;
   document.getElementById('gasto_concepto').value = g.concepto;
   document.getElementById('gasto_importe').value = g.importe;
-  const extra = (g.tipo === 'VARIABLE_FR' || g.tipo === 'EXTRAORDINARIO');
-  const sel = document.getElementById('gasto_tipo');
-  sel.value = extra ? 'EXTRAORDINARIO' : g.tipo;
-  if (sel.value !== (extra ? 'EXTRAORDINARIO' : g.tipo)) {  // tipo no listado (ej. categoría de factura)
-    const opt = document.createElement('option');
-    opt.value = g.tipo; opt.textContent = g.tipo; opt.dataset.temporal = '1';
-    sel.appendChild(opt); sel.value = g.tipo;
-  }
-  document.getElementById(g.tipo === 'VARIABLE_FR' ? 'modo_fondo' : 'modo_cobrar').checked = true;
-  onTipoChange();
+  _setClasificacion(g.naturaleza, g.habitualidad, g.financiacion, g.respaldo);
   new bootstrap.Modal(document.getElementById('modalGasto')).show();
 }
 
@@ -720,10 +734,7 @@ document.getElementById('modalGasto').addEventListener('hidden.bs.modal', functi
   document.getElementById('gasto_row_num').value = '';
   document.getElementById('gasto_concepto').value = '';
   document.getElementById('gasto_importe').value = '';
-  document.querySelectorAll('#gasto_tipo option[data-temporal]').forEach(o => o.remove());
-  document.getElementById('gasto_tipo').value = 'FIJO';
-  document.getElementById('modo_cobrar').checked = true;
-  document.getElementById('div_extraordinario').style.display = 'none';
+  _setClasificacion('ORDINARIA', 'RECURRENTE', 'EXPENSAS', '');
 });
 
 function abrirFacturaVariable(g) {

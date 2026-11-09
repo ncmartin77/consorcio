@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Fondo de Reserva{% endblock %}
+{% block content %}
+{% macro pesos(v) %}$ {{ "{:,.2f}".format(v).replace(",", "X").replace(".", ",").replace("X", ".") }}{% endmacro %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+  <h4 class="mb-0"><i class="bi bi-piggy-bank"></i> Libro del Fondo de Reserva</h4>
+  <span class="text-muted small">Al {{ libro.hasta | fecha_ar }}</span>
+</div>
+
+{% if not libro.inicial_configurado %}
+<div class="alert alert-warning">
+  <i class="bi bi-exclamation-triangle"></i>
+  No está cargado el <strong>saldo inicial del fondo</strong>: se usa provisoriamente el saldo inicial de caja
+  ({{ pesos(libro.saldo_inicial) }}). Cargalo en <a href="{{ url_for('apertura') }}">Apertura</a> con el valor de la
+  última rendición o acta.
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-success h-100"><div class="card-body">
+      <div class="small text-muted">Saldo efectivo</div>
+      <div class="fs-4 fw-bold {{ 'text-danger' if libro.saldo < 0 else 'text-success' }}">{{ pesos(libro.saldo) }}</div>
+      <div class="small text-muted">dinero efectivamente integrado al fondo</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card h-100"><div class="card-body">
+      <div class="small text-muted">Aportes pendientes de cobro</div>
+      <div class="fs-4 fw-bold text-secondary">{{ pesos(libro.pendiente_cobro) }}</div>
+      <div class="small text-muted">liquidados y no cobrados: no son dinero disponible</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card h-100"><div class="card-body">
+      <div class="small text-muted">Compromisos sin pagar</div>
+      <div class="fs-4 fw-bold text-danger">{{ pesos(libro.total_compromisos) }}</div>
+      <div class="small text-muted">facturas a pagar con el fondo</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card h-100"><div class="card-body">
+      <div class="small text-muted">Disponible neto de compromisos</div>
+      <div class="fs-4 fw-bold {{ 'text-danger' if libro.disponible_neto < 0 }}">{{ pesos(libro.disponible_neto) }}</div>
+      <div class="small text-muted">saldo efectivo − compromisos</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-success text-white">Movimientos por mes</div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-striped mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Mes</th><th class="text-end">Saldo inicial</th><th class="text-end">+ Aportes cobrados</th>
+          <th class="text-end">+ Otros ingresos</th><th class="text-end">− Pagos con el fondo</th><th class="text-end">Saldo final</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="text-muted">
+          <td colspan="5">Saldo inicial{% if libro.inicio %} al {{ libro.inicio | fecha_ar }}{% endif %}</td>
+          <td class="text-end">{{ pesos(libro.saldo_inicial) }}</td>
+        </tr>
+        {% for m in libro.meses %}
+        <tr>
+          <td>{{ m.mes | mes_largo }}</td>
+          <td class="text-end">{{ pesos(m.saldo_inicial) }}</td>
+          <td class="text-end text-success">{{ pesos(m.aportes_cobrados) }}</td>
+          <td class="text-end text-success">{{ pesos(m.otros_ingresos) }}</td>
+          <td class="text-end text-danger">{{ pesos(m.pagos) }}</td>
+          <td class="text-end fw-semibold">{{ pesos(m.saldo_final) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-3">Todavía no hay movimientos del fondo.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if libro.compromisos %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-danger text-white">Compromisos aprobados pendientes de pago</div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0">
+      <thead class="table-light"><tr><th>Fecha</th><th>Descripción</th><th class="text-end">Importe</th></tr></thead>
+      <tbody>
+        {% for c in libro.compromisos %}
+        <tr><td>{{ c.fecha | fecha_ar }}</td><td>{{ c.descripcion }}</td><td class="text-end">{{ pesos(c.importe) }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="alert alert-light border small">
+  <i class="bi bi-info-circle"></i> <strong>Cómo se calcula</strong> (lineamientos §4):
+  saldo final = saldo inicial + aportes cobrados + otros ingresos atribuibles al fondo − pagos aplicados al fondo.
+  <ul class="mb-0 mt-1">
+    <li><strong>Aportes cobrados:</strong> los pagos de expensas de cada UF se imputan primero a intereses y después a la
+      deuda más antigua (CCyC 903). De lo que cubre las expensas de un mes, la parte del aporte es proporcional
+      (aporte / total repartido). Solo cuentan liquidaciones cerradas.</li>
+    <li><strong>Otros ingresos / pagos:</strong> movimientos de Caja con categoría <code>FONDO_RESERVA</code>
+      (por ejemplo, facturas pagadas con el fondo).</li>
+    <li>Un gasto pagado con el fondo no se vuelve a cobrar en las expensas; una reposición posterior necesita su propio cargo.</li>
+  </ul>
+</div>
+{% endblock %}

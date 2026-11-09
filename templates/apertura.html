@@ -39,6 +39,26 @@
               (ya están incluidos en el saldo inicial).
             </small>
           </div>
+          <div class="col-12"><hr class="my-1"></div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold"><i class="bi bi-piggy-bank"></i> Saldo inicial del Fondo de Reserva $</label>
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              <input type="number" class="form-control" name="fondo_saldo_inicial" step="0.01"
+                     value="{{ fondo_inicial }}" placeholder="{{ saldo_inicial }}">
+            </div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">Al día</label>
+            <input type="date" class="form-control" name="fondo_saldo_inicial_fecha" value="{{ fondo_fecha or fecha_caja or '' }}">
+          </div>
+          <div class="col-md-5">
+            <small class="text-muted d-block">
+              Parte de la caja que corresponde al fondo (según la última rendición o acta). Desde esa fecha, el
+              libro del fondo suma los aportes cobrados y resta los pagos hechos con el fondo.
+              {% if fondo_inicial == '' %}<strong class="text-danger">Sin cargar: el libro usa provisoriamente el saldo inicial de caja.</strong>{% endif %}
+            </small>
+          </div>
         </div>
       </div>
     </div>

@@ -114,9 +114,9 @@
                      value="{{ cfg.get('email','') }}">
             </div>
             <div class="col-md-4">
-              <label class="form-label fw-semibold">Tasa de Mora (%)</label>
-              <input type="number" class="form-control" name="tasa_mora" step="0.1" min="0"
-                     value="{{ cfg.get('tasa_mora','7') }}">
+              <label class="form-label fw-semibold">Tasa de Mora vigente</label>
+              <div class="form-control bg-light">{{ tasa_vigente }} % mensual</div>
+              <div class="form-text"><a href="#intereses">Cambiarla con fecha de vigencia</a></div>
             </div>
             <div class="col-md-4">
               <label class="form-label fw-semibold">Día de Vencimiento</label>
@@ -141,8 +141,11 @@
             <div class="col-12">
               <div class="alert alert-light border small mb-0">
                 <i class="bi bi-info-circle"></i>
-                El <strong>Fondo de Reserva</strong> de cada mes es el <strong>saldo de caja al cierre del mes anterior</strong>.
-                En las expensas solo se cobra el aporte mensual; los gastos extraordinarios pagados con el fondo no se cobran.
+                El saldo del <strong>Fondo de Reserva</strong> se lleva en su propio libro (v10.0):
+                saldo inicial (en Apertura) + <strong>aportes efectivamente cobrados</strong> + otros ingresos al fondo
+                − pagos hechos con el fondo. Lo liquidado y no cobrado no es dinero disponible.
+                En las expensas solo se cobra el aporte mensual; los gastos pagados con el fondo no se cobran.
+                <a href="{{ url_for('fondo_reserva') }}">Ver el libro del fondo</a>.
               </div>
             </div>
             <div class="col-12">
@@ -290,6 +293,148 @@
   </div>
 </div>
 
+{# ── Intereses: tasa con vigencia y capitalización (v10.0) ── #}
+<div class="card shadow-sm mb-4" id="intereses">
+  <div class="card-header bg-danger text-white">
+    <i class="bi bi-percent"></i> Intereses por mora
+  </div>
+  <div class="card-body">
+    <p class="small text-muted">
+      La tasa (mensual) se registra <strong>con fecha de vigencia y fundamento</strong> (reglamento, acta de asamblea).
+      Cada liquidación usa la tasa vigente el día 1 de su mes y, al cerrarla, la tasa queda guardada en ella:
+      un cambio posterior no altera lo ya emitido. El interés se calcula sobre el <strong>capital adeudado</strong>
+      (expensas impagas), no sobre intereses anteriores; los pagos se imputan primero a los intereses (CCyC 903).
+    </p>
+    <div class="row g-4">
+      <div class="col-lg-7">
+        <table class="table table-sm table-bordered align-middle">
+          <thead class="table-light"><tr><th>Vigente desde</th><th class="text-end">Tasa</th><th>Fundamento</th><th></th></tr></thead>
+          <tbody>
+          {% for t in tasas_mora %}
+            <tr>
+              <td>{{ t.vigente_desde | fecha_ar }}</td>
+              <td class="text-end">{{ t.tasa }} %</td>
+              <td class="small">{{ t.fundamento }}</td>
+              <td>
+                <form method="POST" action="{{ url_for('delete_tasa_mora', tid=t.id) }}"
+                      onsubmit="return confirm('¿Eliminar esta tasa?')">
+                  <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                </form>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="text-muted small">Sin historial: se usa la tasa de la configuración anterior
+              ({{ cfg.get('tasa_mora','7') }} %). Registrala acá con su fundamento.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        <form method="POST" action="{{ url_for('add_tasa_mora') }}" class="row g-2">
+          <div class="col-md-4"><input type="date" class="form-control form-control-sm" name="vigente_desde" required
+                                       value="{{ hoy_sistema }}" title="Vigente desde"></div>
+          <div class="col-md-3"><div class="input-group input-group-sm">
+            <input type="number" class="form-control" name="tasa" step="0.01" min="0" max="100" required placeholder="Tasa">
+            <span class="input-group-text">%</span></div></div>
+          <div class="col-md-5"><input type="text" class="form-control form-control-sm" name="fundamento" maxlength="500"
+                                       placeholder="Fundamento (ej. Acta asamblea 12/03/2026)"></div>
+          <div class="col-12"><button class="btn btn-sm btn-danger"><i class="bi bi-plus"></i> Registrar tasa</button></div>
+        </form>
+      </div>
+      <div class="col-lg-5">
+        <form method="POST">
+          <input type="hidden" name="form_intereses" value="1">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="capitalizar_intereses" name="capitalizar_intereses"
+                   {{ 'checked' if cfg.get('capitalizar_intereses') == '1' }}>
+            <label class="form-check-label fw-semibold" for="capitalizar_intereses">Capitalizar intereses</label>
+          </div>
+          <div class="form-text mb-2">
+            Desactivado (recomendado): no se cobra interés sobre interés. El CCyC (art. 770) solo admite la
+            capitalización en supuestos puntuales; activarla solo con respaldo jurídico.
+          </div>
+          <button class="btn btn-sm btn-outline-danger"><i class="bi bi-save"></i> Guardar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Administración: mandato, registro municipal, ejercicio y ascensor (v10.0) ── #}
+<div class="card shadow-sm mb-4" id="administracion">
+  <div class="card-header bg-dark text-white">
+    <i class="bi bi-person-badge"></i> Administración: mandato y registro
+  </div>
+  <div class="card-body">
+    <form method="POST">
+      <input type="hidden" name="form_administracion" value="1">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">CUIT del administrador</label>
+          <input type="text" class="form-control" name="admin_cuit" maxlength="20" value="{{ cfg.get('admin_cuit','') }}">
+        </div>
+        <div class="col-md-8">
+          <label class="form-label fw-semibold">Domicilio</label>
+          <input type="text" class="form-control" name="admin_domicilio" value="{{ cfg.get('admin_domicilio','') }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Mandato desde</label>
+          <input type="date" class="form-control" name="admin_mandato_desde" value="{{ cfg.get('admin_mandato_desde','') }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Mandato hasta</label>
+          <input type="date" class="form-control" name="admin_mandato_hasta" value="{{ cfg.get('admin_mandato_hasta','') }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Instrumento de designación</label>
+          <input type="text" class="form-control" name="admin_designacion" placeholder="Ej: Acta de asamblea del 10/02/2026"
+                 value="{{ cfg.get('admin_designacion','') }}">
+        </div>
+        <div class="col-12"><h6 class="mt-2 mb-0">Registro de Administradores (Ord. Paraná 9.131)</h6></div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Estado</label>
+          <select class="form-select" name="registro_estado">
+            <option value="">— sin cargar —</option>
+            {% for k, v in estados_registro.items() %}
+            <option value="{{ k }}" {{ 'selected' if cfg.get('registro_estado') == k }}>{{ v }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Organismo</label>
+          <input type="text" class="form-control" name="registro_organismo" placeholder="Defensa del Consumidor"
+                 value="{{ cfg.get('registro_organismo','') }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">N° de inscripción / constancia</label>
+          <input type="text" class="form-control" name="registro_numero" value="{{ cfg.get('registro_numero','') }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Fecha</label>
+          <input type="date" class="form-control" name="registro_fecha" value="{{ cfg.get('registro_fecha','') }}">
+        </div>
+        <div class="col-12"><div class="form-text">"En trámite" y "Pendiente de verificación" son informativos: no equivalen
+          a la inscripción. En el PDF solo figura el número si el estado es Inscripto.</div></div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Cierre del ejercicio (MM-DD)</label>
+          <input type="text" class="form-control" name="ejercicio_cierre" placeholder="12-31" pattern="\d{2}-\d{2}"
+                 value="{{ cfg.get('ejercicio_cierre','') }}">
+          <div class="form-text">Alerta de la rendición anual (60 días).</div>
+        </div>
+        <div class="col-md-5 d-flex align-items-center">
+          <div class="form-check form-switch mt-3">
+            <input class="form-check-input" type="checkbox" id="tiene_ascensor" name="tiene_ascensor"
+                   {{ 'checked' if cfg.get('tiene_ascensor') == '1' }}>
+            <label class="form-check-label" for="tiene_ascensor">El edificio tiene ascensor (Ord. 8.661: certificado mensual)</label>
+          </div>
+        </div>
+        <div class="col-12">
+          <button class="btn btn-dark"><i class="bi bi-save"></i> Guardar administración</button>
+          <a href="{{ url_for('vencimientos') }}" class="btn btn-outline-secondary ms-2"><i class="bi bi-alarm"></i> Vencimientos y alertas</a>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- Configuración del Resumen de Expensas -->
 <div class="row mt-3">
   <div class="col-lg-12">
@@ -308,7 +453,6 @@
           <input type="hidden" name="telefono" value="{{ cfg.get('telefono','') }}">
           <input type="hidden" name="email" value="{{ cfg.get('email','') }}">
           <input type="hidden" name="whatsapp" value="{{ cfg.get('whatsapp','') }}">
-          <input type="hidden" name="tasa_mora" value="{{ cfg.get('tasa_mora','7') }}">
           <input type="hidden" name="dia_vencimiento" value="{{ cfg.get('dia_vencimiento','15') }}">
           <input type="hidden" name="fondo_reserva_mensual" value="{{ cfg.get('fondo_reserva_mensual','0') }}">
           <div class="row g-3">

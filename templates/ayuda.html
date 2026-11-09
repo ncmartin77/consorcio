@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Ayuda{% endblock %}
+{% block content %}
+<style>
+  #doc-ayuda { max-width: 1100px; }
+  #doc-ayuda h1 { font-size: 1.6rem; margin-bottom: .75rem; }
+  #doc-ayuda h2 { font-size: 1.3rem; margin-top: 2rem; padding-bottom: .3rem; border-bottom: 1px solid #dee2e6; scroll-margin-top: 80px; }
+  #doc-ayuda h3 { font-size: 1.1rem; margin-top: 1.4rem; scroll-margin-top: 80px; }
+  #doc-ayuda table { width: auto; max-width: 100%; margin-bottom: 1rem; font-size: .92rem; }
+  #doc-ayuda table th, #doc-ayuda table td { border: 1px solid #dee2e6; padding: .3rem .6rem; vertical-align: top; }
+  #doc-ayuda table thead { background: #f1f3f5; }
+  #doc-ayuda blockquote { border-left: 4px solid #0d6efd; background: #f4f8ff; padding: .5rem 1rem; margin: 1rem 0; }
+  #doc-ayuda blockquote p { margin: 0; }
+  #doc-ayuda pre { background: #f6f8fa; padding: .75rem; border-radius: 6px; }
+  #doc-ayuda code { color: #a3195b; }
+  #doc-ayuda pre code { color: inherit; }
+</style>
+
+<h4 class="mb-3"><i class="bi bi-question-circle"></i> Ayuda — Manual de usuario</h4>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div id="doc-ayuda"><p class="text-muted">Cargando…</p></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script>
+(function () {
+  const texto = {{ texto | tojson }};
+  const cont = document.getElementById('doc-ayuda');
+
+  if (!window.marked) {   // sin conexión al CDN: se muestra el texto tal cual
+    cont.innerHTML = '<pre style="white-space:pre-wrap"></pre>';
+    cont.querySelector('pre').textContent = texto;
+    return;
+  }
+  cont.innerHTML = marked.parse(texto);
+  // Anclas como las de GitHub (el índice del manual las usa): minúsculas, sin signos, espacios → guiones
+  const slug = t => t.trim().toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').replace(/\s/g, '-');
+  cont.querySelectorAll('h1,h2,h3,h4').forEach(h => { h.id = slug(h.textContent); });
+  cont.querySelectorAll('table').forEach(t => t.classList.add('table', 'table-sm'));
+  cont.querySelectorAll('a[href^="http"]').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
+  if (location.hash) {   // las secciones existen recién ahora: ir a la pedida en la dirección
+    const el = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    if (el) {
+      const ir = () => el.scrollIntoView();
+      ir();
+      if (document.readyState === 'complete') setTimeout(ir, 50);
+      else window.addEventListener('load', () => setTimeout(ir, 50));
+    }
+  }
+})();
+</script>
+{% endblock %}

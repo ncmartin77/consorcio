@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Vencimientos y alertas{% endblock %}
+{% block content %}
+<h4 class="mb-3"><i class="bi bi-alarm"></i> Vencimientos y alertas</h4>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-dark text-white">Alertas al {{ hoy_sistema | fecha_ar }}</div>
+  <div class="card-body">
+    {% for a in alertas %}
+    <div class="alert alert-{{ a.nivel }} d-flex justify-content-between align-items-center flex-wrap gap-2 py-2 mb-2">
+      <div><strong>{{ a.titulo }}</strong><br><span class="small">{{ a.detalle }}</span></div>
+      {% if a.registrar %}
+      <form method="POST" action="{{ url_for('vencimiento_add') }}">
+        <input type="hidden" name="tipo" value="{{ a.registrar.tipo }}">
+        <input type="hidden" name="fecha_inicio" value="{{ a.registrar.fecha_inicio }}">
+        <input type="hidden" name="descripcion" value="Ejercicio cerrado el {{ a.registrar.fecha_inicio | fecha_ar }}">
+        <button class="btn btn-sm btn-outline-dark"><i class="bi bi-plus"></i> Registrar</button>
+      </form>
+      {% endif %}
+    </div>
+    {% else %}
+    <p class="text-success mb-0"><i class="bi bi-check-circle"></i> No hay alertas.</p>
+    {% endfor %}
+    <div class="form-text">Las alertas no reemplazan las comunicaciones ni las actuaciones requeridas. Los días hábiles
+      se cuentan de lunes a viernes, sin descontar feriados: verificalos.</div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-primary text-white">Registrar vencimiento</div>
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('vencimiento_add') }}" class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">Tipo</label>
+        <select class="form-select form-select-sm" name="tipo" id="venc_tipo" required>
+          {% for k, t in tipos.items() %}
+          <option value="{{ k }}" data-plazo="{{ t[1] or '' }}" data-unidad="{{ t[2] or '' }}">{{ t[0] }}</option>
+          {% endfor %}
+        </select>
+        <div class="form-text" id="venc_plazo"></div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small fw-semibold">Descripción</label>
+        <input type="text" class="form-control form-control-sm" name="descripcion" maxlength="300"
+               placeholder="Ej: pedido de UF 5 / Ascensor A">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small fw-semibold">Fecha de inicio</label>
+        <input type="date" class="form-control form-control-sm" name="fecha_inicio" value="{{ hoy_sistema }}" required
+               title="Recepción del pedido, cierre del ejercicio, emisión del certificado, etc.">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small fw-semibold">Vence <span class="text-muted fw-normal">(opcional)</span></label>
+        <input type="date" class="form-control form-control-sm" name="fecha_vencimiento"
+               title="Si se deja vacío, se calcula con el plazo legal del tipo">
+      </div>
+      <div class="col-md-1">
+        <button class="btn btn-sm btn-primary w-100"><i class="bi bi-plus"></i></button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header">Registro</div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0 align-middle">
+      <thead class="table-light">
+        <tr><th>Tipo</th><th>Descripción</th><th>Inicio</th><th>Vence</th><th>Cumplido</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for v in vencimientos %}
+        <tr class="{{ 'text-muted' if v.cumplido_en }}">
+          <td class="small">{{ v.tipo_txt }}</td>
+          <td class="small">{{ v.descripcion }}</td>
+          <td>{{ v.fecha_inicio | fecha_ar }}</td>
+          <td class="{{ 'text-danger fw-semibold' if (not v.cumplido_en and v.fecha_vencimiento < hoy_sistema) }}">{{ v.fecha_vencimiento | fecha_ar }}</td>
+          <td>
+            <form method="POST" action="{{ url_for('vencimiento_cumplido', vid=v.id) }}" class="d-flex gap-1">
+              {% if v.cumplido_en %}
+                <span class="badge bg-success">{{ v.cumplido_en | fecha_ar }}</span>
+                <button class="btn btn-sm btn-link p-0 small" name="accion" value="desmarcar">deshacer</button>
+              {% else %}
+                <input type="date" class="form-control form-control-sm" style="max-width:150px" name="fecha" value="{{ hoy_sistema }}">
+                <button class="btn btn-sm btn-outline-success" title="Marcar cumplido"><i class="bi bi-check-lg"></i></button>
+              {% endif %}
+            </form>
+          </td>
+          <td>
+            <form method="POST" action="{{ url_for('vencimiento_delete', vid=v.id) }}" onsubmit="return confirm('¿Eliminar este vencimiento?')">
+              <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-3">No hay vencimientos registrados.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+(function () {
+  const sel = document.getElementById('venc_tipo'), txt = document.getElementById('venc_plazo');
+  const nombres = {corridos: 'días corridos', habiles: 'días hábiles', meses: 'mes(es)'};
+  function act() {
+    const o = sel.options[sel.selectedIndex];
+    txt.textContent = o.dataset.plazo ? ('Plazo: ' + o.dataset.plazo + ' ' + nombres[o.dataset.unidad]) : 'Indicá la fecha de vencimiento.';
+  }
+  sel.addEventListener('change', act); act();
+})();
+</script>
+{% endblock %}

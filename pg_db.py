@@ -354,6 +354,25 @@ def ensure_liq_sin_interes():
                     "ALTER TABLE liquidaciones ADD COLUMN IF NOT EXISTS sin_interes BOOLEAN DEFAULT FALSE")
 
 
+def ensure_v10():
+    """v10.0 (lineamientos jurídicos): columnas y tablas nuevas. Idempotente, una vez por proceso.
+    Se llama ANTES de ensure_auditoria para que las tablas nuevas reciban su trigger."""
+    _ensure_columna("liquidaciones.v10", """
+        ALTER TABLE liquidaciones ADD COLUMN IF NOT EXISTS deuda_interes NUMERIC(14,2) DEFAULT 0,
+                                  ADD COLUMN IF NOT EXISTS tasa_aplicada NUMERIC(8,4)
+    """)
+    ensure_tasas_mora()
+    _ensure_columna("gastos.clasificacion", """
+        ALTER TABLE gastos ADD COLUMN IF NOT EXISTS naturaleza   VARCHAR(20),
+                           ADD COLUMN IF NOT EXISTS habitualidad VARCHAR(20),
+                           ADD COLUMN IF NOT EXISTS financiacion VARCHAR(20),
+                           ADD COLUMN IF NOT EXISTS respaldo     TEXT
+    """)
+    # Los gastos anteriores a la v10.0 quedan con NULL: al leerlos, la clasificación se deduce del
+    # tipo que tenían (get_gastos). Así no se reescriben filas viejas (ni se llena el Log).
+    ensure_vencimientos()
+
+
 def get_unidades(solo_activas=False) -> list:
     sql = "SELECT * FROM unidades WHERE consorcio_id = %s"
     if solo_activas:
@@ -454,10 +473,60 @@ def delete_unidad(numero):
 
 # ── Gastos mensuales ──────────────────────────────────────────────────────────
 
+# ── Clasificación del gasto (v10.0, CCyC 2048 y lineamientos §3.1) ────────────
+# Tres campos independientes + respaldo de la decisión:
+#   naturaleza   ORDINARIA / EXTRAORDINARIA      (jurídica: no depende del monto ni de la frecuencia)
+#   habitualidad RECURRENTE / NO_RECURRENTE      (frecuencia)
+#   financiacion EXPENSAS / FONDO_RESERVA        (con qué se paga: se cobra en las expensas o sale del fondo)
+# El `tipo` de siempre se sigue guardando y es el que usa el cálculo; se deduce de los tres campos:
+#   FONDO_RESERVA → VARIABLE_FR (no se cobra) · EXTRAORDINARIA → EXTRAORDINARIO (línea aparte)
+#   RECURRENTE → FIJO · resto → VARIABLE. El aporte al fondo (tipo FONDO_RESERVA) no se clasifica.
+NATURALEZAS = ("ORDINARIA", "EXTRAORDINARIA")
+HABITUALIDADES = ("RECURRENTE", "NO_RECURRENTE")
+FINANCIACIONES = ("EXPENSAS", "FONDO_RESERVA")
+
+_SQL_NAT_DESDE_TIPO = ("CASE WHEN g.tipo IN ('EXTRAORDINARIO','VARIABLE_FR') THEN 'EXTRAORDINARIA' "
+                       "WHEN g.tipo = 'FONDO_RESERVA' THEN NULL ELSE 'ORDINARIA' END")
+_SQL_HAB_DESDE_TIPO = ("CASE WHEN g.tipo = 'FIJO' THEN 'RECURRENTE' WHEN g.tipo = 'FONDO_RESERVA' THEN NULL "
+                       "ELSE 'NO_RECURRENTE' END")
+_SQL_FIN_DESDE_TIPO = ("CASE WHEN g.tipo = 'VARIABLE_FR' THEN 'FONDO_RESERVA' WHEN g.tipo = 'FONDO_RESERVA' "
+                       "THEN NULL ELSE 'EXPENSAS' END")
+
+
+# Pasa un gasto a "pagado con el fondo" conservando su naturaleza y habitualidad (las de su tipo
+# anterior si todavía no tenía clasificación). En un UPDATE, g.tipo es el valor viejo.
+_SQL_SET_A_FONDO = (f"naturaleza=COALESCE(g.naturaleza, {_SQL_NAT_DESDE_TIPO}), "
+                    f"habitualidad=COALESCE(g.habitualidad, {_SQL_HAB_DESDE_TIPO}), "
+                    "financiacion='FONDO_RESERVA', tipo='VARIABLE_FR'")
+
+
+def clasificacion_desde_tipo(tipo: str) -> dict:
+    """Clasificación por defecto de un gasto según su tipo (para gastos anteriores a la v10.0)."""
+    if tipo == "FONDO_RESERVA":
+        return {"naturaleza": None, "habitualidad": None, "financiacion": None}
+    return {
+        "naturaleza": "EXTRAORDINARIA" if tipo in ("EXTRAORDINARIO", "VARIABLE_FR") else "ORDINARIA",
+        "habitualidad": "RECURRENTE" if tipo == "FIJO" else "NO_RECURRENTE",
+        "financiacion": "FONDO_RESERVA" if tipo == "VARIABLE_FR" else "EXPENSAS",
+    }
+
+
+def tipo_desde_clasificacion(naturaleza: str, habitualidad: str, financiacion: str) -> str:
+    if financiacion == "FONDO_RESERVA":
+        return "VARIABLE_FR"
+    if naturaleza == "EXTRAORDINARIA":
+        return "EXTRAORDINARIO"
+    return "FIJO" if habitualidad == "RECURRENTE" else "VARIABLE"
+
+
 def get_gastos(periodo: str) -> list:
     rows = _fetchall(
         "SELECT g.id, g.periodo, g.concepto, g.importe, g.tipo, f.id AS factura_id, "
-        "f.estado AS factura_estado FROM gastos g "
+        "f.estado AS factura_estado, "
+        f"COALESCE(g.naturaleza, {_SQL_NAT_DESDE_TIPO}) AS naturaleza, "
+        f"COALESCE(g.habitualidad, {_SQL_HAB_DESDE_TIPO}) AS habitualidad, "
+        f"COALESCE(g.financiacion, {_SQL_FIN_DESDE_TIPO}) AS financiacion, g.respaldo "
+        "FROM gastos g "
         "LEFT JOIN facturas f ON f.id = g.factura_id AND f.consorcio_id = g.consorcio_id "
         "WHERE g.consorcio_id=%s AND g.periodo=%s ORDER BY g.id",
         (_cid(), periodo)
@@ -470,12 +539,28 @@ def get_gastos(periodo: str) -> list:
         "tipo": r["tipo"] or "FIJO",
         "factura_id": r["factura_id"],
         "factura_estado": r["factura_estado"] or "",
+        "naturaleza": r["naturaleza"] or "",
+        "habitualidad": r["habitualidad"] or "",
+        "financiacion": r["financiacion"] or "",
+        "respaldo": r["respaldo"] or "",
     } for r in rows]
 
 
-def save_gasto(periodo: str, concepto: str, importe: float, tipo: str, row_num: int = None):
+def save_gasto(periodo: str, concepto: str, importe: float, tipo: str, row_num: int = None,
+               clasificacion: dict = None):
+    """Guarda un gasto. `clasificacion` (v10.0): naturaleza / habitualidad / financiacion / respaldo;
+    si no viene, se deduce del tipo. Si viene, el tipo se deduce de ella."""
+    if clasificacion:
+        tipo = tipo_desde_clasificacion(clasificacion.get("naturaleza"), clasificacion.get("habitualidad"),
+                                        clasificacion.get("financiacion"))
+        cl = {k: clasificacion.get(k) for k in ("naturaleza", "habitualidad", "financiacion")}
+        respaldo = (clasificacion.get("respaldo") or "").strip()[:500] or None
+    else:
+        cl = clasificacion_desde_tipo(tipo)
+        respaldo = None
     if row_num:
-        existing = _fetchone("SELECT tipo FROM gastos WHERE id=%s AND consorcio_id=%s", (row_num, _cid()))
+        existing = _fetchone("SELECT tipo, respaldo FROM gastos WHERE id=%s AND consorcio_id=%s",
+                             (row_num, _cid()))
         if existing and existing["tipo"] == "FONDO_RESERVA":
             # Solo permite cambiar el importe; tipo y concepto quedan fijos
             _exec(
@@ -483,14 +568,20 @@ def save_gasto(periodo: str, concepto: str, importe: float, tipo: str, row_num: 
                 (importe, row_num, _cid())
             )
             return
+        if not clasificacion and existing:
+            respaldo = existing["respaldo"]
         _exec(
-            "UPDATE gastos SET periodo=%s, concepto=%s, importe=%s, tipo=%s WHERE id=%s AND consorcio_id=%s",
-            (periodo, concepto, importe, tipo, row_num, _cid())
+            "UPDATE gastos SET periodo=%s, concepto=%s, importe=%s, tipo=%s, naturaleza=%s, habitualidad=%s, "
+            "financiacion=%s, respaldo=%s WHERE id=%s AND consorcio_id=%s",
+            (periodo, concepto, importe, tipo, cl["naturaleza"], cl["habitualidad"], cl["financiacion"],
+             respaldo, row_num, _cid())
         )
     else:
         _exec(
-            "INSERT INTO gastos (consorcio_id, periodo, concepto, importe, tipo) VALUES (%s,%s,%s,%s,%s)",
-            (_cid(), periodo, concepto, importe, tipo)
+            "INSERT INTO gastos (consorcio_id, periodo, concepto, importe, tipo, naturaleza, habitualidad, "
+            "financiacion, respaldo) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (_cid(), periodo, concepto, importe, tipo, cl["naturaleza"], cl["habitualidad"],
+             cl["financiacion"], respaldo)
         )
 
 
@@ -637,6 +728,9 @@ def _liq_row(r) -> dict:
         "fecha_pago": fp.strftime("%Y-%m-%d") if fp else "",
         "extras": float(r["extras"]) if r["extras"] else 0.0,
         "sin_interes": bool(r["sin_interes"]) if r.get("sin_interes") is not None else False,
+        # v10.0: parte de la deuda anterior que son intereses impagos (no generan nuevo interés)
+        "deuda_interes": float(r.get("deuda_interes") or 0),
+        "tasa_aplicada": float(r["tasa_aplicada"]) if r.get("tasa_aplicada") is not None else None,
     }
 
 
@@ -765,6 +859,7 @@ def generar_liquidacion(periodo: str):
     existentes = {str(r["unidad"]): r for r in (_liq_row(x) for x in _fetchall(
         "SELECT * FROM liquidaciones WHERE consorcio_id=%s AND periodo=%s", (_cid(), periodo)))}
     all_extras = get_gastos_extra(periodo)
+    capitalizar = capitaliza_intereses()
 
     expensas_ya = 0.0
     new_rows = []
@@ -781,6 +876,7 @@ def generar_liquidacion(periodo: str):
             expensas_ya += expensas
 
         prev_row = prev_liq.get(numero)
+        deuda_interes = 0.0
         if not prev_row:
             try:
                 deuda_anterior = round(float(u.get("deuda_inicial") or 0), 2)
@@ -788,7 +884,14 @@ def generar_liquidacion(periodo: str):
                 deuda_anterior = 0.0
         else:
             total_prev = float(prev_row["total_a_pagar"] or 0)
-            deuda_anterior = round(total_prev - pagado_hoy.get(numero, 0.0), 2)
+            pagado = pagado_hoy.get(numero, 0.0)
+            deuda_anterior = round(total_prev - pagado, 2)
+            if not capitalizar:
+                # v10.0 (CCyC 770 y 903): los intereses impagos se arrastran aparte y no generan
+                # nuevo interés. El pago se imputa primero a los intereses.
+                int_prev = prev_row["deuda_interes"] + prev_row["interes"]
+                int_rest = max(0.0, int_prev - pagado)
+                deuda_interes = round(min(int_rest, max(deuda_anterior, 0.0)), 2)
         interes = 0.0
         sin_interes = False
 
@@ -806,18 +909,20 @@ def generar_liquidacion(periodo: str):
             pct, expensas, deuda_anterior, interes, total, False,
             None, None, None, None,
             extras_unidad if extras_unidad else None,
-            sin_interes,
+            sin_interes, deuda_interes,
         ))
 
-    def _clave(numero, desc, prop, inq, pct, exp, deuda, interes, total, extras, sin_int):
+    def _clave(numero, desc, prop, inq, pct, exp, deuda, interes, total, extras, sin_int, deuda_int):
         return (str(numero), desc or "", prop or "", inq or "", round(float(pct or 0), 4),
                 round(float(exp or 0), 2), round(float(deuda or 0), 2), round(float(interes or 0), 2),
-                round(float(total or 0), 2), round(float(extras or 0), 2), bool(sin_int))
+                round(float(total or 0), 2), round(float(extras or 0), 2), bool(sin_int),
+                round(float(deuda_int or 0), 2))
 
-    nuevas = {_clave(r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[16], r[17]) for r in new_rows}
+    nuevas = {_clave(r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[16], r[17], r[18])
+              for r in new_rows}
     actuales = {_clave(r["unidad"], r["descripcion"], r["propietario"], r["inquilino"], r["pct_aplicado"],
                        r["expensas"], r["deuda_anterior"], r["interes"], r["total_a_pagar"], r["extras"],
-                       r["sin_interes"]) for r in existentes.values()}
+                       r["sin_interes"], r["deuda_interes"]) for r in existentes.values()}
     if nuevas != actuales or len(new_rows) != len(existentes):
         with _conn() as c:
             with c.cursor() as cur:
@@ -826,8 +931,9 @@ def generar_liquidacion(periodo: str):
                     INSERT INTO liquidaciones
                       (consorcio_id, periodo, unidad, descripcion, propietario, inquilino,
                        pct_aplicado, expensas, deuda_anterior, interes, total_a_pagar, pagado,
-                       monto_pagado, tipo_pago, saldo_pendiente, fecha_pago, extras, sin_interes)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       monto_pagado, tipo_pago, saldo_pendiente, fecha_pago, extras, sin_interes,
+                       deuda_interes)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """, new_rows)
 
     if get_liq_estado(periodo) != "ABIERTA":
@@ -1185,18 +1291,96 @@ def error_cierre(periodo: str) -> str | None:
     return None
 
 
-def tasa_mora(cfg: dict = None) -> float:
+def capitaliza_intereses(cfg: dict = None) -> bool:
+    """v10.0: la capitalización (interés sobre interés) queda DESACTIVADA salvo que se habilite
+    en Configuración (CCyC 770: solo en los supuestos que la ley admite)."""
+    cfg = cfg if cfg is not None else get_config()
+    return str(cfg.get("capitalizar_intereses", "0")) == "1"
+
+
+# ── Tasa de mora con vigencia (v10.0) ─────────────────────────────────────────
+
+def ensure_tasas_mora():
+    _ensure_columna("tabla.tasas_mora", """
+        CREATE TABLE IF NOT EXISTS tasas_mora (
+            id            SERIAL PRIMARY KEY,
+            consorcio_id  TEXT NOT NULL REFERENCES consorcios(id) ON DELETE CASCADE,
+            vigente_desde DATE NOT NULL,
+            tasa          NUMERIC(8,4) NOT NULL,
+            fundamento    TEXT,
+            creado_en     TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE (consorcio_id, vigente_desde)
+        )
+    """)
+
+
+def get_tasas_mora() -> list:
+    """Historial de tasas de mora del consorcio (más nueva primero)."""
+    return [{"id": r["id"], "vigente_desde": r["vigente_desde"].strftime("%Y-%m-%d"),
+             "tasa": float(r["tasa"]), "fundamento": r["fundamento"] or ""}
+            for r in _fetchall("SELECT * FROM tasas_mora WHERE consorcio_id=%s ORDER BY vigente_desde DESC",
+                               (_cid(),))]
+
+
+def add_tasa_mora(vigente_desde: str, tasa: float, fundamento: str = "") -> str | None:
+    """Registra una tasa desde una fecha. No se puede cargar con vigencia dentro de un período
+    con liquidación cerrada (cambiaría un cálculo ya emitido). Devuelve error o None."""
+    try:
+        d = datetime.strptime(vigente_desde, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return "Fecha de vigencia inválida."
+    ultima = get_ultima_liq_cerrada()
+    if ultima and d.strftime("%Y-%m") <= ultima:
+        return (f"La vigencia debe ser posterior a la última liquidación cerrada ({ultima}): "
+                f"las liquidaciones emitidas no se recalculan.")
+    _exec("""INSERT INTO tasas_mora (consorcio_id, vigente_desde, tasa, fundamento) VALUES (%s,%s,%s,%s)
+             ON CONFLICT (consorcio_id, vigente_desde) DO UPDATE SET tasa=EXCLUDED.tasa,
+                 fundamento=EXCLUDED.fundamento""", (_cid(), d, tasa, fundamento or None))
+    return None
+
+
+def delete_tasa_mora(tid: int) -> str | None:
+    row = _fetchone("SELECT vigente_desde FROM tasas_mora WHERE id=%s AND consorcio_id=%s", (tid, _cid()))
+    if not row:
+        return "Tasa no encontrada."
+    ultima = get_ultima_liq_cerrada()
+    if ultima and row["vigente_desde"].strftime("%Y-%m") <= ultima:
+        return "Esa tasa ya se usó en una liquidación cerrada: no se puede borrar."
+    _exec("DELETE FROM tasas_mora WHERE id=%s AND consorcio_id=%s", (tid, _cid()))
+    return None
+
+
+def tasa_mora(cfg: dict = None, periodo: str = None) -> float:
+    """Tasa mensual de mora (%) vigente para la liquidación `periodo` (su día 1); sin período,
+    la vigente a la fecha del sistema. Si no hay historial, la de Configuración (tasa_mora)."""
+    ref = date(int(periodo[:4]), int(periodo[5:7]), 1) if periodo else fecha_sistema(cfg)
+    try:
+        row = _fetchone("SELECT tasa FROM tasas_mora WHERE consorcio_id=%s AND vigente_desde <= %s "
+                        "ORDER BY vigente_desde DESC LIMIT 1", (_cid(), ref))
+    except psycopg2.errors.UndefinedTable:
+        row = None
+    if row:
+        return float(row["tasa"])
     cfg = cfg if cfg is not None else get_config()
     return float(cfg.get("tasa_mora", 7) or 0)
 
 
-def propuesta_intereses(filas: list, cfg: dict = None) -> list:
-    """Unidades con deuda anterior (> 0) y el interés que les corresponde al cerrar:
-    tasa × deuda anterior (v9.2). Para la ventana de cierre."""
-    tasa = tasa_mora(cfg)
-    return [{"unidad": str(r["unidad"]), "persona": r.get("inquilino") or r.get("propietario") or "",
-             "deuda": round(r["deuda_anterior"], 2), "interes": round(r["deuda_anterior"] * tasa / 100, 2)}
-            for r in filas if r["deuda_anterior"] > 0]
+def propuesta_intereses(filas: list, cfg: dict = None, periodo: str = None) -> list:
+    """Unidades con deuda anterior (> 0) y el interés que les corresponde al cerrar (v10.0):
+    tasa vigente × CAPITAL adeudado (deuda anterior − intereses impagos arrastrados).
+    Para la ventana de cierre."""
+    if periodo is None and filas:
+        periodo = filas[0].get("periodo")
+    tasa = tasa_mora(cfg, periodo)
+    res = []
+    for r in filas:
+        if r["deuda_anterior"] <= 0:
+            continue
+        capital = round(max(0.0, r["deuda_anterior"] - r.get("deuda_interes", 0.0)), 2)
+        res.append({"unidad": str(r["unidad"]), "persona": r.get("inquilino") or r.get("propietario") or "",
+                    "deuda": round(r["deuda_anterior"], 2), "deuda_interes": round(r.get("deuda_interes", 0.0), 2),
+                    "capital": capital, "tasa": tasa, "interes": round(capital * tasa / 100, 2)})
+    return res
 
 
 def cerrar_liquidacion(periodo: str, con_interes=None) -> str | None:
@@ -1211,11 +1395,14 @@ def cerrar_liquidacion(periodo: str, con_interes=None) -> str | None:
     filas = generar_liquidacion(periodo) or []
     elegidas = {str(u) for u in (con_interes or [])}
     valores = []
-    for p in propuesta_intereses(filas):
+    for p in propuesta_intereses(filas, periodo=periodo):
         if p["unidad"] in elegidas and p["interes"] > 0:
             valores.append((p["interes"], False, p["unidad"]))
     with _conn() as c:
         with c.cursor() as cur:
+            # Parámetro congelado: la tasa con que se cerró queda guardada en cada fila
+            cur.execute("UPDATE liquidaciones SET tasa_aplicada=%s WHERE consorcio_id=%s AND periodo=%s",
+                        (tasa_mora(periodo=periodo), _cid(), periodo))
             cur.execute("UPDATE liquidaciones SET interes=0, sin_interes=TRUE WHERE consorcio_id=%s AND periodo=%s "
                         "AND deuda_anterior > 0", (_cid(), periodo))
             for interes, sin_int, unidad in valores:
@@ -1450,8 +1637,10 @@ def save_factura(data: dict) -> int:
                     "AND upper(trim(concepto))=upper(trim(%s)) AND factura_id IS NULL "
                     "AND tipo <> 'FONDO_RESERVA' ORDER BY id LIMIT 1", (_cid(), periodo, gr["concepto"]))
                 if not (huerfano and vincular_gasto_factura(huerfano["id"], new_id)):
-                    _exec("INSERT INTO gastos (consorcio_id, periodo, concepto, importe, tipo, factura_id) "
-                          "VALUES (%s,%s,%s,%s,%s,%s)", (_cid(), periodo, gr["concepto"], importe, "FIJO", new_id))
+                    _exec("INSERT INTO gastos (consorcio_id, periodo, concepto, importe, tipo, factura_id, "
+                          "naturaleza, habitualidad, financiacion) "
+                          "VALUES (%s,%s,%s,%s,%s,%s,'ORDINARIA','RECURRENTE','EXPENSAS')",
+                          (_cid(), periodo, gr["concepto"], importe, "FIJO", new_id))
                 break
 
     return new_id
@@ -1562,9 +1751,13 @@ def pagar_factura(fid: int, fecha_pago: str, con_fondo: bool = False, observacio
     if vinculado:
         if liq_esta_cerrada(_next_periodo(vinculado["periodo"].strip())):
             return True  # ya liquidado en un período cerrado: no se toca
-        tipo = "VARIABLE_FR" if con_fondo else vinculado["tipo"]
-        _exec("UPDATE gastos SET tipo=%s, importe=%s WHERE id=%s AND consorcio_id=%s",
-              (tipo, importe, vinculado["id"], _cid()))
+        if con_fondo:
+            # Pagado con el fondo: cambia la financiación, la naturaleza se conserva (v10.0)
+            _exec(f"UPDATE gastos g SET {_SQL_SET_A_FONDO}, importe=%s WHERE id=%s AND consorcio_id=%s",
+                  (importe, vinculado["id"], _cid()))
+        else:
+            _exec("UPDATE gastos SET importe=%s WHERE id=%s AND consorcio_id=%s",
+                  (importe, vinculado["id"], _cid()))
         return True
     if es_fr and not con_fondo:
         # Factura FONDO_RESERVA sin gasto vinculado (anterior a la v9.4): no se crea gasto.
@@ -1573,8 +1766,11 @@ def pagar_factura(fid: int, fecha_pago: str, con_fondo: bool = False, observacio
         tipo = "VARIABLE_FR"
     else:
         tipo = "EXTRAORDINARIO" if row["extraordinario"] else (row["categoria"] or "FIJO")
-    _exec("INSERT INTO gastos (consorcio_id, periodo, concepto, importe, tipo, factura_id) "
-          "VALUES (%s,%s,%s,%s,%s,%s)", (_cid(), fecha_dt.strftime("%Y-%m"), concepto[:100], importe, tipo, fid))
+    naturaleza = "EXTRAORDINARIA" if row["extraordinario"] else "ORDINARIA"
+    _exec("INSERT INTO gastos (consorcio_id, periodo, concepto, importe, tipo, factura_id, "
+          "naturaleza, habitualidad, financiacion) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+          (_cid(), fecha_dt.strftime("%Y-%m"), concepto[:100], importe, tipo, fid, naturaleza,
+           "RECURRENTE" if es_recurrente else "NO_RECURRENTE", "FONDO_RESERVA" if con_fondo else "EXPENSAS"))
     return True
 
 
@@ -1868,32 +2064,191 @@ def get_desglose_gastos(periodo: str, gastos: list = None) -> dict:
     }
 
 
+# ── Libro del Fondo de Reserva (v10.0, lineamientos §4) ───────────────────────
+# Saldo efectivo = saldo inicial + aportes COBRADOS + otros ingresos al fondo − pagos con el fondo.
+# Lo liquidado y no cobrado no es dinero disponible: se informa aparte ("pendiente de cobro"),
+# igual que los compromisos (facturas a pagar con el fondo todavía impagas).
+#
+# Aporte cobrado: se imputan los pagos de cada UF en orden (CCyC 903): primero a los intereses,
+# después a la deuda más antigua. Dentro de las expensas de una liquidación, la parte que
+# corresponde al aporte es proporcional (aporte del mes / total repartido). Solo cuentan las
+# liquidaciones CERRADAS (las abiertas todavía no se cobran).
+
+def _fecha_inicio_fondo(cfg: dict) -> str:
+    return ((cfg.get("fondo_saldo_inicial_fecha") or "").strip()
+            or (cfg.get("saldo_inicial_caja_fecha") or "").strip())
+
+
+def _aportes_cobrados(hasta: date) -> tuple:
+    """Devuelve (eventos [(fecha, monto)], pendiente_de_cobro) del aporte al fondo."""
+    cid = _cid()
+    cerradas = {r["periodo"] for r in _fetchall(
+        "SELECT periodo FROM liquidaciones_estado WHERE consorcio_id=%s AND estado='CERRADA'", (cid,))}
+    if not cerradas:
+        return [], 0.0
+    # Proporción del aporte en lo repartido de cada liquidación (gastos del mes anterior)
+    ratio: dict = {}
+    for r in _fetchall("""
+        SELECT trim(periodo) AS periodo,
+               COALESCE(SUM(CASE WHEN tipo='FONDO_RESERVA' THEN importe END),0) AS aporte,
+               COALESCE(SUM(CASE WHEN tipo<>'VARIABLE_FR' THEN importe END),0) AS base
+        FROM gastos WHERE consorcio_id=%s GROUP BY trim(periodo)""", (cid,)):
+        base = float(r["base"])
+        if base > 0 and float(r["aporte"]) > 0:
+            ratio[_next_periodo(r["periodo"])] = float(r["aporte"]) / base
+
+    oblig: dict = {}   # unidad -> lista de [fecha, monto, es_interes, ratio_aporte]
+    filas = _fetchall("SELECT periodo, unidad, expensas, deuda_anterior, interes, extras FROM liquidaciones "
+                      "WHERE consorcio_id=%s ORDER BY periodo, unidad", (cid,))
+    vistos = set()
+    for f in filas:
+        p = f["periodo"]
+        if p not in cerradas:
+            continue
+        u = str(f["unidad"])
+        d = date(int(p[:4]), int(p[5:7]), 1)
+        lista = oblig.setdefault(u, [])
+        if u not in vistos:
+            vistos.add(u)
+            ini = float(f["deuda_anterior"] or 0)   # deuda (o saldo a favor) inicial
+            if ini:
+                lista.append([d, ini, False, 0.0])
+        if float(f["interes"] or 0):
+            lista.append([d, float(f["interes"]), True, 0.0])
+        lista.append([d, float(f["expensas"] or 0), False, ratio.get(p, 0.0)])
+        if float(f["extras"] or 0):
+            lista.append([d, float(f["extras"]), False, 0.0])
+
+    pagos: dict = {}
+    for pg in _fetchall("SELECT unidad, fecha, monto FROM pagos WHERE consorcio_id=%s AND fecha <= %s "
+                        "ORDER BY fecha, id", (cid, hasta)):
+        pagos.setdefault(str(pg["unidad"]), []).append((pg["fecha"], float(pg["monto"])))
+
+    eventos, pendiente = [], 0.0
+    for u, lista in oblig.items():
+        # Línea de tiempo: obligaciones (día 1 de su liquidación) antes que los pagos del mismo día
+        tl = [(o[0], 0, o) for o in lista if o[0] <= hasta] + [(f, 1, m) for f, m in pagos.get(u, [])]
+        tl.sort(key=lambda x: (x[0], x[1]))
+        abiertas, credito = [], 0.0
+        for fecha, es_pago, dato in tl:
+            if es_pago:
+                monto = dato
+            else:
+                o = list(dato)
+                if o[1] < 0:            # saldo a favor inicial
+                    credito += -o[1]
+                    continue
+                abiertas.append(o)
+                monto, credito = credito, 0.0   # el saldo a favor cubre lo nuevo
+            # imputación: intereses primero, después lo más antiguo
+            for o in sorted(abiertas, key=lambda o: (not o[2],)):
+                if monto <= 0:
+                    break
+                aplicado = min(monto, o[1])
+                o[1] -= aplicado
+                monto -= aplicado
+                if o[3] and aplicado:
+                    eventos.append((fecha, aplicado * o[3]))
+            abiertas = [o for o in abiertas if o[1] > 0.004]
+            credito += max(0.0, monto)
+        pendiente += sum(o[1] * o[3] for o in abiertas)
+    return eventos, round(pendiente, 2)
+
+
+def get_libro_fondo(hasta: date = None, cfg: dict = None) -> dict:
+    """
+    Libro del Fondo de Reserva hasta `hasta` (por defecto la fecha del sistema): saldo inicial,
+    movimientos por mes, saldo efectivo, aportes pendientes de cobro y compromisos.
+    """
+    cfg = cfg if cfg is not None else get_config()
+    hoy = fecha_sistema(cfg)
+    hasta = min(hasta or hoy, hoy)
+    configurado = "fondo_saldo_inicial" in cfg and str(cfg.get("fondo_saldo_inicial")).strip() != ""
+    try:
+        saldo_inicial = float(cfg.get("fondo_saldo_inicial") if configurado
+                              else (cfg.get("saldo_inicial_caja") or 0))
+    except ValueError:
+        saldo_inicial = 0.0
+    inicio = _fecha_inicio_fondo(cfg)
+    ini_d = datetime.strptime(inicio, "%Y-%m-%d").date() if inicio else None
+
+    eventos, pendiente = _aportes_cobrados(hasta)
+    meses: dict = {}
+
+    def _mes(m):
+        return meses.setdefault(m, {"mes": m, "aportes_cobrados": 0.0, "otros_ingresos": 0.0, "pagos": 0.0})
+
+    for f, monto in eventos:
+        if ini_d and f < ini_d:
+            continue
+        _mes(f.strftime("%Y-%m"))["aportes_cobrados"] += monto
+    conds, params = ["consorcio_id=%s", "upper(coalesce(categoria,''))='FONDO_RESERVA'", "fecha <= %s"], [_cid(), hasta]
+    if ini_d:
+        conds.append("fecha >= %s")
+        params.append(ini_d)
+    for r in _fetchall(f"""SELECT to_char(fecha,'YYYY-MM') AS mes,
+                COALESCE(SUM(CASE WHEN tipo='ENTRADA' THEN importe END),0) AS ent,
+                COALESCE(SUM(CASE WHEN tipo='SALIDA' THEN importe END),0) AS sal
+            FROM caja WHERE {' AND '.join(conds)} GROUP BY 1""", params):
+        _mes(r["mes"])["otros_ingresos"] += float(r["ent"])
+        _mes(r["mes"])["pagos"] += float(r["sal"])
+
+    saldo = saldo_inicial
+    filas = []
+    for m in sorted(meses):
+        x = meses[m]
+        x = {k: (round(v, 2) if isinstance(v, float) else v) for k, v in x.items()}
+        x["saldo_inicial"] = round(saldo, 2)
+        saldo += x["aportes_cobrados"] + x["otros_ingresos"] - x["pagos"]
+        x["saldo_final"] = round(saldo, 2)
+        filas.append(x)
+
+    compromisos = [{"id": r["id"], "fecha": r["fecha"].strftime("%Y-%m-%d") if r["fecha"] else "",
+                    "descripcion": r["descripcion"] or r["proveedor_nombre"] or "", "importe": float(r["importe"] or 0)}
+                   for r in _fetchall("""
+        SELECT DISTINCT f.id, f.fecha, f.descripcion, f.proveedor_nombre, f.importe FROM facturas f
+        WHERE f.consorcio_id=%s AND coalesce(f.estado,'') <> 'PAGADA'
+          AND (upper(coalesce(f.categoria,''))='FONDO_RESERVA'
+               OR EXISTS (SELECT 1 FROM gastos g WHERE g.consorcio_id=f.consorcio_id AND g.factura_id=f.id
+                          AND g.tipo='VARIABLE_FR'))
+        ORDER BY f.fecha, f.id""", (_cid(),))]
+    return {
+        "inicio": inicio, "saldo_inicial": round(saldo_inicial, 2), "inicial_configurado": configurado,
+        "hasta": hasta.strftime("%Y-%m-%d"), "meses": filas, "saldo": round(saldo, 2),
+        "pendiente_cobro": pendiente, "compromisos": compromisos,
+        "total_compromisos": round(sum(c["importe"] for c in compromisos), 2),
+        "disponible_neto": round(saldo - sum(c["importe"] for c in compromisos), 2),
+    }
+
+
 def get_resumen_fondo(mes_gastos: str, cfg: dict = None) -> dict:
     """
-    Fondo de Reserva de la liquidación mes_gastos+1 (v8.0): es el SALDO DE CAJA al cierre de
-    `mes_gastos` (el fondo del mes X es el saldo de caja del mes X-1). Además devuelve el aporte
-    del mes (gasto FONDO_RESERVA, se cobra en las expensas) y lo pagado con el fondo
-    (VARIABLE_FR, no se cobra; sale de la caja cuando se paga), solo informativos.
+    Fondo de Reserva informado en la liquidación mes_gastos+1 (v10.0: libro del fondo, ya no el
+    saldo de caja): saldo efectivo al cierre de `mes_gastos`, aporte del mes (gasto FONDO_RESERVA,
+    se cobra en las expensas), lo pagado con el fondo (VARIABLE_FR), aportes pendientes de cobro y
+    compromisos.
     """
     y, m = int(mes_gastos[:4]), int(mes_gastos[5:7])
     ultimo = date(y, m, _calendar.monthrange(y, m)[1])
-    saldo, _, _ = get_saldo_caja(hasta_fecha=ultimo.strftime("%Y-%m-%d"))
+    libro = get_libro_fondo(hasta=ultimo, cfg=cfg)
     filas = _fetchall(
         "SELECT tipo, COALESCE(importe, 0) AS importe FROM gastos WHERE consorcio_id=%s "
         "AND tipo IN ('FONDO_RESERVA','VARIABLE_FR') AND trim(periodo)=%s", (_cid(), mes_gastos))
     return {
         "mes_gastos": mes_gastos,
-        "fecha": ultimo.strftime("%Y-%m-%d"),
-        "saldo": round(saldo, 2),
+        "fecha": libro["hasta"],
+        "saldo": libro["saldo"],
         "aporte": round(sum(float(f["importe"]) for f in filas if f["tipo"] == "FONDO_RESERVA"), 2),
         "usos": round(sum(float(f["importe"]) for f in filas if f["tipo"] == "VARIABLE_FR"), 2),
+        "pendiente_cobro": libro["pendiente_cobro"],
+        "compromisos": libro["total_compromisos"],
+        "inicial_configurado": libro["inicial_configurado"],
     }
 
 
 def get_saldo_fondo() -> float:
-    """Fondo de Reserva vigente: saldo de caja al cierre del mes anterior a la fecha del sistema."""
-    hoy = fecha_sistema()
-    return get_resumen_fondo(_prev_periodo(hoy.strftime("%Y-%m")))["saldo"]
+    """Saldo efectivo del Fondo de Reserva a la fecha del sistema (libro del fondo, v10.0)."""
+    return get_libro_fondo()["saldo"]
 
 
 def set_modo_extraordinario(gasto_id: int, modo: str) -> str | None:
@@ -1905,7 +2260,14 @@ def set_modo_extraordinario(gasto_id: int, modo: str) -> str | None:
     row = _fetchone("SELECT periodo, tipo FROM gastos WHERE id=%s AND consorcio_id=%s", (gasto_id, _cid()))
     if not nuevo or not row or row["tipo"] not in TIPOS_EXTRAORDINARIOS:
         return None
-    _exec("UPDATE gastos SET tipo=%s WHERE id=%s AND consorcio_id=%s", (nuevo, gasto_id, _cid()))
+    if nuevo == "VARIABLE_FR":
+        _exec(f"UPDATE gastos g SET {_SQL_SET_A_FONDO} WHERE id=%s AND consorcio_id=%s", (gasto_id, _cid()))
+    else:
+        _exec(f"UPDATE gastos g SET naturaleza=COALESCE(g.naturaleza, 'EXTRAORDINARIA'), "
+              f"habitualidad=COALESCE(g.habitualidad, {_SQL_HAB_DESDE_TIPO}), financiacion='EXPENSAS', "
+              f"tipo=CASE WHEN COALESCE(g.naturaleza, 'EXTRAORDINARIA')='EXTRAORDINARIA' THEN 'EXTRAORDINARIO' "
+              f"WHEN COALESCE(g.habitualidad, {_SQL_HAB_DESDE_TIPO})='RECURRENTE' THEN 'FIJO' ELSE 'VARIABLE' END "
+              f"WHERE id=%s AND consorcio_id=%s", (gasto_id, _cid()))
     return row["periodo"]
 
 
@@ -1942,7 +2304,7 @@ def migrar_gastos_pagados_con_fondo() -> list:
         for c in candidatos:
             if liq_esta_cerrada(_next_periodo(c["periodo"])):
                 continue
-            _exec("UPDATE gastos SET tipo='VARIABLE_FR' WHERE id=%s AND consorcio_id=%s", (c["id"], cid))
+            _exec(f"UPDATE gastos g SET {_SQL_SET_A_FONDO} WHERE id=%s AND consorcio_id=%s", (c["id"], cid))
             periodos.append(c["periodo"])
         _migracion_fondo_ok.add(cid)
         return sorted(set(periodos))
@@ -1974,9 +2336,13 @@ def get_apertura():
     return saldo, fecha_caja, get_unidades()
 
 
-def save_apertura(saldo_inicial: float, deudas: dict, fechas: dict = None, fecha_caja: str = ""):
-    save_config({"saldo_inicial_caja": str(saldo_inicial),
-                 "saldo_inicial_caja_fecha": fecha_caja or ""})
+def save_apertura(saldo_inicial: float, deudas: dict, fechas: dict = None, fecha_caja: str = "",
+                  fondo_inicial: float = None, fondo_fecha: str = None):
+    datos = {"saldo_inicial_caja": str(saldo_inicial), "saldo_inicial_caja_fecha": fecha_caja or ""}
+    if fondo_inicial is not None:   # v10.0: saldo inicial del libro del Fondo de Reserva
+        datos["fondo_saldo_inicial"] = str(fondo_inicial)
+        datos["fondo_saldo_inicial_fecha"] = fondo_fecha or ""
+    save_config(datos)
     fechas = fechas or {}
     with _conn() as c:
         with c.cursor() as cur:
@@ -2459,7 +2825,7 @@ _TABLAS_AUDITADAS = [
     "caja", "categorias", "config", "facturas", "gastos", "gastos_extra",
     "gastos_recurrentes", "liquidaciones", "liquidaciones_estado", "notas_periodo",
     "pedidos", "presupuestos", "proveedores", "tareas", "unidades", "unidad_porcentajes",
-    "libres_deuda", "pagos",
+    "libres_deuda", "pagos", "tasas_mora", "vencimientos",
 ]
 _AUDIT_DIAS_RETENCION = 180
 
@@ -2763,3 +3129,258 @@ def _revertir_cambio(cur, r):
         ).format(t=t, a=asignaciones), (json.dumps(antes), json.dumps(despues)))
         if cur.rowcount != 1:
             raise conflicto
+
+
+# ── Vencimientos y alertas (v10.0, lineamientos §6 y §7) ──────────────────────
+# Plazos legales de referencia. "habiles" = lunes a viernes (no descuenta feriados: verificarlos).
+# Las alertas no reemplazan las comunicaciones ni las actuaciones requeridas.
+TIPOS_VENCIMIENTO = {
+    "RENDICION_ANUAL":       ("Rendición de cuentas anual (CCyC 2067 e)", 60, "corridos"),
+    "ENTREGA_DOCUMENTACION": ("Entrega de documentación por renuncia o remoción (CCyC 2067 j)", 15, "habiles"),
+    "RECLAMO":               ("Comunicar reclamo administrativo o judicial (CCyC 2067 k, 48 h hábiles)", 2, "habiles"),
+    "CERTIFICADO_DEUDA":     ("Certificado de deuda solicitado (CCyC 2067 l)", 3, "habiles"),
+    "ACCESO_DATOS":          ("Pedido de acceso a datos personales (Ley 25.326)", 10, "corridos"),
+    "RECTIFICACION_DATOS":   ("Rectificación o supresión de datos personales (Ley 25.326)", 5, "habiles"),
+    "ASCENSOR_CERTIFICADO":  ("Certificado de seguridad del ascensor (Ord. 8.661)", 1, "meses"),
+    "SEGURO":                ("Póliza de seguro", None, None),
+    "OTRO":                  ("Otro vencimiento", None, None),
+}
+# Se renuevan: solo cuenta el último registrado (por tipo y descripción)
+_TIPOS_RENOVABLES = ("ASCENSOR_CERTIFICADO", "SEGURO")
+
+ESTADOS_REGISTRO = {
+    "INSCRIPTO": "Inscripto",
+    "EN_TRAMITE": "En trámite",
+    "PENDIENTE_VERIFICACION": "Pendiente de verificación",
+    "NO_INSCRIPTO": "No inscripto",
+}
+
+
+def ensure_vencimientos():
+    _ensure_columna("tabla.vencimientos", """
+        CREATE TABLE IF NOT EXISTS vencimientos (
+            id                SERIAL PRIMARY KEY,
+            consorcio_id      TEXT NOT NULL REFERENCES consorcios(id) ON DELETE CASCADE,
+            tipo              VARCHAR(30) NOT NULL,
+            descripcion       TEXT,
+            fecha_inicio      DATE NOT NULL,
+            fecha_vencimiento DATE NOT NULL,
+            cumplido_en       DATE,
+            observacion       TEXT,
+            creado_en         TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS vencimientos_consorcio ON vencimientos (consorcio_id, fecha_vencimiento)
+    """)
+
+
+def sumar_plazo(inicio: date, cantidad: int, unidad: str) -> date:
+    """Fecha de vencimiento de un plazo: días corridos, días hábiles (lun–vie) o meses."""
+    if unidad == "habiles":
+        d, n = inicio, 0
+        while n < cantidad:
+            d += timedelta(days=1)
+            if d.weekday() < 5:
+                n += 1
+        return d
+    if unidad == "meses":
+        y, m = inicio.year + (inicio.month - 1 + cantidad) // 12, (inicio.month - 1 + cantidad) % 12 + 1
+        return date(y, m, min(inicio.day, _calendar.monthrange(y, m)[1]))
+    return inicio + timedelta(days=cantidad)
+
+
+def _venc_row(r) -> dict:
+    return {"id": r["id"], "tipo": r["tipo"],
+            "tipo_txt": TIPOS_VENCIMIENTO.get(r["tipo"], (r["tipo"],))[0],
+            "descripcion": r["descripcion"] or "",
+            "fecha_inicio": r["fecha_inicio"].strftime("%Y-%m-%d"),
+            "fecha_vencimiento": r["fecha_vencimiento"].strftime("%Y-%m-%d"),
+            "cumplido_en": r["cumplido_en"].strftime("%Y-%m-%d") if r["cumplido_en"] else "",
+            "observacion": r["observacion"] or ""}
+
+
+def get_vencimientos() -> list:
+    return [_venc_row(r) for r in _fetchall(
+        "SELECT * FROM vencimientos WHERE consorcio_id=%s ORDER BY (cumplido_en IS NOT NULL), "
+        "fecha_vencimiento, id", (_cid(),))]
+
+
+def add_vencimiento(tipo: str, fecha_inicio: str, descripcion: str = "", fecha_vencimiento: str = "",
+                    observacion: str = "") -> str | None:
+    """Registra un vencimiento. Si el tipo tiene plazo legal y no se indica la fecha de vencimiento,
+    se calcula desde la fecha de inicio (recepción / cierre del ejercicio / emisión). Error o None."""
+    if tipo not in TIPOS_VENCIMIENTO:
+        return "Tipo de vencimiento inválido."
+    try:
+        ini = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return "Fecha de inicio inválida."
+    _, cant, unidad = TIPOS_VENCIMIENTO[tipo]
+    if fecha_vencimiento:
+        try:
+            venc = datetime.strptime(fecha_vencimiento, "%Y-%m-%d").date()
+        except ValueError:
+            return "Fecha de vencimiento inválida."
+    elif cant:
+        venc = sumar_plazo(ini, cant, unidad)
+    else:
+        return "Indicá la fecha de vencimiento."
+    if venc < ini:
+        return "El vencimiento no puede ser anterior a la fecha de inicio."
+    _exec("INSERT INTO vencimientos (consorcio_id, tipo, descripcion, fecha_inicio, fecha_vencimiento, observacion) "
+          "VALUES (%s,%s,%s,%s,%s,%s)", (_cid(), tipo, (descripcion or "").strip()[:300] or None, ini, venc,
+                                        (observacion or "").strip()[:500] or None))
+    return None
+
+
+def set_vencimiento_cumplido(vid: int, fecha: str = None) -> bool:
+    """Marca (fecha) o desmarca (None/"") el cumplimiento."""
+    d = None
+    if fecha:
+        try:
+            d = datetime.strptime(fecha, "%Y-%m-%d").date()
+        except ValueError:
+            return False
+    _exec("UPDATE vencimientos SET cumplido_en=%s WHERE id=%s AND consorcio_id=%s", (d, vid, _cid()))
+    return True
+
+
+def delete_vencimiento(vid: int):
+    _exec("DELETE FROM vencimientos WHERE id=%s AND consorcio_id=%s", (vid, _cid()))
+
+
+def _ultimo_cierre_ejercicio(cfg: dict, hoy: date) -> date | None:
+    """Último cierre de ejercicio (config ejercicio_cierre = 'MM-DD') ocurrido hasta hoy."""
+    txt = (cfg.get("ejercicio_cierre") or "").strip()
+    try:
+        m, d = int(txt[:2]), int(txt[3:5])
+        cierre = date(hoy.year, m, min(d, _calendar.monthrange(hoy.year, m)[1]))
+    except (ValueError, IndexError):
+        return None
+    if cierre > hoy:
+        y = hoy.year - 1
+        cierre = date(y, m, min(d, _calendar.monthrange(y, m)[1]))
+    return cierre
+
+
+def get_alertas(cfg: dict = None) -> list:
+    """
+    Alertas a la fecha del sistema: vencimientos registrados sin cumplir (vencidos o dentro de 30 días),
+    mandato del administrador, inscripción en el registro de administradores (Ord. 9.131),
+    rendición anual (60 días desde el cierre del ejercicio) y certificado del ascensor.
+    Cada una: {nivel: danger|warning|info, titulo, detalle, fecha, id}.
+    """
+    cfg = cfg if cfg is not None else get_config()
+    hoy = fecha_sistema(cfg)
+    alertas = []
+
+    def _nivel(venc: date):
+        dias = (venc - hoy).days
+        return ("danger" if dias < 0 else "warning" if dias <= 7 else "info"), dias
+
+    def _txt_dias(dias):
+        return (f"vencido hace {-dias} día(s)" if dias < 0 else "vence hoy" if dias == 0
+                else f"vence en {dias} día(s)")
+
+    vencs = get_vencimientos()
+    ultimos = {}
+    for v in vencs:
+        if v["tipo"] in _TIPOS_RENOVABLES:
+            k = (v["tipo"], v["descripcion"].strip().lower())
+            if k not in ultimos or v["fecha_inicio"] > ultimos[k]["fecha_inicio"]:
+                ultimos[k] = v
+    for v in vencs:
+        if v["cumplido_en"]:
+            continue
+        if v["tipo"] in _TIPOS_RENOVABLES and ultimos.get((v["tipo"], v["descripcion"].strip().lower())) is not v:
+            continue
+        fv = datetime.strptime(v["fecha_vencimiento"], "%Y-%m-%d").date()
+        nivel, dias = _nivel(fv)
+        if dias > 30:
+            continue
+        alertas.append({"nivel": nivel, "titulo": v["tipo_txt"],
+                        "detalle": (v["descripcion"] + " — " if v["descripcion"] else "") + _txt_dias(dias),
+                        "fecha": v["fecha_vencimiento"], "id": v["id"]})
+
+    # Mandato del administrador
+    hasta = (cfg.get("admin_mandato_hasta") or "").strip()
+    if hasta:
+        try:
+            nivel, dias = _nivel(datetime.strptime(hasta, "%Y-%m-%d").date())
+            if dias <= 60:
+                alertas.append({"nivel": "danger" if dias < 0 else "warning",
+                                "titulo": "Mandato del administrador",
+                                "detalle": _txt_dias(dias) + ". Prever la asamblea de designación o renovación.",
+                                "fecha": hasta, "id": None})
+        except ValueError:
+            pass
+    else:
+        alertas.append({"nivel": "info", "titulo": "Mandato del administrador",
+                        "detalle": "Sin fecha de vencimiento del mandato cargada (Configuración → Administración).",
+                        "fecha": "", "id": None})
+
+    # Registro de administradores (Ord. Paraná 9.131)
+    estado = (cfg.get("registro_estado") or "").upper()
+    if estado != "INSCRIPTO":
+        alertas.append({"nivel": "warning", "titulo": "Registro de administradores (Ord. 9.131)",
+                        "detalle": f"Estado: {ESTADOS_REGISTRO.get(estado, 'sin cargar')}. "
+                                   "Un trámite en curso no equivale a la inscripción.",
+                        "fecha": "", "id": None})
+
+    # Rendición de cuentas anual: 60 días desde el cierre del ejercicio
+    cierre = _ultimo_cierre_ejercicio(cfg, hoy)
+    if cierre:
+        limite = cierre + timedelta(days=60)
+        registrada = any(v["tipo"] == "RENDICION_ANUAL" and v["fecha_inicio"] == cierre.strftime("%Y-%m-%d")
+                         for v in vencs)
+        if not registrada and (limite - hoy).days >= -90:
+            nivel, dias = _nivel(limite)
+            alertas.append({"nivel": nivel, "titulo": "Rendición de cuentas anual (CCyC 2067 e)",
+                            "detalle": f"Ejercicio cerrado el {cierre.strftime('%d/%m/%Y')}: {_txt_dias(dias)} "
+                                       f"({limite.strftime('%d/%m/%Y')}). Registrala para seguir su cumplimiento.",
+                            "fecha": limite.strftime("%Y-%m-%d"), "id": None,
+                            "registrar": {"tipo": "RENDICION_ANUAL", "fecha_inicio": cierre.strftime("%Y-%m-%d")}})
+
+    # Ascensor: certificado de seguridad mensual (Ord. 8.661)
+    if str(cfg.get("tiene_ascensor", "0")) == "1" and not any(k[0] == "ASCENSOR_CERTIFICADO" for k in ultimos):
+        alertas.append({"nivel": "warning", "titulo": "Certificado de seguridad del ascensor (Ord. 8.661)",
+                        "detalle": "No hay ningún certificado registrado. Se renueva mensualmente.",
+                        "fecha": "", "id": None})
+
+    orden = {"danger": 0, "warning": 1, "info": 2}
+    alertas.sort(key=lambda a: (orden[a["nivel"]], a["fecha"] or "9999"))
+    return alertas
+
+
+# ── Exportación completa del consorcio (v10.0, lineamientos J09 y §9) ─────────
+# Tablas que no se exportan aunque tengan consorcio_id (usuarios y permisos de la app).
+_NO_EXPORTAR = ("usuarios", "usuario_consorcios", "permisos_consorcio")
+# Claves de configuración secretas: no salen en la exportación.
+_CONFIG_SECRETA = ("clave_firma",)
+
+
+def exportar_consorcio() -> dict:
+    """Todas las tablas del consorcio activo: {tabla: (columnas, filas)}. Incluye el Log de
+    Movimientos (audit_log) y excluye usuarios/permisos y la clave de firma de recibos."""
+    cid = _cid()
+    tablas = [r["table_name"] for r in _fetchall("""
+        SELECT c.table_name FROM information_schema.columns c
+        JOIN information_schema.tables t ON t.table_name = c.table_name AND t.table_schema = c.table_schema
+        WHERE c.table_schema = 'public' AND c.column_name = 'consorcio_id' AND t.table_type = 'BASE TABLE'
+        ORDER BY c.table_name""")]
+    res = {}
+    for t in tablas:
+        if t in _NO_EXPORTAR or t.startswith("usuario"):
+            continue
+        with _conn(write=False) as c:
+            with c.cursor() as cur:
+                cur.execute(_sql.SQL("SELECT * FROM {t} WHERE consorcio_id=%s").format(t=_sql.Identifier(t)), (cid,))
+                cols = [d[0] for d in cur.description]
+                filas = cur.fetchall()
+        if t == "config":
+            i = cols.index("clave")
+            filas = [f for f in filas if f[i] not in _CONFIG_SECRETA]
+        res[t] = (cols, filas)
+    cons = _fetchone("SELECT * FROM consorcios WHERE id=%s", (cid,))
+    if cons:
+        res["consorcios"] = (list(cons.keys()), [tuple(cons.values())])
+    return res

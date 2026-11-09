@@ -125,12 +125,25 @@
 
         {# ── Más ── #}
         <li class="nav-item dropdown">
-          <a class="nav-link dropdown-toggle {% if request.endpoint in ['notificaciones','verificar_recibo','config'] %}active{% endif %}"
+          <a class="nav-link dropdown-toggle {% if request.endpoint in ['notificaciones','verificar_recibo','config','fondo_reserva','vencimientos','ayuda'] %}active{% endif %}"
              href="#" role="button" data-bs-toggle="dropdown"
-             data-ayuda="Notificaciones, verificación de recibos, backup y configuración del sistema.">
+             data-ayuda="Fondo de Reserva, vencimientos, notificaciones, verificación de recibos, exportación y configuración.">
             <i class="bi bi-three-dots"></i> Más
+            {% if alertas_n %}<span class="badge rounded-pill bg-danger" title="Vencimientos y alertas">{{ alertas_n }}</span>{% endif %}
           </a>
           <ul class="dropdown-menu">
+            <li><a class="dropdown-item {% if request.endpoint == 'fondo_reserva' %}active{% endif %}"
+                   href="{{ url_for('fondo_reserva') }}"
+                   data-ayuda="Fondo de Reserva: saldo efectivo (aportes cobrados, otros ingresos y pagos con el fondo), aportes pendientes y compromisos.">
+              <i class="bi bi-piggy-bank"></i> Fondo de Reserva
+            </a></li>
+            <li><a class="dropdown-item {% if request.endpoint == 'vencimientos' %}active{% endif %}"
+                   href="{{ url_for('vencimientos') }}"
+                   data-ayuda="Vencimientos y alertas: plazos legales (rendición anual, certificados, datos personales), mandato, registro de administradores y ascensor.">
+              <i class="bi bi-alarm"></i> Vencimientos y alertas
+              {% if alertas_n %}<span class="badge rounded-pill bg-danger">{{ alertas_n }}</span>{% endif %}
+            </a></li>
+            <li><hr class="dropdown-divider"></li>
             <li><a class="dropdown-item {% if request.endpoint == 'notificaciones' %}active{% endif %}"
                    href="{{ url_for('notificaciones') }}"
                    data-ayuda="Notificaciones: enviá mensajes y archivos a propietarios e inquilinos por WhatsApp o mail.">
@@ -142,9 +155,16 @@
               <i class="bi bi-shield-check"></i> Verificar recibo
             </a></li>
             <li><hr class="dropdown-divider"></li>
-            <li><a class="dropdown-item" href="{{ url_for('backup') }}"
-                   data-ayuda="Backup: descargá un ZIP con toda la base de datos del consorcio activo (datos + comprobantes PDF).">
-              <i class="bi bi-cloud-download"></i> Backup
+            {% if es_admin %}
+            <li><a class="dropdown-item" href="{{ url_for('exportar_consorcio') }}"
+                   data-ayuda="Exportación completa: ZIP con todas las tablas del consorcio (CSV y JSON), el Log de Movimientos y los comprobantes. Para respaldo o cambio de administración.">
+              <i class="bi bi-cloud-download"></i> Exportación completa
+            </a></li>
+            {% endif %}
+            <li><a class="dropdown-item {% if request.endpoint == 'ayuda' %}active{% endif %}"
+                   href="{{ url_for('ayuda') }}"
+                   data-ayuda="Ayuda: manual de usuario completo (configuración inicial, mes de trabajo, intereses, fondo, vencimientos y preguntas frecuentes).">
+              <i class="bi bi-question-circle"></i> Ayuda y manual
             </a></li>
             <li><a class="dropdown-item {% if request.endpoint == 'config' %}active{% endif %}"
                    href="{{ url_for('config') }}"

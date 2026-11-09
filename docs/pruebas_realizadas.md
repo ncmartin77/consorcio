@@ -22,6 +22,44 @@ Las más recientes van primero. Los scripts para repetirlas están en [`pruebas/
 
 ---
 
+## v10.0-0911 — Lineamientos jurídicos (09/11/2026) — EN CURSO
+
+`pruebas/probar_v10.py` contra la base de prueba (consorcio temporal "Prueba v10", 2 UF al 50 %, expensa $100.000,
+tasa 3 %, se borra al final). Resultado: **50/50 OK** (antes de agregar los 3 controles de la página Ayuda: falta
+repetirla). Regresión, de a una: cobranzas 44/44, factura_con_fondo 14/14, factura_vinculo 16/16, pdf_planilla 15/15,
+seguridad 24/24. **Pendiente:** fondo_reserva (actualizada a la regla del libro del fondo), libre_deuda (falló:
+`Location` sin `ld=`, sin investigar), saldo_a_favor (rota desde antes: usa `_calcular_interes`, que ya no existe) y
+las demás.
+
+| Caso | Esperado | Resultado |
+|---|---|---|
+| Nov: deuda 100.000, interés 3 % | 3.000, total 203.000 | ✅ |
+| Dic: interés sobre el capital 200.000 (no sobre 203.000) | 6.000, total 309.000, intereses impagos 3.000 | ✅ |
+| Dic: tasa congelada al cerrar | 3 % | ✅ |
+| Tasa con vigencia en un período cerrado | rechazada | ✅ |
+| Tasa 4 % desde 01/01/2027 | dic usa 3, ene usa 4 | ✅ |
+| Ene UF 1 sin pagos | deuda 309.000 de la cual 9.000 intereses | ✅ |
+| Ene UF 2 pagó 150.000 (CCyC 903) | primero cancela los 9.000 de intereses: deuda 159.000, 0 intereses | ✅ |
+| Interés propuesto ene (4 % sobre capital) | UF1 12.000, UF2 6.360 | ✅ |
+| Capitalización activada / desactivada | 12.360 / vuelve a 9.000 de intereses aparte | ✅ |
+| Libro del fondo: aportes cobrados | 14.100 (imputación FIFO, aporte 10 %) | ✅ |
+| Libro del fondo: saldo efectivo | 600.000 + 14.100 + 5.000 − 50.000 = 569.100 | ✅ |
+| Aportes pendientes / compromisos / disponible | 45.900 / 30.000 / 539.100 | ✅ |
+| PDF: cuadro Fondo de Reserva | saldo efectivo y pendiente | ✅ |
+| Exportación: ZIP, sin clave de firma, no admin redirige | ✅ / ✅ / 302 | ✅ |
+| Gasto ordinario no recurrente / extraordinario con respaldo / ordinario con el fondo | VARIABLE / EXTRAORDINARIO / VARIABLE_FR conservando naturaleza | ✅ |
+| "Cobrar" un ordinario pagado con fondo | VARIABLE (no extraordinario) | ✅ |
+| Clasificación inválida / gasto viejo sin campos | rechazada / deducida del tipo | ✅ |
+| Plazos: 3 hábiles desde vie 08/01, 60 corridos desde 31/12 | 13/01 / 01/03 | ✅ |
+| Alertas: mandato, registro en trámite, rendición, ascensor | 4 alertas | ✅ |
+| Certificado de ascensor: solo cuenta el último | 1 alerta | ✅ |
+| Marcar cumplido | la alerta desaparece | ✅ |
+| PDF: registro "en trámite" y CUIT | sin presentarlo como inscripción | ✅ |
+| Página Ayuda (navegador) | manual renderizado, 17 enlaces del índice OK, sin diagramas | ✅ (revisado a mano) |
+| Diagramas `docs/diagramas.md` | 23 diagramas Mermaid sin errores | ✅ (dibujados en el navegador) |
+
+---
+
 ## v9.8-0911 — Arreglos de seguridad (09/11/2026)
 
 `pruebas/probar_seguridad.py` contra la base de prueba. Resultado: **24/24 OK**; la base quedó como al inicio (usuario de prueba borrado; la liquidación 2026-10 se cerró solo durante la prueba y volvió a ABIERTA). Se repitieron `probar_factura_vinculo.py` (16/16), `probar_factura_con_fondo.py` (14/14), `probar_pdf_planilla.py` (15/15) y `probar_cobranzas.py`.

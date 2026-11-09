@@ -10,3 +10,5 @@
 - [Variables de entorno - Consorcio](reference_env_vars.md) — DATABASE_URL, SECRET_KEY, APP_ENV, APP_HOST, GOOGLE_* y config en-app
 - [Migración Excel → PostgreSQL](project_migracion_postgresql.md) — Plan y estado de migración (completada: pg_db.py reemplazó excel_db.py)
 - [Versión consorcio](feedback_version.md) — Incrementar version.txt (formato X.Y-DDMM) en cada commit del proyecto consorcio
+- [Versión mayor: consultar](feedback_version_mayor.md) — menor automática, mayor solo con el OK del usuario
+- [Diagramas fuera de la Ayuda](feedback_diagramas_ayuda.md) — la Ayuda de la app muestra solo el manual (09/11/2026)

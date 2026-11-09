@@ -1,689 +1,425 @@
 # Manual de Usuario — Sistema de Gestión de Consorcio
 
-**Versión del sistema:** 5.0  
-**Última actualización:** Noviembre 2026
+**Versión del sistema:** 10.0
+**Última actualización:** 9 de noviembre de 2026
+
+> Este manual también se ve dentro del sistema: menú **Más → Ayuda y manual**.
+> En cualquier pantalla, con **Shift + mouse** sobre el menú o un botón aparece una explicación corta.
 
 ---
 
 ## Índice
 
-1. [Introducción](#1-introducción)
-2. [Primeros pasos — Configuración inicial](#2-primeros-pasos--configuración-inicial)
-3. [Flujo mensual — Qué hacer cada mes](#3-flujo-mensual--qué-hacer-cada-mes)
-4. [Unidades Funcionales](#4-unidades-funcionales)
+1. [Introducción y conceptos clave](#1-introducción-y-conceptos-clave)
+2. [Ingreso al sistema](#2-ingreso-al-sistema)
+3. [Configuración inicial (una sola vez)](#3-configuración-inicial-una-sola-vez)
+4. [El mes de trabajo, paso a paso](#4-el-mes-de-trabajo-paso-a-paso)
 5. [Gastos Mensuales](#5-gastos-mensuales)
-6. [Liquidaciones de Expensas](#6-liquidaciones-de-expensas)
-7. [Caja Diaria](#7-caja-diaria)
-8. [Facturas de Proveedores](#8-facturas-de-proveedores)
-9. [Configuración del Sistema](#9-configuración-del-sistema)
-10. [Preguntas Frecuentes](#10-preguntas-frecuentes)
+6. [Facturas, Proveedores y Presupuestos](#6-facturas-proveedores-y-presupuestos)
+7. [Liquidación](#7-liquidación)
+8. [Intereses por mora](#8-intereses-por-mora)
+9. [Cobranzas](#9-cobranzas)
+10. [Caja Diaria](#10-caja-diaria)
+11. [Fondo de Reserva](#11-fondo-de-reserva)
+12. [Edificio: Unidades, Plano, Estado de cuenta, Apertura](#12-edificio-unidades-plano-estado-de-cuenta-apertura)
+13. [Vencimientos y alertas](#13-vencimientos-y-alertas)
+14. [Notificaciones, recibos y libre deuda](#14-notificaciones-recibos-y-libre-deuda)
+15. [Configuración](#15-configuración)
+16. [Herramientas del administrador](#16-herramientas-del-administrador)
+17. [Preguntas frecuentes](#17-preguntas-frecuentes)
 
 ---
 
-## 1. Introducción
+## 1. Introducción y conceptos clave
 
-El **Sistema de Gestión de Consorcio** es una aplicación web diseñada para administradores de edificios. Centraliza todo lo que necesitás para gestionar un consorcio:
+El sistema administra uno o varios consorcios desde el navegador: gastos, facturas, liquidación de
+expensas, cobranzas, caja, fondo de reserva, vencimientos legales y documentos (PDF, recibos con QR,
+certificados de libre deuda).
 
-- **Liquidaciones mensuales de expensas** por unidad
-- **Registro de gastos** fijos, variables y del fondo de reserva
-- **Caja diaria** con saldo acumulado
-- **Facturas de proveedores** con comprobantes adjuntos
-- **Múltiples consorcios** desde una sola instalación
+**Liquidación a mes vencido.** Es la regla más importante:
 
-Accedés al sistema desde cualquier navegador (Chrome, Firefox, Edge) ingresando la dirección IP que te dio el administrador técnico. No requiere instalación en tu computadora.
+> La liquidación de un mes cobra los **gastos del mes anterior**.
 
-### Conceptos clave antes de empezar
+Los gastos de **septiembre** se cobran en la liquidación de **octubre**. Si cargás un gasto de septiembre,
+cambia la liquidación de octubre (mientras esté abierta).
 
-**Período de trabajo:** todo en el sistema gira alrededor de un "período" (mes y año). En la barra superior hay un selector de período. Cuando cambiás el período, cambia lo que se muestra en Gastos, Liquidación y Caja.
+**Período de trabajo.** Arriba, en la barra, está el período (mes) con el que estás trabajando. Gastos
+muestra el mes anterior a ese período; Liquidación y Caja, el período mismo.
 
-**Liquidación a mes vencido:** este es el concepto más importante del sistema.
+**Fecha del sistema.** En Configuración se puede fijar una fecha para trabajar "como si hoy fuera" ese día
+(para preparar o revisar un mes). Si está fijada, aparece un aviso amarillo arriba. Mientras esté fijada,
+los pagos posteriores a esa fecha no se cuentan.
 
-> La liquidación de un mes usa los **gastos del mes anterior**.
-
-Ejemplo concreto:
-- Cargás los gastos de **septiembre** (sueldo del encargado, luz, limpieza)
-- Esos gastos aparecen en la **liquidación de octubre**
-- Las boletas de octubre reflejan lo que gastaron en septiembre
-
-Esto significa que si cargás un gasto tarde, afecta la boleta del mes siguiente.
+**Abierta y cerrada.** Una liquidación **abierta** se recalcula sola cuando cambian los gastos. Una vez
+**cerrada** queda fija: es la que se cobra y ya no se modifica.
 
 ---
 
-## 2. Primeros pasos — Configuración inicial
+## 2. Ingreso al sistema
 
-Antes de usar el sistema por primera vez, hay que configurarlo. Seguí este orden:
-
-### 2.1 Configurar los datos del edificio
-
-Ir a **Configuración** y completar:
-
-| Campo | Descripción | Ejemplo |
-|-------|-------------|---------|
-| Nombre del edificio | Nombre que aparece en los recibos | "Edificio Brasil" |
-| Dirección | Dirección del inmueble | "Brasil 1234, Santa Fe" |
-| Tasa de mora | Porcentaje mensual de interés por mora | 7 |
-| Día de vencimiento | Día del mes en que vencen las expensas | 15 |
-| Monto Fondo de Reserva | Aporte mensual fijo al fondo | 5000.00 |
-| URL de la aplicación | Dirección para verificar recibos vía QR | http://192.168.1.100:5000 |
-
-Hacer clic en **Guardar configuración**.
-
-### 2.2 Cargar las Unidades Funcionales
-
-Ir a **Unidades** y agregar cada departamento/local del edificio. Para cada unidad necesitás:
-
-- **Número / Identificador**: puede ser "1A", "PB", "Cochera 2", etc.
-- **Propietario / Inquilino**: nombre del responsable
-- **Porcentaje de expensas**: el porcentaje que le corresponde a esa unidad (todos deben sumar 100%)
-
-### 2.3 Configurar los Saldos Iniciales (Apertura)
-
-Ir a **Apertura / Saldos Iniciales**. Esta pantalla permite definir:
-
-**Saldos por unidad:** lo que cada unidad debía (o tenía a favor) antes de empezar a usar el sistema.
-
-- Número **negativo** = la unidad tenía **deuda** con el consorcio
-- Número **positivo** = la unidad tenía un **saldo a favor**
-- Cero = la unidad estaba al día
-
-Ejemplo: si el depto 3B debía $12.000 antes de empezar, ingresá `-12000` en su saldo inicial.
-
-**Saldo inicial de caja:** el dinero disponible en caja al momento de empezar, con su fecha de corte.
-
-### 2.4 Configurar Gastos Recurrentes (opcional pero recomendado)
-
-Ir a **Configuración → Gastos Recurrentes** y agregar los conceptos que se repiten todos los meses: "Sueldo Encargado", "Luz Común", "Gas", "Limpieza", etc.
-
-Cuando después cargues una factura cuya descripción coincida con alguno de estos conceptos, el sistema va a registrar el gasto del mes automáticamente.
+1. Entrá a la dirección del sistema y tocá **Ingresar con Google**.
+2. La primera vez, tu cuenta queda **pendiente de aprobación**: un administrador la tiene que habilitar en
+   **Administración de usuarios** y darte acceso a los consorcios que corresponda.
+3. Elegí el consorcio de la lista. Para cambiar de consorcio, tocá su nombre en la barra.
 
 ---
 
-## 3. Flujo mensual — Qué hacer cada mes
+## 3. Configuración inicial (una sola vez)
 
-Cada mes el proceso es el mismo. Acá lo tenés paso a paso:
+Seguí este orden:
 
-```
-INICIO DE MES
-     │
-     ▼
-1. Seleccioná el período actual en el selector del navbar
-     │
-     ▼
-2. Cargá los gastos del mes anterior
-   (recordá: los gastos que cargás afectan la liquidación del mes siguiente)
-     │
-     ▼
-3. Registrá las facturas de proveedores del mes
-     │
-     ▼
-4. Generá la liquidación del mes actual
-     │
-     ▼
-5. Registrá los pagos a medida que llegan
-     │
-     ▼
-6. Al finalizar el mes: cerrá la liquidación
-     │
-     ▼
-FIN DE MES → El mes siguiente empieza en el paso 1
-```
+| Paso | Dónde | Qué cargar |
+|---|---|---|
+| 1 | Configuración → Datos del Edificio | Nombre, dirección, alias/CBU, administrador, contacto, día de vencimiento, aporte mensual al Fondo de Reserva |
+| 2 | Configuración → Intereses por mora | La tasa mensual **con su fecha de vigencia y fundamento** (reglamento o acta) |
+| 3 | Configuración → Administración | CUIT, mandato (desde/hasta e instrumento), registro de administradores (Ord. 9.131), cierre del ejercicio, si hay ascensor |
+| 4 | Configuración → Categorías de porcentaje | Por ejemplo `EXPENSAS` (o `GENERAL`, `ASCENSOR`…) |
+| 5 | Edificio → Unidades | Cada unidad: número, propietario, inquilino, contactos y su porcentaje |
+| 6 | Edificio → Apertura | Saldo inicial de caja, **saldo inicial del Fondo de Reserva** y deuda inicial de cada unidad |
+| 7 | Configuración → Gastos recurrentes | Conceptos de todos los meses: "Luz común", "Limpieza", "Ascensor"… |
 
-### Paso 1: Seleccioná el período
+**Deuda inicial (Apertura):** número **positivo = deuda**, **negativo = saldo a favor**, cero = al día.
+Ejemplo: si la UF 4 debía $15.000 al empezar, cargá `15000`.
 
-En el selector del navbar (parte superior), elegí el **mes y año de la liquidación que querés generar**. Por ejemplo: si es noviembre y estás preparando las boletas de noviembre, seleccioná "Noviembre 2026".
-
-### Paso 2: Cargá los gastos
-
-Ir a **Gastos Mensuales**. Vas a ver que el sistema te muestra los gastos del **mes anterior** al período seleccionado (porque la liquidación de noviembre usa los gastos de octubre).
-
-Cargá todos los gastos del mes anterior: servicios, sueldos, reparaciones, limpieza, etc.
-
-### Paso 3: Registrá las facturas
-
-Ir a **Facturas** y cargá las facturas de los proveedores. Si configuraste gastos recurrentes, muchos gastos se van a registrar automáticamente.
-
-### Paso 4: Generá la liquidación
-
-Ir a **Liquidación** y hacer clic en **Generar Liquidación**. El sistema calcula automáticamente lo que debe pagar cada unidad.
-
-### Paso 5: Registrá los pagos
-
-A medida que los propietarios o inquilinos van pagando, ingresá los pagos en la liquidación correspondiente a cada unidad.
-
-### Paso 6: Cerrá la liquidación
-
-Al final del mes, cuando ya registraste todos los pagos, hacé clic en **Cerrar Liquidación**. Una vez cerrada, no se puede modificar (a menos que la reabras manualmente).
-
-> **Importante:** Para poder generar la liquidación de un mes, la liquidación del mes anterior debe estar **cerrada**. Esto garantiza que los datos históricos no cambien.
+Los porcentajes de todas las unidades deben sumar 100 %. Si los centavos no cierran por redondeo, la
+última unidad absorbe la diferencia, así la suma de expensas da exactamente el total de gastos.
 
 ---
 
-## 4. Unidades Funcionales
+## 4. El mes de trabajo, paso a paso
 
-### 4.1 ¿Qué es una unidad funcional?
+1. **Gastos:** cargá los gastos del mes que terminó (o dejá que se carguen solos desde las facturas de
+   gastos recurrentes).
+2. **Liquidación:** tocá **Generar**. Mientras está abierta, cada gasto nuevo la recalcula.
+3. **Cerrar:** cuando cambió el mes (desde el día 1 del mes de la liquidación) tocá **Cerrar**. Aparece
+   la ventana de intereses (ver sección 8). Desde ese momento la liquidación queda fija.
+4. **Cobrar:** en **Cobranzas** registrás los pagos contra la última liquidación cerrada.
 
-Es cada departamento, local, cochera o espacio del edificio que paga expensas. Cada unidad tiene:
-
-- Un **identificador** único (ej: "1A", "PH", "Local 1", "Coch-3")
-- El **nombre del propietario o inquilino**
-- Su **porcentaje** de participación en los gastos del edificio
-
-### 4.2 Cómo agregar una unidad
-
-1. Ir a **Unidades**
-2. Clic en **Nueva Unidad**
-3. Completar los datos
-4. Clic en **Guardar**
-
-### 4.3 El porcentaje de expensas
-
-Todos los porcentajes de las unidades deben sumar exactamente **100%**. El sistema te avisa si no cierran.
-
-Ejemplo para un edificio de 4 departamentos:
-
-| Unidad | Porcentaje |
-|--------|-----------|
-| 1A | 25% |
-| 1B | 25% |
-| 2A | 25% |
-| 2B | 25% |
-| **Total** | **100%** |
-
-Los porcentajes no tienen por qué ser iguales. Un PH más grande puede tener 35% mientras un monoambiente tiene 15%.
-
-### 4.4 Cómo afecta el porcentaje al cálculo
-
-El sistema calcula la expensa de cada unidad así:
-
-```
-Expensa unidad = Total gastos del mes anterior × Porcentaje de la unidad / 100
-```
-
-Ejemplo concreto:
-- Total gastos de septiembre: $80.000
-- Unidad 2A tiene 25% de participación
-- Expensa octubre de 2A = $80.000 × 25 / 100 = **$20.000**
-
-> **Nota sobre el redondeo:** cuando los centavos no cierran exactamente por el redondeo, la última unidad de la lista absorbe la diferencia, garantizando que la suma de todas las expensas sea exactamente igual al total de gastos.
+> Para generar la liquidación de un mes, la del mes anterior tiene que estar **cerrada**.
 
 ---
 
 ## 5. Gastos Mensuales
 
-### 5.1 Tipos de gastos
+### 5.1 Cómo cargar un gasto
 
-El sistema maneja cuatro tipos:
+**Gastos → Agregar gasto**:
 
-| Tipo | Para qué se usa | ¿Afecta expensas? |
-|------|-----------------|-------------------|
-| **FIJO** | Gastos que se repiten cada mes (sueldo, seguro) | Sí |
-| **VARIABLE** | Gastos esporádicos (reparación, compra) | Sí |
-| **VARIABLE_FR** | Gastos pagados con el Fondo de Reserva | **No** |
-| **FONDO_RESERVA** | El aporte mensual al fondo | Sí |
+| Campo | Opciones | Para qué |
+|---|---|---|
+| Concepto e importe | — | Qué se pagó y cuánto |
+| **Naturaleza** | Ordinaria / Extraordinaria | La clasificación jurídica (CCyC art. 2048) |
+| **Frecuencia** | Recurrente / No recurrente | Si se repite todos los meses |
+| **¿Con qué se paga?** | Se cobra en las expensas / Con el Fondo de Reserva | Cómo se financia |
+| **Respaldo** (opcional) | Texto libre | Acta de asamblea, autorización del consejo, etc. |
 
-### 5.2 Cómo cargar un gasto
+Estos tres datos son **independientes**:
 
-1. Ir a **Gastos Mensuales** con el período correcto seleccionado
-2. Clic en **Agregar Gasto**
-3. Elegir el tipo (FIJO o VARIABLE)
-4. Ingresar concepto, monto y fecha
-5. Guardar
+- Una reparación necesaria de bienes comunes puede ser **ordinaria** aunque sea cara o no se repita.
+- Un gasto **extraordinario** que se cobra en las expensas sale en una línea aparte en la liquidación y en el PDF.
+- Un gasto **pagado con el Fondo de Reserva** no se cobra en las expensas: sale del fondo. Conserva su
+  naturaleza (ordinaria o extraordinaria).
 
-> **Recordá siempre:** el período que ves en "Gastos Mensuales" es el mes **anterior** al período de liquidación. Si seleccionaste octubre en el navbar, los gastos que cargás son los que van a aparecer en la liquidación de **noviembre**.
+En la tarjeta de gastos extraordinarios y pagados con el fondo, el botón **Usar fondo / Cobrar** cambia cómo
+se paga un gasto sin cargarlo de nuevo.
 
-### 5.3 El Fondo de Reserva
+### 5.2 El aporte al Fondo de Reserva
 
-El sistema crea automáticamente, cada mes, un gasto de tipo FONDO_RESERVA con el monto configurado en Configuración.
+Cada mes el sistema agrega solo el gasto **"Fondo de Reserva"** con el aporte configurado. Se reparte entre
+las unidades como cualquier gasto. Solo se puede cambiar su importe.
 
-Este gasto:
-- Aparece en la pantalla de Gastos Mensuales
-- **Sí** afecta el cálculo de las expensas (las unidades contribuyen a formarlo)
-- El saldo acumulado del fondo se ve en la pantalla de Liquidación
+### 5.3 Gastos recurrentes y tareas
 
-No necesitás crearlo manualmente — el sistema lo inserta solo.
+- El panel **Gastos recurrentes del mes** muestra cada concepto como *sin factura*, *factura registrada sin
+  pagar* o *factura pagada*: sirve para ver si falta cargar algún servicio.
+- Si un gasto no tiene factura, el botón de recibo permite **emitir la factura de ese gasto**.
+- **Tareas pendientes:** una lista de recordatorios que se tildan al terminar (tiene "Deshacer").
 
-### 5.4 Gastos con Fondo de Reserva (VARIABLE_FR)
+### 5.4 Gastos de un período cerrado
 
-Cuando el edificio hace una reparación importante (ej: cambio de la bomba de agua por $30.000) y se decide pagarlo con el Fondo de Reserva:
-
-1. Al agregar el gasto, marcá el checkbox **"Usar de Fondo de Reserva"**
-2. El gasto se registra como VARIABLE_FR
-3. Se muestra en una sección separada en la pantalla de Gastos
-4. **No se suma** al total de gastos que pagan las unidades (porque ya se pagó con el fondo)
-5. Podés adjuntarle la factura correspondiente
-
-### 5.5 Gastos Recurrentes
-
-Si configuraste gastos recurrentes (ej: "Luz Común"), el sistema los muestra en un panel especial con tres estados posibles:
-
-- **Sin factura**: todavía no cargaste la factura de ese servicio
-- **Factura registrada sin pagar**: ya cargaste la factura pero no la marcaste como pagada
-- **Factura pagada**: todo en orden
-
-Esto te ayuda a ver de un vistazo si te olvidaste de cargar algún servicio del mes.
+Si la liquidación que cobra esos gastos ya está **cerrada**, no se pueden cargar, modificar ni borrar.
+Un gasto que llega tarde se carga en el mes actual (se cobrará en la liquidación siguiente).
 
 ---
 
-## 6. Liquidaciones de Expensas
+## 6. Facturas, Proveedores y Presupuestos
 
-### 6.1 Cómo se calcula la expensa de cada unidad
+### 6.1 Facturas
 
-La liquidación de cada unidad tiene estos componentes:
+Una factura está **Pendiente** o **Pagada**.
+
+- **Cargar:** proveedor, descripción, importe, fecha, número, categoría. Si la descripción coincide con un
+  gasto recurrente, el gasto del mes se crea solo (no hace falta cargarlo aparte).
+- **Comprobante:** el botón de subir adjunta el PDF o una foto (se convierte a PDF). El botón azul lo abre.
+- **Pagar:** fecha de pago (no anterior a la fecha de la factura), **observación** opcional y el switch
+  **Pagar con Fondo de Reserva**:
+  - **Sin el switch:** se registra la salida en Caja y el gasto se cobra en las expensas.
+  - **Con el switch:** la salida va contra el fondo y el gasto **no** se cobra en las expensas. El modal muestra cuánto hay disponible en el fondo.
+- Una factura **pagada** no se puede editar. Si la borrás, también se borra su movimiento de Caja; el gasto
+  queda sin vínculo y se puede volver a emitir su factura desde Gastos.
+- Una factura pendiente marcada para el fondo figura como **compromiso** en el libro del Fondo de Reserva.
+
+### 6.2 Proveedores
+
+Directorio con CUIT, contacto y categoría. Si asociás un proveedor a un gasto recurrente, al elegirlo en una
+factura se completa el concepto.
+
+### 6.3 Presupuestos
+
+**Pedidos de presupuesto:** describís el trabajo, cargás las cotizaciones de cada proveedor y marcás la elegida.
+
+---
+
+## 7. Liquidación
+
+### 7.1 Qué tiene cada unidad
 
 ```
 Total a pagar = Expensas + Deuda anterior + Interés + Extras
 ```
 
-**Expensas:** parte proporcional del total de gastos del mes anterior, según el porcentaje de la unidad.
+- **Expensas:** total de gastos del mes anterior (sin los pagados con el fondo) × porcentaje de la unidad.
+- **Deuda anterior:** total de la liquidación anterior − lo que pagó hasta hoy. Si es negativa, es **saldo a favor**.
+- **Interés:** se decide al cerrar (sección 8). Mientras está abierta es 0.
+- **Extras:** cargos de una sola unidad (por ejemplo, una reparación de su uso exclusivo).
 
-**Deuda anterior:** lo que la unidad adeudaba del mes anterior. Puede ser:
-- Cero, si pagó completo el mes anterior
-- El saldo pendiente, si pagó parcialmente
-- El total anterior completo, si no pagó nada
+### 7.2 Notas y extras
 
-**Interés por mora:** se calcula según el caso:
-- *Interés sobre deuda antigua:* `Deuda anterior × Tasa de mora`
-- *Mora corriente:* `Expensas × Tasa de mora` (solo si hoy pasó la fecha de vencimiento y la unidad no pagó)
+- **Notas del período:** AVISO (destacado) o INFO. Salen en el PDF.
+- **Gastos extra por unidad:** descripción y monto. Se suman al total de esa unidad.
 
-**Extras:** cargos extraordinarios asignados específicamente a esa unidad para ese período.
+Las dos cosas se pueden cargar solo mientras la liquidación está abierta.
 
-### 6.2 Ejemplo completo de cálculo
+### 7.3 Cerrar y reabrir
 
-Configuración del edificio:
-- Tasa de mora: 7% mensual
-- Día de vencimiento: 15
+- **Cerrar:** se puede desde el día 1 del mes de la liquidación y con la anterior ya cerrada. Al cerrar se
+  recalcula a la fecha del sistema, se aplican los intereses elegidos y **se guarda la tasa usada**.
+- Al cerrarla se bloquea la **Caja del mes anterior** (el de los gastos).
+- **Reabrir:** solo un administrador, sin pagos registrados y con la liquidación siguiente abierta.
 
-Situación de la unidad 1B en la liquidación de octubre:
-- Total gastos septiembre: $80.000
-- Porcentaje 1B: 25%
-- La unidad 1B no pagó septiembre (debía $20.000)
+### 7.4 PDF de la liquidación
 
-Cálculo:
-```
-Expensas octubre = $80.000 × 25% = $20.000
-Deuda anterior   = $20.000 (no pagó septiembre)
-Interés sobre deuda anterior = $20.000 × 7% = $1.400
-Mora corriente   = $20.000 × 7% = $1.400 (si hoy > día 15)
-
-Total a pagar = $20.000 + $20.000 + $1.400 + $1.400 = $42.800
-```
-
-### 6.3 Eximir el interés a una unidad
-
-Si por algún motivo acordás no cobrar intereses a una unidad específica:
-
-1. En la liquidación, buscá la fila de esa unidad
-2. Marcá el checkbox **"Sin interés"**
-3. El sistema recalcula automáticamente sin aplicar mora a esa unidad
-4. Este flag se preserva si volvés a generar la liquidación
-
-### 6.4 Cómo generar la liquidación
-
-1. Seleccioná el período en el navbar (ej: "Octubre 2026")
-2. Ir a **Liquidación**
-3. Clic en **Generar Liquidación**
-4. El sistema procesa todos los datos y muestra la tabla con cada unidad
-
-> **Requisito:** la liquidación del mes anterior debe estar CERRADA para poder generar la del mes actual.
-
-### 6.5 Estados de una liquidación
-
-**ABIERTA:**
-- Podés editar, agregar pagos, recalcular
-- Los movimientos de caja del período pueden modificarse
-- Es el estado inicial al generar una liquidación
-
-**CERRADA:**
-- No se puede modificar nada
-- No se pueden agregar movimientos de caja ni facturas del período
-- Garantiza que los datos históricos queden intactos
-
-Para cerrar: clic en **Cerrar Liquidación**.
-Para reabrir (si necesitás corregir algo): clic en **Reabrir**.
-
-### 6.6 Registrar el pago de una unidad
-
-1. En la tabla de liquidación, hacer clic en el ícono de pago de la unidad correspondiente
-2. Ingresar:
-   - **Monto pagado**
-   - **Fecha de pago**
-   - **Tipo de pago** (efectivo, transferencia, etc.)
-   - **Bonificación** (opcional, si decidís hacer un descuento)
-3. Hacer clic en **Registrar Pago**
-
-El pago se registra y también genera automáticamente un movimiento de **Entrada** en Caja Diaria.
-
-### 6.7 Pago masivo — marcar todos como pagados
-
-Si todos pagaron en el mismo día (ej: una reunión de consorcio donde cobraste todo junto):
-
-1. Usar el botón **Pago Completo**
-2. Ingresar la fecha de pago
-3. El sistema marca como pagadas todas las unidades pendientes de ese período
-
-### 6.8 Notas del período
-
-Podés agregar notas o avisos que aparecen en el resumen PDF de la liquidación:
-
-- **AVISO**: se muestra destacado (para informaciones importantes)
-- **INFO**: información general del período
-
-Útil para comunicar a los propietarios novedades del edificio (obras, reuniones, cortes de servicio, etc.).
-
-### 6.9 Cargos extra por unidad
-
-Si una unidad tiene un cargo extraordinario específico (ej: reparación de algo de uso exclusivo de ese departamento):
-
-1. En la liquidación, usar el botón **Agregar Extra** en la fila de esa unidad
-2. Ingresar descripción y monto
-3. El sistema recalcula el total a pagar de esa unidad incluyendo el extra
-
-### 6.10 Recibos y PDF
-
-Para cada unidad que pagó, podés generar un **recibo PDF** individual. Los recibos incluyen:
-- Datos del edificio y del período
-- Detalle del cálculo (expensas, deuda anterior, interés, total)
-- Datos del pago (monto, fecha, tipo)
-- **Código QR** para verificar la autenticidad del recibo
-
-El resumen completo de la liquidación (todas las unidades) también se puede exportar como PDF.
+**Descargar PDF** genera la planilla horizontal del edificio con:
+- **Tabla por unidad:** liquidado y pago del mes anterior, deuda, interés, expensas, total, pagado y MONTO A PAGAR.
+- **Totales:** gastos, a cobrar, cobrado y pendiente, debajo de la tabla de unidades.
+- **Gastos:** ordinarios (con su frecuencia) y extraordinarios (con su respaldo), y la base de la expensa.
+- **Ingresos y egresos de Caja del mes.**
+- **Cuadro del Fondo de Reserva:** saldo efectivo, aporte del mes, aportes pendientes de cobro y compromisos.
+- **Notas, extras y datos de la administración**, con el CUIT y el registro de administradores si está inscripto.
 
 ---
 
-## 7. Caja Diaria
+## 8. Intereses por mora
 
-### 7.1 ¿Para qué sirve la Caja Diaria?
+**Regla (v10.0):** el interés se calcula sobre el **capital adeudado**, es decir, las expensas impagas.
+Nunca se calcula sobre intereses anteriores (no hay "interés sobre interés"). Cuando una unidad paga, el pago se
+aplica **primero a los intereses** y después a lo más antiguo (Código Civil y Comercial, arts. 770 y 903).
 
-Registra todos los movimientos de dinero del consorcio:
-- **ENTRADA**: dinero que entra (pagos de expensas, otros ingresos)
-- **SALIDA**: dinero que sale (pago de facturas, gastos varios)
+**Ejemplo:** expensa de $100.000 por mes, 3 % mensual, la unidad no paga octubre, noviembre ni diciembre.
 
-### 7.2 Cómo ver el saldo
+| Liquidación | Deuda anterior | de la cual intereses | Capital | Interés 3 % | Total |
+|---|---:|---:|---:|---:|---:|
+| Octubre | 0 | 0 | 0 | 0 | 100.000 |
+| Noviembre | 100.000 | 0 | 100.000 | 3.000 | 203.000 |
+| Diciembre | 203.000 | 3.000 | 200.000 | 6.000 | 309.000 |
+| Enero | 309.000 | 9.000 | 300.000 | 9.000 | 418.000 |
 
-La pantalla de Caja muestra cuatro indicadores:
+Si en diciembre la unidad paga $150.000, primero se cancelan los $9.000 de intereses y el resto baja la deuda.
 
-| Indicador | Qué muestra |
-|-----------|-------------|
-| Saldo Anterior | El saldo al inicio del período actual |
-| Entradas del Mes | Total de entradas del mes seleccionado |
-| Salidas del Mes | Total de salidas del mes seleccionado |
-| Saldo Acumulado | El saldo total desde el inicio (incluyendo el saldo inicial de apertura) |
+**Al cerrar** aparece una ventana con cada unidad que tiene deuda: deuda anterior, cuánto de eso son
+intereses, capital e interés propuesto. Cada unidad tiene un switch para cobrarle o no el interés
+(encendido por defecto). El saldo a favor nunca genera interés.
 
-El **Saldo Acumulado** es el saldo real de caja: suma todo desde el primer día, incluyendo el saldo inicial que configuraste en Apertura.
+**La tasa** se carga en **Configuración → Intereses por mora** con fecha de vigencia y fundamento.
+- Cada liquidación usa la tasa vigente el día 1 de su mes.
+- Al cerrar, la tasa queda guardada en esa liquidación. No se puede cargar ni borrar una tasa con vigencia en un período ya cerrado.
 
-### 7.3 Cómo agregar un movimiento manual
-
-1. Ir a **Caja**
-2. Clic en **Nuevo Movimiento**
-3. Elegir tipo (Entrada o Salida)
-4. Ingresar descripción, monto y fecha
-5. Guardar
-
-### 7.4 Movimientos automáticos
-
-Algunos movimientos se crean solos, sin que tengas que ingresarlos:
-
-- **Al registrar el pago de una unidad:** se crea automáticamente una Entrada
-- **Al marcar una factura como pagada:** se crea automáticamente una Salida
-- **Si borrás una factura pagada:** también se borra su movimiento de caja automáticamente
-
-### 7.5 Restricciones por período cerrado
-
-Si la liquidación de un período está **CERRADA**, no podés:
-- Agregar movimientos de caja de ese período
-- Editar movimientos existentes de ese período
-- Borrar movimientos de ese período
-
-Esto protege la integridad del historial contable.
-
-### 7.6 Saldo de caja en la liquidación
-
-En la pantalla de Liquidación se muestra el saldo de caja al último día del período. Esto te permite ver cuánto dinero quedaba en caja al cierre del mes.
+**Capitalizar intereses:** en la misma tarjeta hay un switch, **apagado por defecto**. Encenderlo solo con
+respaldo jurídico: la ley admite la capitalización en casos puntuales.
 
 ---
 
-## 8. Facturas de Proveedores
+## 9. Cobranzas
 
-### 8.1 Ciclo de vida de una factura
+- Se cobra **solo la última liquidación cerrada**.
+- **Registrar pago:**
+  - **Datos:** monto, fecha y, opcionalmente, una **bonificación** con su motivo.
+  - **Fecha:** no puede ser posterior a la fecha del sistema ni caer en un mes de Caja cerrado.
+  - **Efecto:** el pago crea su entrada en Caja. La bonificación crea una salida en Caja y no cambia lo que la unidad debe.
+- **Estados:**
+  - **Pendiente:** no pagó nada.
+  - **Parcial:** el saldo pasa como deuda anterior al mes siguiente.
+  - **Total:** si pagó de más, el sobrante queda como saldo a favor.
+- **Pago Completo:** registra el pago total de todas las unidades con deuda, con una misma fecha.
+- **Recibo:** PDF con código QR de verificación. Se puede enviar por WhatsApp.
+- **Anular pagos:** solo un administrador. Borra también sus movimientos de Caja.
+
+---
+
+## 10. Caja Diaria
+
+- **Movimientos:** Entrada o Salida, con categoría. Los pagos de expensas y de facturas generan sus movimientos solos.
+- **Saldos:** cuatro cuadros, saldo anterior, entradas y salidas del mes y saldo acumulado (incluye el saldo
+  inicial de Apertura).
+- **Fechas:** se muestran como DD/MM/AAAA.
+- **Mes bloqueado:** la Caja de un mes se bloquea cuando se cierra la liquidación del mes siguiente. Desde
+  ahí no se agregan, editan ni borran movimientos de ese mes.
+- **Movimientos del fondo:** un movimiento con categoría **FONDO_RESERVA** cuenta en el libro del fondo. Si es una entrada, es otro ingreso al fondo; si es una salida, es un pago con el fondo.
+
+---
+
+## 11. Fondo de Reserva
+
+**Más → Fondo de Reserva** muestra el libro del fondo:
 
 ```
-PENDIENTE → (marcás como pagada) → PAGADA
+Saldo efectivo = saldo inicial
+               + aportes efectivamente COBRADOS
+               + otros ingresos al fondo
+               − pagos hechos con el fondo
 ```
 
-Una factura pasa por dos estados:
-- **PENDIENTE**: ya la cargaste pero todavía no la pagaste
-- **PAGADA**: ya fue abonada
+| Cuadro | Qué es |
+|---|---|
+| Saldo efectivo | Dinero realmente integrado al fondo |
+| Aportes pendientes de cobro | Aportes liquidados que las unidades todavía no pagaron. **No** son dinero disponible |
+| Compromisos sin pagar | Facturas a pagar con el fondo que siguen pendientes |
+| Disponible neto | Saldo efectivo − compromisos |
 
-### 8.2 Cómo cargar una factura
-
-1. Ir a **Facturas**
-2. Clic en **Nueva Factura**
-3. Completar:
-   - **Proveedor**: elegí de la lista o escribí uno nuevo
-   - **Descripción**: qué servicio o producto es
-   - **Importe**: monto de la factura
-   - **Categoría**: para clasificar el gasto
-   - **Fecha de emisión**
-4. Clic en **Guardar**
-
-### 8.3 Gastos automáticos al cargar facturas
-
-Si la descripción de la factura coincide con algún **Gasto Recurrente** configurado, el sistema registra automáticamente el gasto del mes. No necesitás cargarlo por separado.
-
-Ejemplo: si tenés configurado "Luz Común" como gasto recurrente y cargás una factura con descripción "Luz Común" (o "EDESF Luz Común", etc.), el gasto del mes se registra solo.
-
-### 8.4 Cómo adjuntar el comprobante
-
-Podés adjuntar la factura física digitalizada (PDF, foto):
-
-1. En la lista de facturas, clic en el ícono de subir archivo de la factura
-2. Seleccioná el archivo (PDF, JPG, PNG, etc.)
-3. Si es una imagen, el sistema la convierte automáticamente a PDF
-4. Para verla después, clic en el ícono azul de PDF
-
-### 8.5 Cómo marcar una factura como pagada
-
-1. En la lista, hacer clic en el ícono de "Pagar" de la factura
-2. Ingresar la fecha de pago
-3. Confirmar
-
-Al pagar una factura, el sistema **automáticamente** crea un movimiento de **Salida** en Caja Diaria por el mismo importe.
-
-### 8.6 Relación con Caja Diaria
-
-| Acción | Efecto en Caja |
-|--------|---------------|
-| Marcar factura como PAGADA | Crea Salida automática |
-| Borrar factura PAGADA | Borra también su movimiento de Caja |
-| Borrar movimiento de Caja que viene de factura | Borra también la factura pagada |
-
-Esta sincronización garantiza que Caja y Facturas siempre estén alineadas.
-
-### 8.7 Filtros y búsqueda
-
-En la lista de facturas podés:
-- Filtrar por **mes de pago**
-- Filtrar por **estado** (PENDIENTE / PAGADA)
-- Navegar por páginas si hay muchas facturas
+- **Saldo inicial:** se carga en **Apertura** con su fecha (por ejemplo, el de la última rendición o acta).
+  Mientras no se cargue, el sistema usa provisoriamente el saldo inicial de caja y lo avisa.
+- **Aporte cobrado:** de cada pago se toma primero lo que va a intereses y deuda vieja. De lo que cubre las
+  expensas de un mes, la parte del aporte es proporcional. Ejemplo: si el aporte es el 10 % de lo repartido,
+  el 10 % de lo cobrado de ese mes va al fondo.
+- **Pagos con el fondo:** un gasto pagado con el fondo no se vuelve a cobrar en las expensas. Si después se decide
+  reponer el fondo, eso necesita su propio cargo.
 
 ---
 
-## 9. Configuración del Sistema
+## 12. Edificio: Unidades, Plano, Estado de cuenta, Apertura
 
-### 9.1 Datos del edificio
-
-- **Nombre del edificio:** aparece en todos los PDF y recibos
-- **Dirección:** se incluye en los documentos
-- **URL de la aplicación:** se usa para generar los códigos QR de verificación. Debe ser la dirección IP real del servidor en tu red (ej: `http://192.168.1.100:5000`)
-
-### 9.2 Parámetros financieros
-
-**Tasa de mora:** porcentaje mensual que se aplica como interés por pago tardío. Se ingresa como número entero o decimal (ej: `7` para 7% mensual, `3.5` para 3,5%).
-
-**Día de vencimiento:** día del mes en que vencen las expensas. Por ejemplo, `15` significa que el día 15 de cada mes vencen las boletas. Si un propietario paga el día 16 o después sin haber pagado antes, se aplica la mora corriente.
-
-**Monto Fondo de Reserva:** cuánto aporta cada mes el edificio al fondo de reserva. Se distribuye entre todas las unidades según su porcentaje. El sistema crea automáticamente este gasto cada mes.
-
-### 9.3 Gastos Recurrentes
-
-Conceptos que se repiten cada mes. Configurarlos tiene dos ventajas:
-1. El sistema te muestra un panel de estado para saber si los cargaste o no
-2. Al cargar una factura con descripción coincidente, el gasto se registra automáticamente
-
-Para agregar uno: Configuración → sección Gastos Recurrentes → ingresar nombre y categoría.
-
-### 9.4 Proveedores
-
-El directorio de proveedores te permite:
-- Tener una lista de tus proveedores habituales
-- Asociar cada proveedor a un gasto recurrente (para que al seleccionar el proveedor en una factura, se complete automáticamente la categoría)
-
-### 9.5 Checkpoint (respaldo temporal)
-
-El sistema permite crear un "punto de restauración" antes de hacer cambios importantes:
-
-1. Ir a Configuración → sección Checkpoint
-2. Clic en **Crear Checkpoint**
-3. Optionalmente agregar una descripción
-4. El sistema guarda una copia del estado actual
-
-Si algo sale mal, podés hacer **Rollback** para volver al estado del checkpoint.
-
-Los checkpoints expiran automáticamente a los **30 días**.
-
-### 9.6 Múltiples consorcios
-
-Si administrás más de un edificio, el sistema permite tener varios consorcios:
-
-1. En el menú ir a **Consorcios**
-2. Clic en **Nuevo Consorcio**
-3. Cada consorcio tiene sus propios datos, unidades, gastos y caja completamente separados
-4. Para cambiar de consorcio, clic en su nombre en la lista
-
-El período seleccionado en el navbar aplica al consorcio activo.
-
-### 9.7 Log de movimientos (auditoría)
-
-El sistema registra automáticamente todos los cambios realizados (quién hizo qué y cuándo). Los administradores pueden:
-- Ver el historial completo de cambios
-- Revertir operaciones individuales si se cometió un error
-
-Disponible en Configuración → sección Log de Movimientos.
+- **Unidades:** datos de cada UF, propietario e inquilino con mail y celular, por dónde se le envían los avisos,
+  porcentaje por categoría, si está activa y su deuda inicial. Desde acá se emite el **libre deuda**.
+- **Plano:** vista del edificio con el estado de cada unidad (al día, con deuda, sin liquidar).
+- **Estado de cuenta:** historial de liquidaciones y pagos de cada unidad.
+- **Apertura:** saldo inicial de caja, saldo inicial del Fondo de Reserva y deuda inicial por unidad.
 
 ---
 
-## 10. Preguntas Frecuentes
+## 13. Vencimientos y alertas
 
-### ¿Por qué la liquidación de octubre muestra gastos de septiembre?
+**Más → Vencimientos y alertas.** Cuando hay algo vencido o por vencer en 7 días, el menú **Más** muestra un
+número en rojo.
 
-Porque el sistema usa **liquidación a mes vencido**: la boleta de octubre refleja lo que se gastó en septiembre. Es la forma estándar de administración de consorcios en Argentina, donde las expensas se calculan sobre gastos ya conocidos y verificados.
+**Registrar un vencimiento:** elegís el tipo, la fecha de inicio (por ejemplo, el día que recibiste el pedido)
+y el sistema calcula el vencimiento con el plazo legal:
 
----
+| Tipo | Plazo |
+|---|---|
+| Rendición de cuentas anual (CCyC 2067 e) | 60 días corridos desde el cierre del ejercicio |
+| Entrega de documentación por renuncia o remoción (2067 j) | 15 días hábiles |
+| Comunicar un reclamo administrativo o judicial (2067 k) | 48 horas hábiles |
+| Certificado de deuda solicitado (2067 l) | 3 días hábiles |
+| Pedido de acceso a datos personales (Ley 25.326) | 10 días corridos |
+| Rectificación o supresión de datos personales | 5 días hábiles |
+| Certificado de seguridad del ascensor (Ord. 8.661) | 1 mes (cuenta solo el último registrado) |
+| Póliza de seguro / Otro | La fecha que indiques |
 
-### Cargué un gasto en el mes equivocado. ¿Qué hago?
+Los días hábiles se cuentan de lunes a viernes **sin descontar feriados**: verificalos. Cuando se cumple,
+marcalo como **cumplido** con la fecha.
 
-1. Ir a **Gastos Mensuales** y seleccioná el período donde lo cargaste
-2. Eliminá el gasto incorrecto
-3. Cambiá al período correcto
-4. Cargalo nuevamente
+**Alertas automáticas:**
+- Mandato del administrador vencido o por vencer (60 días).
+- Registro de administradores (Ord. 9.131) sin inscripción confirmada. "En trámite" no equivale a inscripto.
+- Rendición anual pendiente, según el cierre del ejercicio. Se puede registrar con un botón.
+- Ascensor sin certificado registrado.
 
-Si la liquidación del mes siguiente ya está cerrada, necesitás reabrirla para que el cambio tenga efecto.
-
----
-
-### Una unidad quiere pagar en cuotas o hizo un pago parcial. ¿Cómo lo registro?
-
-Al registrar el pago, ingresá el **monto real que pagó**. El sistema calcula automáticamente el saldo pendiente:
-
-```
-Saldo pendiente = Total a pagar - Monto pagado
-```
-
-El mes siguiente, ese saldo pendiente aparece como "Deuda anterior" en la liquidación de esa unidad.
-
----
-
-### ¿Cómo eximo a una unidad de pagar intereses?
-
-En la pantalla de Liquidación, buscá la fila de esa unidad y marcá el checkbox **"Sin interés"**. El sistema recalcula el total sin aplicar mora, y guarda ese flag para que no se pierda al recalcular.
+Las alertas ayudan a no olvidar plazos, pero **no reemplazan** las comunicaciones ni los trámites que corresponden.
 
 ---
 
-### La suma de los porcentajes no da 100%. ¿Qué pasa?
+## 14. Notificaciones, recibos y libre deuda
 
-El sistema te va a avisar con un error o advertencia. Revisá los porcentajes de todas las unidades y ajustalos para que sumen exactamente 100%. Podés usar decimales (ej: 33.33%) si el edificio tiene unidades de igual tamaño.
-
----
-
-### Cerré una liquidación por error. ¿Puedo reabrirla?
-
-Sí. En la pantalla de Liquidación, con el período correspondiente seleccionado, hacé clic en el botón **"Reabrir"**. Esto cambia el estado a ABIERTA y podés volver a editarla.
+- **Notificaciones:** mensajes y archivos a propietarios e inquilinos por WhatsApp o mail.
+- **Verificar recibo:** cada recibo tiene un QR. Al escanearlo, la página dice si el recibo es válido o
+  fue alterado. También se puede ingresar el código a mano en **Más → Verificar recibo**.
+- **Libre deuda:** se emite desde Unidades cuando la unidad pagó en total la última liquidación cerrada.
+  Es un certificado numerado, con validez en días y QR de verificación, y se puede anular.
 
 ---
 
-### ¿Cómo sé si una unidad tiene mora corriente?
+## 15. Configuración
 
-La mora corriente se aplica automáticamente cuando:
-1. Hoy es mayor que el día de vencimiento configurado (ej: día 15)
-2. La unidad no tiene pago registrado para ese período
-
-Si hoy es 20 de octubre y el vencimiento es el 15, todas las unidades sin pago van a tener mora corriente en la liquidación.
-
----
-
-### ¿Qué pasa si el primer mes la unidad ya tenía deuda?
-
-Eso se configura en **Apertura / Saldos Iniciales**. Ingresás el saldo de cada unidad con signo negativo para las deudas. El sistema lo toma como "deuda anterior" en la primera liquidación.
-
-Ejemplo: la unidad 4A tenía $15.000 de deuda antes de empezar a usar el sistema. Ingresás `-15000` como saldo inicial. En la primera liquidación, ese monto aparece como "Deuda anterior".
-
----
-
-### ¿Cómo verifico si un recibo es auténtico?
-
-Cada recibo PDF tiene un código QR al pie. Escaneándolo con el celular, vas a una página que confirma si el recibo es genuino (emitido por el sistema) o si fue alterado.
-
-También podés ir manualmente a la dirección del sistema y agregar `/verificar` al final para ingresar el código manualmente.
+| Tarjeta | Contenido |
+|---|---|
+| Fecha del sistema | Trabajar como si hoy fuera otro día (o volver a la fecha real) |
+| Logo | Aparece en la barra y en los PDF |
+| Datos del Edificio | Nombre, dirección, cuenta, administrador, contacto, día de vencimiento, aporte al fondo |
+| Intereses por mora | Historial de tasas con vigencia y fundamento, switch de capitalización |
+| Administración | CUIT, domicilio, mandato, registro de administradores, cierre del ejercicio, ascensor |
+| Resumen de expensas (PDF) | Días, horario y lugar de cobro, texto de anuncio, validez del libre deuda |
+| Verificación de recibos | URL de la app para los QR |
+| Gastos recurrentes / Categorías | Conceptos de todos los meses y categorías de porcentaje |
+| Checkpoint | Punto de restauración por 30 días, con rollback |
+| Log de Movimientos | Solo admin (sección 16) |
 
 ---
 
-### El proveedor me mandó la factura tarde y ya cerré la liquidación. ¿Qué hago?
+## 16. Herramientas del administrador
 
-Tenés dos opciones:
-
-**Opción A:** Registrá la factura en el mes actual (no en el cerrado) y cargá el gasto manualmente en el mes correcto:
-1. Reabrir la liquidación del mes cerrado
-2. Agregar el gasto
-3. Recalcular la liquidación
-4. Cerrarla nuevamente
-
-**Opción B:** Si el impacto es menor, podés simplemente registrar la factura en el mes actual sin modificar el pasado. El gasto afectará la liquidación del mes siguiente.
-
----
-
-### ¿Puedo hacer un backup de los datos?
-
-Sí. En la barra de navegación hay un botón de **Backup** (ícono de descarga). Descarga un archivo ZIP con todos los datos del consorcio activo, incluyendo los comprobantes adjuntos de facturas. Guardá este archivo en un lugar seguro periódicamente.
+- **Usuarios:** habilitar o deshabilitar cuentas, dar o quitar el rol de admin y elegir a qué consorcios
+  accede cada uno. Los cambios tienen efecto en el acto.
+- **Log de Movimientos:** quién cambió qué y cuándo (180 días). Una operación se puede **revertir** si no
+  toca un período con liquidación cerrada y nadie la modificó después. La reversión también queda registrada.
+- **Exportación completa** (Más → Exportación completa): un ZIP con todas las tablas del consorcio en CSV
+  (se abren con Excel) y JSON, el Log de Movimientos, los comprobantes de facturas y un LEEME.
+  - **Para qué:** respaldo y cambio de administración.
+  - **Cuidado:** tiene datos personales, así que hay que guardarlo con cuidado.
+  - **Qué no es:** no reemplaza los libros rubricados.
+- **Crear o eliminar consorcios y resetear datos:** solo admin. Eliminar un consorcio borra **todos** sus
+  datos y no se puede revertir.
 
 ---
 
-### ¿Cómo funciona el Fondo de Reserva?
+## 17. Preguntas frecuentes
 
-El Fondo de Reserva es dinero que el consorcio ahorra mensualmente para gastos extraordinarios (ej: refacción del ascensor, impermeabilización de la terraza).
+**¿Por qué la liquidación de octubre muestra gastos de septiembre?**
+Porque se liquida a mes vencido: se cobra lo ya gastado y conocido.
 
-- Cada mes el sistema agrega automáticamente un gasto de tipo FONDO_RESERVA con el monto configurado
-- Ese monto se distribuye entre todas las unidades según su porcentaje (igual que cualquier gasto)
-- Cuando usás el fondo para pagar algo, registrás ese gasto como VARIABLE_FR
-- Los gastos VARIABLE_FR no se suman al cálculo de expensas (ya los pagó el fondo)
+**Cargué un gasto en el mes equivocado.**
+Si la liquidación que lo cobra sigue abierta, editalo o borralo y cargalo en el mes correcto. Si ya
+está cerrada, no se puede tocar: cargalo en el mes actual.
 
-El saldo del fondo se muestra en la pantalla de Liquidación.
+**Llegó una factura tarde y la liquidación ya está cerrada.**
+Cargala en el mes actual. El gasto se cobra en la liquidación siguiente.
+
+**¿Cómo registro un pago parcial?**
+En Cobranzas, cargá el monto real. Lo que falta pasa como deuda anterior al mes siguiente.
+
+**¿Cómo no le cobro interés a una unidad?**
+Al cerrar la liquidación, apagá el switch de esa unidad en la ventana de intereses.
+
+**¿Por qué el interés es menor que "tasa × deuda anterior"?**
+Porque la deuda anterior puede incluir intereses impagos de meses anteriores, y sobre esos no se cobra
+interés. La ventana de cierre muestra cuánto es capital y cuánto intereses.
+
+**Cambió la tasa de mora.**
+Registrala en Configuración → Intereses por mora con la fecha desde la que rige y el acta. Las
+liquidaciones ya cerradas no cambian.
+
+**¿Cuánto hay en el Fondo de Reserva?**
+Más → Fondo de Reserva. El número que importa es el **saldo efectivo**; lo pendiente de cobro todavía no es dinero.
+
+**Cerré una liquidación por error.**
+Un administrador puede reabrirla si no tiene pagos y la siguiente sigue abierta.
+
+**¿Cómo hago un respaldo?**
+Un administrador lo descarga en Más → Exportación completa.
+
+**¿Cómo sé si un recibo es auténtico?**
+Escaneá el QR del recibo o ingresá el código en Más → Verificar recibo.
 
 ---
 
-### ¿Puedo agregar una nota o comunicado en la liquidación?
-
-Sí. En la pantalla de Liquidación hay una sección para agregar **Notas del Período**. Estas notas aparecen en el PDF resumen que se puede entregar a los propietarios. Usá tipo AVISO para información urgente e INFO para comunicaciones generales.
-
----
-
-*Para soporte técnico o consultas sobre el sistema, contactar al administrador técnico.*
+*Este sistema ayuda a cumplir las obligaciones de la administración, pero no reemplaza el asesoramiento
+jurídico y contable ni los libros y trámites exigidos por la ley.*
