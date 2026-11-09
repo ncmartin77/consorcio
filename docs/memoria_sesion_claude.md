@@ -14,7 +14,7 @@
 | **Deploy** | https://consorcio-soo4.onrender.com (Render.com free tier, auto-deploy desde master) |
 | **Directorio local** | `/home/norberto/consorcio` |
 | **Git en WSL** | `"/mnt/c/Program Files/Git/bin/git.exe"` (siempre con ruta completa) |
-| **Version actual** | `9.7-0811` (en `version.txt`) |
+| **Version actual** | `9.8-0911` (en `version.txt`) |
 | **Supabase Project ID** | `eboskmenitazzwfobwkiq` (region: ca-central-1) |
 | **MCP Supabase config** | `~/.mcp.json` (token `sb_secret_*` en `headers.Authorization`) |
 | **Consorcio activo en DB** | `consorcio_id = '28693516'` |
@@ -74,6 +74,7 @@
 - **`get_facturas()`** devuelve tupla `(lista, total)` — no olvidar el unpacking.
 - **`get_caja()`** devuelve tupla `(lista, total)`.
 - **`tojson` en `onclick`**: NO usar `{{ obj|tojson }}` dentro de atributos HTML con comillas dobles — usar atributos `data-*` en su lugar.
+- **Seguridad** (v9.8, 09/11/2026): cuentas nuevas de Google quedan INACTIVAS hasta que un admin las habilite; crear/eliminar consorcio y resetear datos solo admin; CSRF por Origin/Referer + cookie SameSite=Lax; rol admin refrescado en cada pedido; SECRET_KEY obligatoria en Render; validaciones de importes con `_importe()` en app.py; gastos de periodo cerrado bloqueados en el servidor. Ver seccion Seguridad en CLAUDE.md.
 - **Gasto vinculado a su factura** (v9.4, pedido del usuario): `gastos.factura_id`; pagar reutiliza el gasto vinculado (no duplica); borrar la factura deja el gasto sin vinculo y se puede re-emitir desde Gastos Mensuales (boton en todo gasto sin factura). `facturas.observacion` = nota del pago. Fix: factura sin proveedor daba 500.
 - **Pagar factura con el fondo** (v9.3, pedido del usuario): switch "Pagar con Fondo de Reserva" en el modal de pago de Facturas; `pagar_factura(..., con_fondo=True)` deja factura y caja con categoria FONDO_RESERVA y el gasto como VARIABLE_FR (no entra en la liquidacion). Recurrente: el gasto FIJO ya cargado pasa a VARIABLE_FR.
 - **FONDO_RESERVA**: `save_gasto` fue corregido para permitir actualizar solo el importe (antes bloqueaba edicion).

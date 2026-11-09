@@ -2395,9 +2395,11 @@ def get_or_create_usuario(google_id: str, email: str, nombre: str, foto_url: str
         return {**dict(r), "nombre": nombre, "foto_url": foto_url}
     count = _fetchone("SELECT COUNT(*) AS n FROM usuarios")
     es_admin = count["n"] == 0
+    # v9.8: una cuenta nueva queda INACTIVA hasta que un admin la habilite (antes cualquier cuenta
+    # de Google entraba). El primer usuario del sistema es admin y queda activo.
     _exec(
-        "INSERT INTO usuarios (email, nombre, google_id, foto_url, es_admin, activo) VALUES (%s,%s,%s,%s,%s,TRUE)",
-        (email, nombre, google_id, foto_url, es_admin),
+        "INSERT INTO usuarios (email, nombre, google_id, foto_url, es_admin, activo) VALUES (%s,%s,%s,%s,%s,%s)",
+        (email, nombre, google_id, foto_url, es_admin, es_admin),
     )
     return dict(_fetchone("SELECT * FROM usuarios WHERE google_id = %s", (google_id,)))
 

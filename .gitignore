@@ -20,3 +20,10 @@ desktop.ini
 
 # Índice de consorcios (dato por máquina, no se versiona)
 _consorcios.json
+
+# Secretos y archivos privados (v9.8): nunca versionar (el repo es público)
+.env
+.env.local
+.env.*.local
+privado/
+gen_nov.py

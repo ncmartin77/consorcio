@@ -9,7 +9,7 @@ import hmac as _hmac_mod
 import hashlib
 import calendar as _cal
 from datetime import date
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, session, g
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, session, g, abort
 import io
 from authlib.integrations.flask_client import OAuth
 
@@ -17,7 +17,22 @@ import pg_db as db
 from pdf_gen import generar_pdf_liquidacion, generar_pdf_resumen_edificio, generar_recibo_pago, generar_libre_deuda
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "edificio-brasil-secret-2024")
+# Seguridad (v9.8): SECRET_KEY obligatoria en el servidor (Render define RENDER=true). Sin ella,
+# cualquiera podría firmar una sesión de admin. En una PC local sin SECRET_KEY se usa una clave
+# aleatoria por proceso (las sesiones se cierran al reiniciar la app).
+_secret = os.environ.get("SECRET_KEY", "").strip()
+if not _secret:
+    if os.environ.get("RENDER"):
+        raise RuntimeError("Falta la variable de entorno SECRET_KEY: la app no arranca sin ella en el servidor.")
+    import secrets as _secrets
+    _secret = _secrets.token_hex(32)
+app.secret_key = _secret
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",                         # el navegador no la manda en POST de otros sitios
+    SESSION_COOKIE_SECURE=bool(os.environ.get("RENDER")),  # solo por HTTPS en el servidor
+    MAX_CONTENT_LENGTH=16 * 1024 * 1024,                   # subidas de hasta 16 MB
+)
 
 oauth = OAuth(app)
 google = oauth.register(
@@ -57,6 +72,45 @@ def _token_recibo_publico(clave: str, cid: str, periodo: str, unidad: str) -> st
 _ADMIN_ENDPOINTS = {"admin_usuarios", "admin_toggle_activo", "admin_toggle_admin", "admin_set_permisos"}
 
 
+def _importe(valor, minimo: float = 0.0, cero: bool = True):
+    """
+    Importe de un formulario validado en el servidor (v9.8): número finito (no "nan"/"inf"),
+    >= minimo y, si cero=False, distinto de 0. Devuelve el float redondeado o None si no es válido.
+    """
+    import math
+    try:
+        v = float(str(valor if valor is not None else "").strip().replace(",", "."))
+    except ValueError:
+        return None
+    if not math.isfinite(v) or v < minimo or (not cero and v == 0):
+        return None
+    return round(v, 2)
+
+
+def _mismo_origen(url: str) -> bool:
+    from urllib.parse import urlsplit
+    return urlsplit(url).netloc.lower() == request.host.lower()
+
+
+@app.before_request
+def _proteccion_csrf():
+    """
+    CSRF (v9.8): un POST/PUT/PATCH/DELETE solo se acepta si viene de esta misma app. Los navegadores
+    mandan el encabezado Origin (o Referer) en esos pedidos; si es de otro sitio se rechaza.
+    Se suma a la cookie de sesión SameSite=Lax.
+    """
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return
+    origen = request.headers.get("Origin")
+    if origen and origen != "null":
+        if not _mismo_origen(origen):
+            abort(403)
+        return
+    referer = request.headers.get("Referer")
+    if referer and not _mismo_origen(referer):
+        abort(403)
+
+
 @app.before_request
 def _authenticate():
     if request.endpoint in _PUBLIC_ENDPOINTS or request.endpoint is None:
@@ -67,8 +121,10 @@ def _authenticate():
     u = db.get_usuario(uid)
     if not u or not u["activo"]:
         session.clear()
-        flash("Tu cuenta está desactivada. Contactá al administrador.", "warning")
+        flash("Tu cuenta está desactivada o pendiente de aprobación. Contactá al administrador.", "warning")
         return redirect(url_for("login"))
+    # El rol se toma siempre de la base: quitar el admin tiene efecto en el acto (v9.8)
+    session["es_admin"] = bool(u["es_admin"])
     g.usuario = u
 
 
@@ -277,6 +333,9 @@ def consorcios():
 
 @app.route("/consorcios/nuevo", methods=["POST"])
 def nuevo_consorcio():
+    block = _require_admin()
+    if block:
+        return block
     nombre = request.form.get("nombre", "").strip()
     descripcion = request.form.get("descripcion", "").strip()
     if not nombre:
@@ -306,6 +365,9 @@ def abrir_consorcio(cid):
 
 @app.route("/consorcios/<cid>/eliminar", methods=["POST"])
 def eliminar_consorcio(cid):
+    block = _require_admin()
+    if block:
+        return block
     c = db.get_consorcio(cid)
     if not c:
         flash("Consorcio no encontrado.", "danger")
@@ -313,7 +375,7 @@ def eliminar_consorcio(cid):
     db.delete_consorcio(cid)
     if session.get("consorcio_id") == cid:
         session.pop("consorcio_id", None)
-    flash(f"Consorcio «{c['nombre']}» eliminado del índice (los datos quedan en disco).", "info")
+    flash(f"Consorcio «{c['nombre']}» eliminado con todos sus datos.", "info")
     return redirect(url_for("consorcios"))
 
 
@@ -348,7 +410,8 @@ def auth_callback():
         foto_url=info.get("picture", ""),
     )
     if not u["activo"]:
-        flash("Tu cuenta está desactivada. Contactá al administrador.", "warning")
+        flash(f"Tu cuenta ({u['email']}) está pendiente de aprobación o desactivada. "
+              "Pedile al administrador que la habilite.", "warning")
         return redirect(url_for("login"))
     session["usuario_id"] = u["id"]
     session["usuario_email"] = u["email"]
@@ -693,7 +756,7 @@ def save_unidad():
         "inquilino": request.form.get("inquilino", "").strip(),
         "activo": 1 if request.form.get("activo") else 0,
         "piso": request.form.get("piso", "").strip(),
-        "deuda_inicial": float(deuda_ini) if deuda_ini else 0.0,
+        "deuda_inicial": _importe(deuda_ini or "0", minimo=float("-inf")),  # negativo = saldo a favor
         "deuda_inicial_fecha": request.form.get("deuda_inicial_fecha", "").strip() or None,
         "propietario_mail":    request.form.get("propietario_mail", "").strip(),
         "propietario_celular": request.form.get("propietario_celular", "").strip(),
@@ -704,11 +767,14 @@ def save_unidad():
     }
     for cat in categorias:
         key = f"pct_{cat['nombre']}"
-        val = request.form.get(key, "0").strip()
-        try:
-            data[key] = float(val) if val else 0.0
-        except ValueError:
-            data[key] = 0.0
+        val = _importe(request.form.get(key, "0").strip() or "0")
+        if val is None or val > 100:
+            flash(f"El porcentaje {cat['nombre']} debe ser un número entre 0 y 100.", "danger")
+            return redirect(url_for("unidades"))
+        data[key] = val
+    if data["deuda_inicial"] is None:
+        flash("La deuda inicial debe ser un número.", "danger")
+        return redirect(url_for("unidades"))
 
     if not data["numero"]:
         flash("El número de unidad es obligatorio.", "danger")
@@ -875,13 +941,35 @@ def save_gasto():
     row_num = request.form.get("row_num")
     usar_fondo_reserva = request.form.get("usar_fondo_reserva") == "1"
 
-    try:
-        importe = float(importe.replace(",", "."))
-    except ValueError:
-        importe = 0.0
+    importe = _importe(importe)
+    if importe is None:
+        flash("El importe debe ser un número mayor o igual a cero.", "danger")
+        return redirect(url_for("gastos", periodo=periodo))
+    tipo = (tipo or "FIJO").strip()[:30] or "FIJO"
 
     if not concepto:
         flash("El concepto es obligatorio.", "danger")
+        return redirect(url_for("gastos", periodo=periodo))
+
+    # Período cerrado (v9.8): no se cargan ni modifican gastos de una liquidación CERRADA,
+    # aunque el formulario se mande a mano (antes solo lo impedía la pantalla).
+    periodos = {periodo}
+    previo = None
+    if row_num and str(row_num).isdigit():
+        previo = db._fetchone("SELECT periodo, tipo FROM gastos WHERE id=%s AND consorcio_id=%s",
+                              (int(row_num), db._cid()))
+        if not previo:
+            flash("Gasto no encontrado.", "warning")
+            return redirect(url_for("gastos", periodo=periodo))
+        periodos.add(previo["periodo"].strip())
+    cerrados = sorted(p for p in periodos if db.liq_esta_cerrada(db._next_periodo(p)))
+    if cerrados:
+        flash(f"Los gastos de {', '.join(cerrados)} ya están en una liquidación cerrada: no se pueden modificar.",
+              "danger")
+        return redirect(url_for("gastos", periodo=periodo))
+    # El aporte al fondo (FONDO_RESERVA) lo crea el sistema: no se carga a mano
+    if tipo == "FONDO_RESERVA" and not (previo and previo["tipo"] == "FONDO_RESERVA"):
+        flash("Tipo de gasto inválido.", "danger")
         return redirect(url_for("gastos", periodo=periodo))
 
     # Extraordinario: pagado con el fondo (VARIABLE_FR, no se cobra y se descuenta del fondo)
@@ -916,6 +1004,11 @@ def modo_extraordinario(gid, modo):
 
 @app.route("/gastos/delete/<int:row_num>/<periodo>", methods=["POST"])
 def delete_gasto(row_num, periodo):
+    previo = db._fetchone("SELECT periodo FROM gastos WHERE id=%s AND consorcio_id=%s", (row_num, db._cid()))
+    if previo and db.liq_esta_cerrada(db._next_periodo(previo["periodo"].strip())):
+        flash(f"Los gastos de {previo['periodo'].strip()} ya están en una liquidación cerrada: "
+              "no se pueden borrar.", "danger")
+        return redirect(url_for("gastos", periodo=periodo))
     db.delete_gasto(row_num)
     _recalcular_liq_si_posible(periodo)
     return redirect(url_for("gastos", periodo=periodo))
@@ -1007,13 +1100,15 @@ def save_movimiento():
     descripcion = request.form.get("descripcion", "").strip()
     tipo = request.form.get("tipo", "ENTRADA")
     categoria = request.form.get("categoria", "").strip()
-    importe = request.form.get("importe", "0")
+    importe = _importe(request.form.get("importe", "0"), cero=False)
     row_num = request.form.get("row_num")
 
-    try:
-        importe = float(importe.replace(",", "."))
-    except ValueError:
-        importe = 0.0
+    if tipo not in ("ENTRADA", "SALIDA"):
+        flash("Tipo de movimiento inválido.", "danger")
+        return redirect(url_for("caja", periodo=periodo))
+    if importe is None:
+        flash("El importe debe ser un número mayor a cero.", "danger")
+        return redirect(url_for("caja", periodo=periodo))
 
     if not fecha or not descripcion:
         flash("Fecha y descripción son obligatorios.", "danger")
@@ -1231,10 +1326,8 @@ def cobranzas(periodo=None):
 @app.route("/cobranzas/<periodo>/pagar/<unidad>", methods=["POST"])
 def cobranzas_pagar(periodo, unidad):
     def _num(campo):
-        try:
-            return float((request.form.get(campo) or "0").strip().replace(",", "."))
-        except ValueError:
-            return 0.0
+        v = _importe(request.form.get(campo) or "0")
+        return v if v is not None else 0.0  # inválido / negativo / "nan" → 0 (el pago con 0 se rechaza)
     fecha_pago = request.form.get("fecha_pago") or _fecha_hoy().strftime("%Y-%m-%d")
     monto, bonif = _num("monto_pagado"), _num("bonificacion")
     res = db.registrar_pago(periodo, unidad, monto, fecha_pago, bonif,
@@ -1313,9 +1406,8 @@ def extras_add(periodo):
     monto_str = request.form.get("monto", "0").replace(",", ".")
     if not unidad or not descripcion:
         return jsonify({"error": "Unidad y descripción requeridos"}), 400
-    try:
-        monto = float(monto_str)
-    except ValueError:
+    monto = _importe(monto_str, minimo=float("-inf"), cero=False)  # puede ser negativo (descuento)
+    if monto is None:
         return jsonify({"error": "Monto inválido"}), 400
     eid = db.add_gasto_extra(periodo, unidad, descripcion, monto)
     # Si la liquidación está abierta, regenerar para actualizar totales
@@ -1614,7 +1706,7 @@ def save_factura():
         "proveedor_id": prov_id,
         "proveedor_nombre": prov["nombre"] if prov else request.form.get("proveedor_nombre", "").strip(),
         "descripcion": request.form.get("descripcion", "").strip(),
-        "importe": float(importe) if importe else 0.0,
+        "importe": _importe(importe, cero=False),
         "estado": "PENDIENTE",
         "fecha_pago": None,
         "categoria": request.form.get("categoria", "").strip(),
@@ -1622,6 +1714,19 @@ def save_factura():
         "extraordinario": 1 if request.form.get("extraordinario") else 0,
         "gasto_id": request.form.get("gasto_id", "").strip() or None,
     }
+    if data["importe"] is None:
+        flash("El importe de la factura debe ser un número mayor a cero.", "danger")
+        return redirect(url_for("facturas"))
+    if data["id"]:
+        # La pantalla no edita facturas; un pedido armado a mano no puede "despagar" una factura
+        # pagada (dejaría su salida de Caja y su gasto sin factura pagada) (v9.8).
+        existente = db.get_factura_by_id(data["id"]) if str(data["id"]).isdigit() else None
+        if not existente:
+            flash("Factura no encontrada.", "danger")
+            return redirect(url_for("facturas"))
+        if existente.get("estado") == "PAGADA":
+            flash("No se puede modificar una factura pagada.", "danger")
+            return redirect(url_for("facturas"))
     if not data["descripcion"] or not data["fecha"]:
         flash("Fecha y descripción son obligatorias.", "danger")
         return redirect(url_for("facturas"))
@@ -1634,7 +1739,19 @@ def save_factura():
 @app.route("/facturas/pagar/<int:fid>", methods=["POST"])
 def pagar_factura(fid):
     fecha_pago = request.form.get("fecha_pago") or _fecha_hoy().strftime("%Y-%m-%d")
+    try:
+        date.fromisoformat(fecha_pago)
+    except ValueError:
+        flash("Fecha de pago inválida.", "danger")
+        return redirect(url_for("facturas"))
+    if db.caja_mes_bloqueado(fecha_pago[:7]):
+        flash(f"La Caja de {fecha_pago[:7]} está cerrada (se cerró la liquidación que lleva esos gastos): "
+              "no se puede registrar el pago con esa fecha.", "danger")
+        return redirect(url_for("facturas"))
     factura = db.get_factura_by_id(fid)
+    if factura and factura.get("estado") == "PAGADA":
+        flash("La factura ya está pagada.", "warning")
+        return redirect(url_for("facturas"))
     if factura:
         fecha_emision = str(factura.get("fecha") or "")
         if fecha_emision and fecha_pago < fecha_emision:
@@ -1776,19 +1893,20 @@ def estado_cuenta():
 def apertura():
     if request.method == "POST":
         saldo_raw = request.form.get("saldo_inicial_caja", "0").replace(",", ".")
-        try:
-            saldo_inicial = float(saldo_raw)
-        except ValueError:
-            saldo_inicial = 0.0
+        saldo_inicial = _importe(saldo_raw or "0", minimo=float("-inf"))
+        if saldo_inicial is None:
+            flash("El saldo inicial de caja debe ser un número.", "danger")
+            return redirect(url_for("apertura"))
         deudas = {}
         fechas = {}
         for key, val in request.form.items():
             if key.startswith("deuda_"):
                 numero = key[6:]
-                try:
-                    deudas[numero] = float(val.replace(",", ".")) if val.strip() else 0.0
-                except ValueError:
-                    deudas[numero] = 0.0
+                v = _importe(val.strip() or "0", minimo=float("-inf"))  # negativo = saldo a favor
+                if v is None:
+                    flash(f"La deuda inicial de la UF {numero} debe ser un número.", "danger")
+                    return redirect(url_for("apertura"))
+                deudas[numero] = v
             elif key.startswith("fecha_deuda_"):
                 numero = key[12:]
                 fechas[numero] = val.strip() or None
@@ -1912,6 +2030,9 @@ def backup():
 
 @app.route("/config/reset", methods=["POST"])
 def reset_datos():
+    block = _require_admin()
+    if block:
+        return block
     db.reset_datos_operativos()
     flash("Datos reseteados: liquidaciones, gastos y caja borrados.", "success")
     return redirect(url_for("config"))
@@ -2043,4 +2164,6 @@ def _fecha_fijada_segura() -> str:
 if __name__ == "__main__":
     db.sync_from_drive()
     host = os.environ.get("APP_HOST", "127.0.0.1")
-    app.run(debug=True, host=host, port=5000)
+    # Modo debug solo si la app escucha únicamente en esta PC: en la red local (iniciar_red.bat,
+    # 0.0.0.0) la consola de depuración quedaría accesible desde otras computadoras.
+    app.run(debug=host in ("127.0.0.1", "localhost"), host=host, port=5000)

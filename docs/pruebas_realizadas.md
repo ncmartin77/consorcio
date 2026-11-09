@@ -22,6 +22,30 @@ Las más recientes van primero. Los scripts para repetirlas están en [`pruebas/
 
 ---
 
+## v9.8-0911 — Arreglos de seguridad (09/11/2026)
+
+`pruebas/probar_seguridad.py` contra la base de prueba. Resultado: **24/24 OK**; la base quedó como al inicio (usuario de prueba borrado; la liquidación 2026-10 se cerró solo durante la prueba y volvió a ABIERTA). Se repitieron `probar_factura_vinculo.py` (16/16), `probar_factura_con_fondo.py` (14/14), `probar_pdf_planilla.py` (15/15) y `probar_cobranzas.py`.
+
+| Caso | Esperado | Resultado |
+|---|---|---|
+| Cuenta nueva de Google | inactiva, no admin, la manda al login | ✅ |
+| Usuario no admin: eliminar consorcio / crear consorcio / resetear datos | rechazado, sin cambios | ✅ |
+| Sesión con es_admin=True pero la base dice no admin | el rol se refresca, sin acceso a administración | ✅ |
+| POST con Origin o Referer de otro sitio | 403 | ✅ |
+| POST del mismo sitio | pasa | ✅ |
+| Gasto con importe nan / inf / -50 / texto | rechazado | ✅ |
+| Gasto FONDO_RESERVA cargado a mano | rechazado | ✅ |
+| Caja con tipo inválido o importe inf | rechazado | ✅ |
+| Factura con importe negativo | rechazada | ✅ |
+| Factura pagada reenviada a mano con su id | sigue PAGADA, sin cambios | ✅ |
+| Pagar dos veces la misma factura | una sola salida en Caja | ✅ |
+| Apertura con saldo nan | rechazada, sin cambios | ✅ |
+| Pago de expensas con monto nan | rechazado | ✅ |
+| Cargar / borrar gasto de un período con liquidación cerrada | rechazado | ✅ |
+| Servidor (RENDER=true) sin SECRET_KEY | la app no arranca | ✅ |
+
+---
+
 ## v9.6-0811 — Planilla de liquidación horizontal (08/11/2026)
 
 `pruebas/probar_pdf_planilla.py` contra la base de prueba: descarga el PDF de las liquidaciones 2026-10, 2026-11 y 2026-12. Resultado: **15/15 OK**. Además se renderizaron las páginas a imagen y se revisaron a ojo (también una variante con interés ficticio en 2 UF, generada en memoria sin tocar la base).

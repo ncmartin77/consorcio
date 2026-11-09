@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 9.7-0811
+**Versión actual:** 9.8-0911
 
 ---
 
@@ -336,10 +336,27 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v9.x — Cobranzas separada de Liquidación
 
+#### v9.8-0911 — Arreglos de seguridad
+
+**Lanzamiento:** 9 de noviembre
+**Versión actual**
+
+**Cambios (revisión de seguridad pedida por el usuario):**
+
+- **Crítico — cuentas nuevas:** una cuenta de Google nueva queda **inactiva** hasta que un admin la habilite (antes cualquier cuenta entraba). El primer usuario del sistema sigue siendo admin.
+- **Crítico/alto — permisos:** crear y eliminar consorcios y "Resetear datos" exigen ser **admin** (antes cualquier usuario logueado podía borrar un consorcio entero, que borra en cascada todos sus datos y no se puede revertir desde el Log).
+- **Alto — CSRF:** los POST que vienen de otro sitio (encabezado Origin/Referer distinto) se rechazan con 403; cookie de sesión `SameSite=Lax`, `HttpOnly` y `Secure` en Render.
+- **Medio:** el rol de admin se toma de la base en cada pedido (quitarlo tiene efecto en el acto); `SECRET_KEY` obligatoria en Render (sin ella la app no arranca; ya no hay clave por defecto en el código).
+- **Medio — validaciones del servidor:** importes de gastos, caja, facturas, extras, pagos, unidades y apertura rechazan "nan", "inf", texto y negativos donde no corresponde; tipo de caja solo ENTRADA/SALIDA; el aporte FONDO_RESERVA no se carga a mano; porcentajes entre 0 y 100; no se cargan, editan ni borran gastos de una liquidación **cerrada** (antes solo lo impedía la pantalla); no se paga una factura con fecha en un mes de Caja cerrado ni dos veces; una factura pagada no se puede modificar reenviando el formulario con su id.
+- **Medio:** `iniciar_red.bat` (red local) ya no corre en modo debug.
+- **Bajo:** `.env`, `.env.local`, `privado/` y `gen_nov.py` en `.gitignore`; subidas limitadas a 16 MB.
+- Prueba: `pruebas/probar_seguridad.py` (24/24 OK) y las anteriores sin fallas.
+
+---
+
 #### v9.7-0811 — "MONTO A PAGAR" en la planilla
 
 **Lanzamiento:** 8 de noviembre
-**Versión actual**
 
 **Cambios (pedido del usuario):** en la tabla de UF del PDF de liquidación, la última columna se llama **MONTO A PAGAR** (en mayúsculas) en lugar de "Saldo". Prueba: `pruebas/probar_pdf_planilla.py` 15/15 OK y revisión visual (también con columna Interés).
 

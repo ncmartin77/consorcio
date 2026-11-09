@@ -26,6 +26,16 @@ Actualizar `version.txt` antes de **cada** commit. `DDMM` = día y mes real del 
 - **Antes de subir la versión mayor, consultar al usuario** explicando por qué se propone (ej. "esto cambia la fórmula de mora, propongo 6.0"). Si no confirma, se sube solo la menor. Si el usuario indica una versión mayor explícitamente, usar esa.
 - Registrar cada versión en `docs/historial_versiones.md`.
 
+## Seguridad (v9.8)
+
+- **Accounts:** a new Google account is created INACTIVE (`get_or_create_usuario`); an admin enables it in Administración de usuarios. The very first user is admin and active.
+- **Admin-only:** `nuevo_consorcio`, `eliminar_consorcio` (cascades ALL the consorcio's data, not revertible from the Log) and `reset_datos` call `_require_admin()`. `_authenticate` refreshes `session["es_admin"]` from the DB on every request.
+- **CSRF:** `_proteccion_csrf` (before_request) rejects POST/PUT/PATCH/DELETE whose `Origin` (or `Referer`) host differs from `request.host` (403). Session cookie `SameSite=Lax`, `HttpOnly`, `Secure` on Render. Same-origin `fetch()` calls need no changes.
+- **Secrets:** `SECRET_KEY` is required when `RENDER` is set (the app raises at import); locally a random per-process key is used if missing. `.env*`, `privado/`, `gen_nov.py` are in `.gitignore` (public repo).
+- **Server-side validation:** use `_importe(valor, minimo=0.0, cero=True)` in `app.py` for any amount from a form (rejects nan/inf/text/out of range, returns None). Gastos of a period whose liquidación is CERRADA cannot be saved/edited/deleted (route check); paying a factura checks `caja_mes_bloqueado`.
+- `app.run(debug=...)` only when bound to 127.0.0.1. Uploads limited by `MAX_CONTENT_LENGTH` (16 MB).
+- Test: `pruebas/probar_seguridad.py`.
+
 ## Running the app
 
 **Windows (normal use):**
