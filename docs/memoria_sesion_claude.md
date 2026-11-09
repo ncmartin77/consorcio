@@ -14,7 +14,7 @@
 | **Deploy** | https://consorcio-soo4.onrender.com (Render.com free tier, auto-deploy desde master) |
 | **Directorio local** | `/home/norberto/consorcio` |
 | **Git en WSL** | `"/mnt/c/Program Files/Git/bin/git.exe"` (siempre con ruta completa) |
-| **Version actual** | `10.0-0911` (en `version.txt`) |
+| **Version actual** | `10.1-0911` (en `version.txt`) |
 | **Supabase Project ID** | `eboskmenitazzwfobwkiq` (region: ca-central-1) |
 | **MCP Supabase config** | `~/.mcp.json` (token `sb_secret_*` en `headers.Authorization`) |
 | **Consorcio activo en DB** | `consorcio_id = '28693516'` |
@@ -103,7 +103,11 @@
 
 **Antes de mergear `feat/lineamientos-v10` a `master` (= deploy):**
 - [ ] Confirmar en Render (consorcio → Environment) que existe `SECRET_KEY`: desde la v9.8, sin ella la app NO arranca.
-- [ ] Pruebas: `probar_v10.py` 50/50 (sin los 3 controles de Ayuda agregados despues: correrla de nuevo). Pasaron: cobranzas 44/44, factura_con_fondo 14/14, factura_vinculo 16/16, pdf_planilla 15/15, seguridad 24/24. `probar_fondo_reserva.py` se actualizo a la regla nueva (libro del fondo): correrla de nuevo. Revisar `probar_libre_deuda.py` (fallo: `r.headers["Location"]` sin `ld=`, posiblemente por datos de la base de prueba, no investigado) y `probar_saldo_a_favor.py` (ya estaba rota antes: usa `pg_db._calcular_interes`, que no existe desde la v9.2). Faltaban por correr: liquidacion_estados, anular_pagos, fecha_sistema, periodos_invalidos, saldo_cierre.
+- [ ] Pruebas — resultado al 09/11 (corridas de a una, contra la v10.0):
+  - OK: cobranzas 44/44, factura_con_fondo 14/14, factura_vinculo 16/16, pdf_planilla 15/15, seguridad 24/24; saldo_cierre, liquidacion_estados, anular_pagos y periodos_invalidos terminaron sin errores (revisar su salida completa).
+  - **Correr de nuevo** (se cortaron por falta de red en la PC, no por el codigo): `probar_v10.py` (dio 50/50 antes de agregarle los 3 controles de Ayuda) y `probar_fondo_reserva.py` (ya actualizada a la regla del libro del fondo).
+  - **Pruebas viejas a actualizar** (fallan por cambios ANTERIORES a la v10, no por la v10): `probar_fecha_sistema.py` (usa el switch "sin interes" de Liquidacion, quitado en la v9.2), `probar_libre_deuda.py` (espera emitir con la base de prueba tal cual; desde la v9.0 exige la ultima liquidacion CERRADA y la base de prueba no tiene ninguna), `probar_saldo_a_favor.py` (usa `pg_db._calcular_interes`, que no existe desde la v9.2).
+  - **Limpieza**: como `probar_v10.py` se corto a mitad, puede haber quedado en la base de prueba el consorcio temporal "Prueba v10 lineamientos": borrarlo (`db.delete_consorcio(id)` o desde la app, como admin, en la base de PRUEBA).
 - [ ] Correr las pruebas de a una (dos a la vez trabaron la base de prueba con un deadlock).
 - [ ] Registrar los resultados en `docs/pruebas_realizadas.md` (falta la entrada de la v10.0).
 - [ ] Despues del deploy: cargar en Apertura el **saldo inicial del Fondo de Reserva** (si no, el libro usa el saldo inicial de caja y lo avisa), registrar la **tasa de mora con vigencia** en Configuración → Intereses por mora y completar Configuración → Administración.

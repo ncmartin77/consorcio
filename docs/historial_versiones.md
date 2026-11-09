@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 10.0-0911
+**Versión actual:** 10.1-0911
 
 ---
 
@@ -336,10 +336,18 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v10.x — Lineamientos jurídicos (Paraná, Entre Ríos)
 
-#### v10.0-0911 — Interés sin capitalizar, libro del fondo, clasificación de gastos, exportación y alertas
+#### v10.1-0911 — Pendientes de pruebas para seguir en otra PC
 
 **Lanzamiento:** 9 de noviembre
 **Versión actual**
+
+- Solo documentación: en `docs/memoria_sesion_claude.md` ("DONDE QUEDAMOS") quedan anotados los resultados de las pruebas, las que hay que repetir (se cortaron por falta de red), las pruebas viejas a actualizar y la limpieza de la base de prueba.
+
+---
+
+#### v10.0-0911 — Interés sin capitalizar, libro del fondo, clasificación de gastos, exportación y alertas
+
+**Lanzamiento:** 9 de noviembre
 
 **Por qué es versión mayor:** cambian reglas de cálculo que alteran resultados (interés y saldo del Fondo de Reserva). Confirmado por el usuario ("hagamos del 1 al 5", tras el ejemplo del interés y el aviso de 10.0).
 
