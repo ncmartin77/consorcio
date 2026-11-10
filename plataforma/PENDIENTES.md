@@ -66,6 +66,13 @@ a favor, mayor resto, etc.). Siguen abiertas:
 
 ## Carril A — sistema actual (Flask, en producción en Render)
 
+- [x] Base local de pruebas `consorcio_pruebas` (10/11): copia del 03/11 en el Postgres local, con usuario propio. Ver la bitácora.
+- [ ] **Correr las pruebas de la v10.1 contra esa base**:
+  1. En la rama `feat/lineamientos-v10`, que `pruebas/entorno_prueba.py` acepte una `DATABASE_URL` en `127.0.0.1` o `localhost`, además de `consorcio-tst`, y que siga rechazando producción.
+  2. Correr la app y las pruebas en un contenedor de Python (`requirements.txt`), sin instalar nada en la PC.
+  3. Confirmar que las funciones `ensure_*` de la v10.1 ponen al día la estructura de la copia del 03/11 (que es de la v5.x).
+  4. Correr de a una las pruebas anotadas en la memoria de la v10.1 y registrar los resultados.
+
 - [ ] **Merge de la v10.1** (`feat/lineamientos-v10`) **a `master`**, que es hacer el deploy. Antes, lo que anotó su memoria ("DONDE QUEDAMOS"):
   - confirmar que Render tiene `SECRET_KEY`
   - repetir `probar_v10.py` y `probar_fondo_reserva.py`

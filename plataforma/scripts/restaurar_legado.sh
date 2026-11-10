@@ -5,15 +5,27 @@
 #
 #   scripts/restaurar_legado.sh <archivo.dump.age | carpeta>
 #
+# Variables opcionales:
+#   BASE=consorcio_pruebas   base destino (por defecto "legado")
+#   DUENO=consorcio_pruebas  rol dueño de la base y de las tablas; si no existe se crea
+#                            (LOGIN, sin superusuario) con la clave $CLAVE_DUENO
+#                            (por defecto "pruebas-local": solo desarrollo, 127.0.0.1)
+#
 # Clave privada: $AGE_IDENTITY, o ~/.claude/age/key.txt por defecto.
-# Borra y recrea solo la base local "legado". Nunca toca Supabase.
+# Borra y recrea solo la base local indicada. Nunca toca Supabase.
 # El dump se descifra en un pipe hacia el contenedor: no queda en claro en el disco.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 COMPOSE="docker compose -f deploy/compose.yaml"
 IDENTITY="${AGE_IDENTITY:-$HOME/.claude/age/key.txt}"
-OWNER=consorcios_owner
+ADMIN=consorcios_owner          # superusuario del contenedor: crea roles y bases
+BASE="${BASE:-legado}"
+DUENO="${DUENO:-$ADMIN}"
+CLAVE_DUENO="${CLAVE_DUENO:-pruebas-local}"
+case "$BASE" in consorcios|postgres|template0|template1)
+  echo "No se restaura sobre la base \"$BASE\""; exit 1;; esac
+[[ "$BASE" =~ ^[a-z_][a-z0-9_]*$ && "$DUENO" =~ ^[a-z_][a-z0-9_]*$ ]] || { echo "Nombre de base o rol inválido"; exit 1; }
 
 src="${1:-}"
 [ -n "$src" ] || { echo "Uso: $0 <archivo.dump.age | carpeta>"; exit 1; }
@@ -25,13 +37,20 @@ fi
 [ -r "$IDENTITY" ] || { echo "No se puede leer la clave age: $IDENTITY (usar AGE_IDENTITY=...)"; exit 1; }
 
 echo "Backup:  $src"
-echo "Destino: base local \"legado\" (contenedor consorcios-plataforma-db-1, 127.0.0.1:55433)"
+echo "Destino: base local \"$BASE\", dueño $DUENO (contenedor consorcios-plataforma-db-1, 127.0.0.1:55433)"
 
 $COMPOSE up -d --wait db >/dev/null 2>&1
 
-$COMPOSE exec -T db psql -q -v ON_ERROR_STOP=1 -U "$OWNER" -d postgres \
-  -c "DROP DATABASE IF EXISTS legado WITH (FORCE)" \
-  -c "CREATE DATABASE legado OWNER $OWNER"
+if [ "$DUENO" != "$ADMIN" ]; then
+  $COMPOSE exec -T db psql -q -v ON_ERROR_STOP=1 -U "$ADMIN" -d postgres -v clave="$CLAVE_DUENO" <<SQL
+SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS', '$DUENO')
+ WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$DUENO') \\gexec
+ALTER ROLE $DUENO PASSWORD :'clave';
+SQL
+fi
+$COMPOSE exec -T db psql -q -v ON_ERROR_STOP=1 -U "$ADMIN" -d postgres \
+  -c "DROP DATABASE IF EXISTS $BASE WITH (FORCE)" \
+  -c "CREATE DATABASE $BASE OWNER $DUENO"
 
 # Restaurar sin la entrada "SCHEMA public", que ya existe en la base nueva.
 age -d -i "$IDENTITY" "$src" | $COMPOSE exec -T db sh -c '
@@ -39,13 +58,13 @@ age -d -i "$IDENTITY" "$src" | $COMPOSE exec -T db sh -c '
   f=$(mktemp); l=$(mktemp); trap "rm -f $f $l" EXIT
   cat > "$f"
   pg_restore -l "$f" | grep -v " SCHEMA - public " > "$l"
-  pg_restore --no-owner --no-privileges --exit-on-error -L "$l" -U '"$OWNER"' -d legado "$f"
+  pg_restore --no-owner --no-privileges --exit-on-error -L "$l" -U '"$DUENO"' -d '"$BASE"' "$f"
 '
 
-$COMPOSE exec -T db psql -q -U "$OWNER" -d legado -c "ANALYZE" >/dev/null
+$COMPOSE exec -T db psql -q -U "$DUENO" -d "$BASE" -c "ANALYZE" >/dev/null 2>&1
 echo
 echo "Listo. Filas por tabla:"
-$COMPOSE exec -T db psql -U "$OWNER" -d legado -Atc "
+$COMPOSE exec -T db psql -U "$DUENO" -d "$BASE" -Atc "
   SELECT format('%-28s %s', table_name,
          (xpath('/row/c/text()', query_to_xml(format('SELECT count(*) c FROM public.%I', table_name), false, true, '')))[1]::text)
     FROM information_schema.tables

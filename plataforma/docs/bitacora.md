@@ -12,6 +12,24 @@ Documentos relacionados:
 
 ## 10/11/2026
 
+### Base local para probar el sistema actual (v10.1)
+
+**Por qué:** las pruebas del sistema actual (`pruebas/probar_*.py`) solo corren contra Supabase `consorcio-tst`, y desde la red del Senado no se llega a esa base. Varias pruebas de la v10 se cortaron por eso.
+
+**Qué se hizo**
+- **`scripts/restaurar_legado.sh` acepta `BASE=` y `DUENO=`:** restaura la copia cifrada en cualquier base local, con un usuario dueño que no es superusuario. Nunca toca `consorcios` (la base de la plataforma) ni Supabase.
+- **Base `consorcio_pruebas` creada** en el Postgres local (`127.0.0.1:55433`), con la copia del 03/11: 21 tablas y las mismas filas que `legado`.
+  - Usuario `consorcio_pruebas`: dueño de su base y de sus 21 tablas, sin superusuario, sin crear bases ni saltear RLS.
+  - Desde ese usuario se ve su base, pero no las tablas de `legado` (permiso denegado).
+  - Conexión probada por TCP, como lo haría la app Flask. La clave es `pruebas-local`, solo para desarrollo.
+
+**Para volver a crearla** (borra y recrea solo `consorcio_pruebas`):
+```
+BASE=consorcio_pruebas DUENO=consorcio_pruebas scripts/restaurar_legado.sh ../backups/consorcio_20261103_1504/
+```
+
+**Falta para correr las pruebas de la v10.1 acá:** ver `PENDIENTES.md`, carril A.
+
 ### Volver a descargar y tomar la última versión como referencia
 
 **Qué se hizo**
