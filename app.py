@@ -14,7 +14,7 @@ import io
 from authlib.integrations.flask_client import OAuth
 
 import pg_db as db
-from pdf_gen import generar_pdf_liquidacion, generar_pdf_resumen_edificio, generar_recibo_pago
+from pdf_gen import generar_pdf_liquidacion, generar_pdf_resumen_edificio, generar_recibo_pago, generar_libre_deuda
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "edificio-brasil-secret-2024")
@@ -39,7 +39,14 @@ def mes_largo(periodo):
         return periodo
 
 
-_PUBLIC_ENDPOINTS = {"static", "login", "login_google", "auth_callback", "logout", "verificar_recibo", "recibo_publico", "recibo_publico_pdf"}
+@app.template_filter("fecha_ar")
+def fecha_ar(iso):
+    """'2026-11-06' -> '06/11/2026'."""
+    s = str(iso or "")
+    return f"{s[8:10]}/{s[5:7]}/{s[:4]}" if len(s) >= 10 else s
+
+
+_PUBLIC_ENDPOINTS = {"static", "login", "login_google", "auth_callback", "logout", "verificar_recibo", "recibo_publico", "recibo_publico_pdf", "verificar_libre_deuda"}
 
 
 def _token_recibo_publico(clave: str, cid: str, periodo: str, unidad: str) -> str:
@@ -94,20 +101,22 @@ _DESC_AUDITORIA = {
     "save_unidad": "Unidades: guardar unidad",
     "save_unidad_envio": "Unidades: cambiar envío",
     "delete_unidad": "Unidades: eliminar unidad",
+    "emitir_libre_deuda": "Unidades: emitir libre deuda",
+    "anular_libre_deuda": "Unidades: anular libre deuda",
     "save_gasto": "Gastos: guardar gasto",
     "delete_gasto": "Gastos: eliminar gasto",
+    "modo_extraordinario": "Gastos: extraordinario pagado con fondo / a cobrar",
     "tareas_add": "Tareas: agregar",
     "tareas_delete": "Tareas: completar/eliminar",
     "save_movimiento": "Caja: guardar movimiento",
     "delete_movimiento": "Caja: eliminar movimiento",
     "eliminar_ultimo_movimiento": "Caja: eliminar último movimiento",
     "generar_liquidacion": "Liquidación: generar",
-    "toggle_sin_interes": "Liquidación: activar/desactivar interés",
-    "toggle_sin_interes_todos": "Liquidación: activar/desactivar interés (todas)",
     "cerrar_liquidacion": "Liquidación: cerrar",
     "reabrir_liquidacion": "Liquidación: reabrir",
-    "pagar_todo": "Liquidación: pago completo",
-    "marcar_pagado": "Liquidación: registrar pago",
+    "cobranzas_pagar_todo": "Cobranzas: pago completo",
+    "cobranzas_pagar": "Cobranzas: registrar pago",
+    "cobranzas_anular": "Cobranzas: anular pago(s)",
     "notas_add": "Liquidación: agregar nota",
     "notas_delete": "Liquidación: eliminar nota",
     "extras_add": "Liquidación: agregar gasto extra",
@@ -125,6 +134,7 @@ _DESC_AUDITORIA = {
     "delete_cotizacion": "Presupuestos: eliminar cotización",
     "apertura": "Apertura: guardar saldos iniciales",
     "reset_datos": "Configuración: resetear datos",
+    "fijar_fecha_sistema": "Configuración: fecha del sistema",
     "rollback_checkpoint": "Checkpoint: rollback",
 }
 
@@ -135,12 +145,43 @@ def _contexto_auditoria():
     if request.endpoint in _PUBLIC_ENDPOINTS or request.endpoint is None:
         return
     try:
+        db.ensure_libres_deuda()  # antes de la auditoría, para que la tabla reciba su trigger
+        db.ensure_pagos()
         db.ensure_auditoria()
         db.ensure_deuda_inicial_fecha()
         db.ensure_caja_factura_id()
+        db.ensure_factura_vinculos()
         db.ensure_liq_sin_interes()
+        db.ensure_liq_fecha_cierre()
     except Exception as exc:
         app.logger.warning(f"[Auditoría] No se pudo inicializar: {exc}")
+    if session.get("consorcio_id"):
+        try:
+            db.set_contexto_auditoria(session.get("usuario_email", ""),
+                                      "Migración v6.0: gastos pagados con el fondo de reserva")
+            for p_gasto in db.migrar_gastos_pagados_con_fondo():
+                p_liq = db._next_periodo(p_gasto)
+                if db.liquidacion_existe(p_liq) and not db.liq_esta_cerrada(p_liq):
+                    db.generar_liquidacion(p_liq)
+                app.logger.info(f"[v6.0] Gasto de {p_gasto} pasado a 'pagado con fondo'")
+        except Exception as exc:
+            app.logger.warning(f"[v6.0] Migración de gastos con fondo: {exc}")
+        try:
+            db.set_contexto_auditoria(session.get("usuario_email", ""),
+                                      "Migración v9.4: vincular gastos con su factura")
+            n_vinc = db.vincular_gastos_facturas_legacy()
+            if n_vinc:
+                app.logger.info(f"[v9.4] {n_vinc} gasto(s) vinculados con su factura")
+        except Exception as exc:
+            app.logger.warning(f"[v9.4] Vínculo gastos-facturas: {exc}")
+        try:
+            db.set_contexto_auditoria(session.get("usuario_email", ""),
+                                      "Migración v9.0: pagos de expensas a la tabla de pagos")
+            n_pagos = db.migrar_pagos_legacy()
+            if n_pagos:
+                app.logger.info(f"[v9.0] {n_pagos} pago(s) pasados a la tabla pagos")
+        except Exception as exc:
+            app.logger.warning(f"[v9.0] Migración de pagos: {exc}")
     desc = _DESC_AUDITORIA.get(request.endpoint, request.endpoint)
     if request.view_args:
         desc += " (" + ", ".join(f"{k}: {v}" for k, v in request.view_args.items()) + ")"
@@ -164,6 +205,10 @@ def inject_version():
     c = db.get_consorcio(cid) if cid else None
     checkpoint_info = db.get_checkpoint_info() if cid else None
     logo_url = url_for("servir_logo") if (cid and db.get_logo()) else ""
+    try:
+        fecha_fijada = db.get_fecha_simulada() if cid else None
+    except Exception:  # páginas públicas sin consorcio activo
+        fecha_fijada = None
     return {
         "app_version": _ver,
         "app_env": db._APP_ENV,
@@ -176,20 +221,15 @@ def inject_version():
         "es_admin": session.get("es_admin", False),
         "logo_url": logo_url,
         "periodo_trabajo": session.get("periodo_trabajo") or "",
+        "fecha_sistema_fijada": fecha_fijada,
+        # "Hoy" que proponen los formularios (fecha del sistema si está fijada)
+        "hoy_sistema": (fecha_fijada or date.today()).strftime("%Y-%m-%d"),
     }
 
 
 def _fecha_hoy():
-    """Returns today's date, using simulated date from config if set."""
-    cfg = db.get_config()
-    fs = cfg.get("fecha_simulada", "").strip()
-    if fs:
-        try:
-            from datetime import datetime as _dt
-            return _dt.strptime(fs, "%Y-%m-%d").date()
-        except ValueError:
-            pass
-    return date.today()
+    """'Hoy' de la app: la fecha del sistema fijada en Configuración o la fecha real."""
+    return db.fecha_sistema()
 
 
 def _periodo_actual():
@@ -444,13 +484,20 @@ def config():
             "tasa_mora": request.form.get("tasa_mora", "7"),
             "dia_vencimiento": request.form.get("dia_vencimiento", "15"),
             "fondo_reserva_mensual": request.form.get("fondo_reserva_mensual", "0"),
-            "fecha_simulada": request.form.get("fecha_simulada", ""),
             "dias_cobro": request.form.get("dias_cobro", ""),
             "horario_cobro": request.form.get("horario_cobro", ""),
             "direccion_cobro": request.form.get("direccion_cobro", ""),
             "texto_anuncio": request.form.get("texto_anuncio", ""),
             "url_app": request.form.get("url_app", "http://localhost:5000"),
         }
+        # Cada form de Configuración manda solo sus campos: no pisar los que no vienen
+        data = {k: v for k, v in data.items() if k in request.form}
+        # Solo lo envía el form del resumen: si no viene, no se pisa el valor guardado
+        if "libre_deuda_validez_dias" in request.form:
+            try:
+                data["libre_deuda_validez_dias"] = str(max(1, int(request.form["libre_deuda_validez_dias"])))
+            except ValueError:
+                pass
         db.save_config(data)
         flash("Configuración guardada.", "success")
         return redirect(url_for("config"))
@@ -460,6 +507,28 @@ def config():
     gastos_recurrentes = db.get_gastos_recurrentes()
     return render_template("config.html", cfg=cfg, categorias=categorias,
                            gastos_recurrentes=gastos_recurrentes)
+
+
+@app.route("/config/fecha-sistema", methods=["POST"])
+def fijar_fecha_sistema():
+    """Fija (o quita) la fecha del sistema. La simulación se aplica al mostrar; la base no cambia."""
+    valor = "" if request.form.get("accion") == "quitar" else request.form.get("fecha_sistema", "").strip()
+    if valor:
+        try:
+            from datetime import datetime as _dt
+            _dt.strptime(valor, "%Y-%m-%d")
+        except ValueError:
+            flash("Fecha inválida.", "danger")
+            return redirect(url_for("config") + "#fecha-sistema")
+    db.save_config({"fecha_simulada": valor})
+    # Las liquidaciones abiertas se recalculan a la nueva fecha (deuda e interés según los pagos hasta ese día)
+    db.recalcular_intereses_abiertas()
+    if valor:
+        flash(f"El sistema trabaja como si hoy fuera {fecha_ar(valor)}: pagos, cierres e intereses usan esa "
+              f"fecha y no se cuentan los pagos registrados después.", "warning")
+    else:
+        flash("El sistema volvió a la fecha real.", "success")
+    return redirect(url_for("config") + "#fecha-sistema")
 
 
 @app.route("/config/recurrente/add", methods=["POST"])
@@ -517,7 +586,100 @@ def delete_categoria(nombre):
 def unidades():
     unidades_list = db.get_unidades()
     categorias = db.get_categorias()
-    return render_template("unidades.html", unidades=unidades_list, categorias=categorias)
+    return render_template("unidades.html", unidades=unidades_list, categorias=categorias,
+                           estado_ld=db.get_estado_libre_deuda(),
+                           libres_deuda=db.get_libres_deuda(),
+                           validez_ld=_validez_libre_deuda(db.get_config()),
+                           ld_nuevo=request.args.get("ld", type=int))
+
+
+# ---------------------------------------------------------------------------
+# LIBRE DEUDA
+# ---------------------------------------------------------------------------
+
+def _validez_libre_deuda(cfg: dict) -> int:
+    try:
+        return max(1, int(cfg.get("libre_deuda_validez_dias") or db.LIBRE_DEUDA_VALIDEZ_DEFAULT))
+    except ValueError:
+        return db.LIBRE_DEUDA_VALIDEZ_DEFAULT
+
+
+def _url_verificacion_libre_deuda(cfg: dict, cert: dict) -> str:
+    url_app = cfg.get("url_app", "http://localhost:5000").rstrip("/")
+    return f"{url_app}/libre-deuda/verificar/{session.get('consorcio_id', '')}/{cert['numero']}/{cert['codigo']}"
+
+
+@app.route("/unidades/<numero>/libre-deuda", methods=["POST"])
+def emitir_libre_deuda(numero):
+    cfg = db.get_config()
+    try:
+        validez = max(1, int(request.form.get("validez_dias") or _validez_libre_deuda(cfg)))
+    except ValueError:
+        validez = _validez_libre_deuda(cfg)
+    ok, res = db.emitir_libre_deuda(
+        numero, _fecha_hoy(), validez,
+        request.form.get("solicitante", "").strip()[:200],
+        request.form.get("destino", "").strip()[:200],
+        session.get("usuario_email", ""),
+    )
+    if not ok:
+        flash(f"No se puede emitir el libre deuda de la unidad {numero}: {res}", "danger")
+        return redirect(url_for("unidades"))
+    flash(f"Libre deuda N° {res['numero']:04d} emitido para la unidad {numero}.", "success")
+    return redirect(url_for("unidades", ld=res["numero"]) + "#libres-deuda")
+
+
+@app.route("/libre-deuda/<int:numero>/pdf")
+def libre_deuda_pdf(numero):
+    cert = db.get_libre_deuda(numero)
+    if not cert:
+        flash("Certificado no encontrado.", "warning")
+        return redirect(url_for("unidades"))
+    cfg = db.get_config()
+    logo = db.get_logo()
+    pdf_bytes = generar_libre_deuda(
+        cert, cfg,
+        url_verificacion=_url_verificacion_libre_deuda(cfg, cert),
+        logo_bytes=base64.b64decode(logo["b64"]) if logo else None,
+    )
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf", as_attachment=False,
+                     download_name=f"libre_deuda_{numero:04d}_uf_{cert['unidad']}.pdf")
+
+
+@app.route("/libre-deuda/<int:numero>/anular", methods=["POST"])
+def anular_libre_deuda(numero):
+    block = _require_admin()
+    if block:
+        return block
+    if db.anular_libre_deuda(numero):
+        flash(f"Libre deuda N° {numero:04d} anulado.", "success")
+    else:
+        flash("El certificado no existe o ya estaba anulado.", "warning")
+    return redirect(url_for("unidades") + "#libres-deuda")
+
+
+@app.route("/libre-deuda/verificar/<cid>/<int:numero>/<codigo>")
+def verificar_libre_deuda(cid, numero, codigo):
+    """Verificación pública (QR) de un certificado de libre deuda."""
+    c = db.get_consorcio(cid)
+    cert, valido, cfg = None, False, {}
+    if c:
+        db.set_active_consorcio(c["data_dir_abs"], c["db_path_abs"])
+        db.ensure_libres_deuda()
+        cert, valido = db.verificar_libre_deuda(numero, codigo)
+        cfg = db.get_config()
+    if not cert:
+        estado = "no_encontrado"
+    elif not valido:
+        estado = "invalido"
+    elif cert["anulado"]:
+        estado = "anulado"
+    elif cert["vence"] and cert["vence"] < _fecha_hoy().strftime("%Y-%m-%d"):
+        estado = "vencido"
+    else:
+        estado = "valido"
+    return render_template("verificar_libre_deuda.html", estado=estado, cert=cert, cfg=cfg,
+                           numero=numero)
 
 
 @app.route("/unidades/save", methods=["POST"])
@@ -634,6 +796,18 @@ def _recalcular_liq_si_posible(periodo):
         db.generar_liquidacion(periodo_liq)
 
 
+def _resumen_fondo_seguro(mes_gastos, cfg=None):
+    """Resumen del fondo; si el cálculo falla, la pantalla se muestra igual (con aviso y log)."""
+    try:
+        return db.get_resumen_fondo(mes_gastos, cfg)
+    except Exception:
+        import traceback
+        app.logger.error(f"[fondo] Error calculando el saldo del fondo ({mes_gastos}): {traceback.format_exc()}")
+        flash("No se pudo calcular el saldo del Fondo de Reserva: se muestra en 0. Avisá al administrador del sistema.",
+              "warning")
+        return {"mes_gastos": mes_gastos, "fecha": "", "saldo": 0.0, "aporte": 0.0, "usos": 0.0}
+
+
 @app.route("/gastos")
 @app.route("/gastos/<periodo>")
 def gastos(periodo=None):
@@ -644,13 +818,14 @@ def gastos(periodo=None):
         _set_periodo_trabajo(db._next_periodo(periodo))
     db.ensure_fondo_reserva_gasto(periodo)
     todos_gastos = db.get_gastos(periodo)
-    gastos_list  = [g for g in todos_gastos if g.get("tipo") not in ("VARIABLE_FR", "FONDO_RESERVA")]
-    gastos_fondo = [g for g in todos_gastos if g.get("tipo") == "FONDO_RESERVA"]
-    gastos_fr    = [g for g in todos_gastos if g.get("tipo") == "VARIABLE_FR"]
-    total        = sum(g["importe"] for g in gastos_list)
-    total_fondo  = sum(g["importe"] for g in gastos_fondo)
-    total_fr     = sum(g["importe"] for g in gastos_fr)
-    total_expensas = total + total_fondo
+    desglose     = db.get_desglose_gastos(periodo, todos_gastos)
+    gastos_list  = desglose["ordinarios"]
+    gastos_fondo = desglose["aporte"]
+    extraordinarios = [g for g in todos_gastos if g.get("tipo") in db.TIPOS_EXTRAORDINARIOS]
+    total        = desglose["total_ordinarios"]
+    total_fondo  = desglose["total_aporte"]
+    total_expensas = desglose["total_expensas"]
+    resumen_fondo = _resumen_fondo_seguro(periodo)
     prox_periodo = db._next_periodo(periodo)
     liq_prox_cerrada = db.liq_esta_cerrada(prox_periodo)
     liq_prox_existe = db.liquidacion_existe(prox_periodo)
@@ -679,9 +854,9 @@ def gastos(periodo=None):
 
     proveedores = db.get_proveedores()
     tareas = db.get_tareas()
-    return render_template("gastos.html", gastos=gastos_list, gastos_fr=gastos_fr,
-                           gastos_fondo=gastos_fondo,
-                           periodo=periodo, total=total, total_fr=total_fr,
+    return render_template("gastos.html", gastos=gastos_list, extraordinarios=extraordinarios,
+                           gastos_fondo=gastos_fondo, desglose=desglose, resumen_fondo=resumen_fondo,
+                           periodo=periodo, total=total,
                            total_fondo=total_fondo, total_expensas=total_expensas,
                            prox_periodo=prox_periodo, liq_prox_cerrada=liq_prox_cerrada,
                            liq_prox_existe=liq_prox_existe,
@@ -709,15 +884,33 @@ def save_gasto():
         flash("El concepto es obligatorio.", "danger")
         return redirect(url_for("gastos", periodo=periodo))
 
-    if usar_fondo_reserva and tipo == "VARIABLE":
-        # Guardar como VARIABLE_FR: aparece en Gastos Mensuales (subsección Fondo de Reserva)
-        # pero NO afecta el total de gastos ni la liquidación.
-        # El movimiento en Caja Diaria se genera al pagar la factura (categoría FONDO_RESERVA).
-        db.save_gasto(periodo, concepto, importe, "VARIABLE_FR", int(row_num) if row_num else None)
-        return redirect(url_for("gastos", periodo=periodo))
+    # Extraordinario: pagado con el fondo (VARIABLE_FR, no se cobra y se descuenta del fondo)
+    # o a cobrar en las expensas siguientes (EXTRAORDINARIO, no toca el fondo).
+    if tipo == "EXTRAORDINARIO" and request.form.get("modo_extraordinario") == "FONDO":
+        tipo = "VARIABLE_FR"
+    elif usar_fondo_reserva and tipo == "VARIABLE":  # compatibilidad con el form anterior
+        tipo = "VARIABLE_FR"
 
     db.save_gasto(periodo, concepto, importe, tipo, int(row_num) if row_num else None)
     _recalcular_liq_si_posible(periodo)
+    return redirect(url_for("gastos", periodo=periodo))
+
+
+@app.route("/gastos/<int:gid>/extraordinario/<modo>", methods=["POST"])
+def modo_extraordinario(gid, modo):
+    """Cambia un gasto extraordinario entre pagado con el fondo y a cobrar en las expensas."""
+    row = db._fetchone("SELECT periodo FROM gastos WHERE id=%s AND consorcio_id=%s", (gid, db._cid()))
+    if not row:
+        flash("Gasto no encontrado.", "warning")
+        return redirect(url_for("gastos"))
+    periodo = row["periodo"]
+    if db.liq_esta_cerrada(db._next_periodo(periodo)):
+        flash(f"La liquidación de {db._next_periodo(periodo)} está cerrada: no se puede cambiar.", "danger")
+        return redirect(url_for("gastos", periodo=periodo))
+    if db.set_modo_extraordinario(gid, modo.upper()):
+        _recalcular_liq_si_posible(periodo)
+        flash("Gasto extraordinario: " + ("se paga con el fondo de reserva." if modo.upper() == "FONDO"
+                                          else "se cobra en las expensas siguientes."), "success")
     return redirect(url_for("gastos", periodo=periodo))
 
 
@@ -763,7 +956,8 @@ def caja(periodo=None):
     except ValueError:
         page = 1
     per_page = 50
-    liq_cerrada = db.liq_esta_cerrada(periodo)
+    # v9.0: la Caja del mes se cierra al cerrar la liquidación que lleva sus gastos (mes siguiente)
+    liq_cerrada = db.caja_mes_bloqueado(periodo)
     movimientos, total = db.get_caja(periodo, page=page, per_page=per_page)
     total_pages = max(1, (total + per_page - 1) // per_page)
     # Summaries always over the full month (not just the page)
@@ -797,10 +991,19 @@ def caja(periodo=None):
 @app.route("/caja/save", methods=["POST"])
 def save_movimiento():
     periodo = request.form.get("periodo", _periodo_actual())
-    if db.liq_esta_cerrada(periodo):
-        flash(f"La liquidación de {periodo} está cerrada. No se pueden registrar movimientos.", "danger")
-        return redirect(url_for("caja", periodo=periodo))
     fecha = request.form.get("fecha", "")
+    row_num_chk = request.form.get("row_num")
+    meses = {fecha[:7]} if fecha else {periodo}
+    if row_num_chk and row_num_chk.isdigit():
+        previo = db._fetchone("SELECT fecha FROM caja WHERE id=%s AND consorcio_id=%s",
+                              (int(row_num_chk), db._cid()))
+        if previo and previo["fecha"]:
+            meses.add(previo["fecha"].strftime("%Y-%m"))
+    bloqueados = sorted(m for m in meses if db.caja_mes_bloqueado(m))
+    if bloqueados:
+        flash(f"La Caja de {', '.join(bloqueados)} está cerrada (se cerró la liquidación que lleva esos gastos). "
+              f"No se pueden registrar ni modificar movimientos.", "danger")
+        return redirect(url_for("caja", periodo=periodo))
     descripcion = request.form.get("descripcion", "").strip()
     tipo = request.form.get("tipo", "ENTRADA")
     categoria = request.form.get("categoria", "").strip()
@@ -826,7 +1029,8 @@ def save_movimiento():
 def delete_movimiento(row_num, periodo):
     ok = db.delete_movimiento(row_num)
     if ok is False:
-        flash("No se puede eliminar: la liquidación del período correspondiente está cerrada.", "danger")
+        flash("No se puede eliminar: la Caja de ese mes está cerrada, o es el cobro de un pago que ya no se "
+              "puede anular (solo los de la última liquidación cerrada).", "danger")
     else:
         flash("Movimiento eliminado.", "success")
     return redirect(url_for("caja", periodo=periodo))
@@ -841,7 +1045,8 @@ def eliminar_ultimo_movimiento():
         return redirect(url_for("caja", periodo=periodo))
     ok = db.delete_movimiento(ultimo["id"])
     if ok is False:
-        flash(f"No se puede eliminar: la liquidación del período {ultimo['fecha'][:7]} está cerrada.", "danger")
+        flash(f"No se puede eliminar: la Caja de {ultimo['fecha'][:7]} está cerrada o es el cobro de un "
+              f"pago que ya no se puede anular.", "danger")
     else:
         signo = "+" if ultimo["tipo"] == "ENTRADA" else "-"
         flash(
@@ -864,23 +1069,13 @@ def liquidacion(periodo=None):
     else:
         _set_periodo_trabajo(periodo)
 
-    # Auto-aplicar mora si hoy superó el día de vencimiento y la liquidación está abierta
-    liq_generada_check = db.liquidacion_existe(periodo)
-    liq_cerrada_check = db.liq_esta_cerrada(periodo)
-    if liq_generada_check and not liq_cerrada_check:
-        import calendar as _cal
-        cfg_check = db.get_config()
-        hoy_check = _fecha_hoy()
+    # Liquidación abierta: se mantiene al día (pagos de la anterior, interés al vencimiento).
+    # generar_liquidacion no escribe si nada cambió.
+    if db.liquidacion_existe(periodo) and not db.liq_esta_cerrada(periodo):
         try:
-            dia_venc = int(cfg_check.get("dia_vencimiento", 15) or 15)
-            yp, mp = int(periodo[:4]), int(periodo[5:7])
-            ultimo = _cal.monthrange(yp, mp)[1]
-            dia_real = ultimo if dia_venc <= 0 else min(dia_venc, ultimo)
-            from datetime import date as _date
-            if hoy_check > _date(yp, mp, dia_real):
-                db.generar_liquidacion(periodo)
-        except Exception:
-            pass
+            db.generar_liquidacion(periodo)
+        except Exception as exc:
+            app.logger.warning(f"Recalcular liquidación {periodo}: {exc}")
 
     liq = db.get_liquidacion(periodo)
     mes_gastos = db._prev_periodo(periodo)  # gastos del mes anterior
@@ -890,17 +1085,16 @@ def liquidacion(periodo=None):
     total_deuda = sum(r["deuda_anterior"] for r in liq)
     pendientes = sum(1 for r in liq if r.get("tipo_pago", "PENDIENTE") not in ("TOTAL",))
     total_cobrado = sum(r.get("monto_pagado", 0) for r in liq)
-    # Saldo de caja al último día del período (o fecha elegida por el usuario)
-    yp, mp = int(periodo[:4]), int(periodo[5:7])
-    ultimo_dia = _cal.monthrange(yp, mp)[1]
-    saldo_al_default = f"{periodo}-{ultimo_dia:02d}"
+    # Saldo de caja a la fecha de cierre de la liquidación (o a hoy si está abierta)
+    saldo_al_default = db.fecha_corte_liquidacion(periodo).strftime("%Y-%m-%d")
     saldo_al = request.args.get("saldo_al", saldo_al_default)
     saldo_caja, _, _ = db.get_saldo_caja(hasta_fecha=saldo_al)
     # Entradas = propietarios pagando en el período de la liquidación
     # Salidas = facturas/gastos pagados en el mes ANTERIOR (que generaron esta liquidación)
     entradas, _ = db.get_movimientos_periodo(periodo)
-    _, salidas = db.get_movimientos_periodo(mes_gastos)
-    fondo = db.get_fondo_reserva_periodo(mes_gastos)
+    salidas = db.get_gastos_pagados_periodo(mes_gastos)  # facturas pagadas en el mes + salidas de caja sin factura
+    fondo = _resumen_fondo_seguro(mes_gastos)
+    desglose = db.get_desglose_gastos(mes_gastos, gastos)
     liq_cerrada = db.liq_esta_cerrada(periodo)
     liq_generada = db.liquidacion_existe(periodo)
     notas = db.get_notas_periodo(periodo)
@@ -912,14 +1106,6 @@ def liquidacion(periodo=None):
     unidades = db.get_unidades(solo_activas=True)
     unidades_map = {str(u["numero"]): u for u in unidades}
     cfg = db.get_config()
-    cid = session.get("consorcio_id", "")
-    clave_firma = db.get_clave_firma()
-    url_app = cfg.get("url_app", "http://localhost:5000").rstrip("/")
-    recibo_tokens = {
-        str(r["unidad"]): _token_recibo_publico(clave_firma, cid, periodo, str(r["unidad"]))
-        for r in liq if r.get("tipo_pago", "PENDIENTE") != "PENDIENTE"
-    }
-    recibo_base_url = f"{url_app}/recibo/publico/{cid}/{periodo}"
     return render_template("liquidacion.html",
                            liq=liq,
                            gastos=gastos,
@@ -936,7 +1122,8 @@ def liquidacion(periodo=None):
                            saldo_al_default=saldo_al_default,
                            entradas_caja=entradas,
                            salidas_caja=salidas,
-                           fondo_reserva=fondo,
+                           fondo=fondo,
+                           desglose=desglose,
                            liq_cerrada=liq_cerrada,
                            liq_generada=liq_generada,
                            notas=notas,
@@ -944,8 +1131,10 @@ def liquidacion(periodo=None):
                            extras_por_unidad=extras_por_unidad,
                            unidades=unidades,
                            unidades_map=unidades_map,
-                           recibo_tokens=recibo_tokens,
-                           recibo_base_url=recibo_base_url)
+                           error_cierre=db.error_cierre(periodo) if (liq_generada and not liq_cerrada) else None,
+                           propuesta_interes=db.propuesta_intereses(liq, cfg) if (liq_generada and not liq_cerrada) else [],
+                           tasa_mora=db.tasa_mora(cfg),
+                           periodo_cobranza=db.periodo_cobranza())
 
 
 @app.route("/liquidacion/generar/<periodo>", methods=["POST"])
@@ -973,98 +1162,122 @@ def generar_liquidacion(periodo):
 
 @app.route("/liquidacion/cerrar/<periodo>", methods=["POST"])
 def cerrar_liquidacion(periodo):
-    if not db.liquidacion_existe(periodo):
-        flash("No hay liquidación generada para cerrar.", "warning")
-    elif db.liq_esta_cerrada(periodo):
-        flash(f"La liquidación de {periodo} ya está cerrada.", "info")
-    else:
-        db.set_liq_estado(periodo, "CERRADA")
-        flash(f"Liquidación de {periodo} cerrada. Ya no se pueden registrar pagos.", "success")
-    return redirect(url_for("liquidacion", periodo=periodo))
+    # Switch por unidad en la ventana de cierre: las tildadas llevan interés sobre su deuda anterior
+    err = db.cerrar_liquidacion(periodo, con_interes=request.form.getlist("interes_uf"))
+    if err:
+        flash(err, "warning")
+        return redirect(url_for("liquidacion", periodo=periodo))
+    flash(f"Liquidación de {mes_largo(periodo)} cerrada: el monto quedó fijo y ya se puede cobrar en Cobranzas.",
+          "success")
+    return redirect(url_for("cobranzas", periodo=periodo))
 
 
 @app.route("/liquidacion/reabrir/<periodo>", methods=["POST"])
 def reabrir_liquidacion(periodo):
-    if not db.liquidacion_existe(periodo):
-        flash("No hay liquidación generada para reabrir.", "warning")
-    elif not db.liq_esta_cerrada(periodo):
-        flash(f"La liquidación de {periodo} ya está abierta.", "info")
+    block = _require_admin()
+    if block:
+        return block
+    err = db.error_reapertura(periodo)
+    if err:
+        flash(err, "warning")
     else:
         db.set_liq_estado(periodo, "ABIERTA")
-        flash(f"Liquidación de {periodo} reabierta.", "success")
+        flash(f"Liquidación de {mes_largo(periodo)} reabierta.", "success")
     return redirect(url_for("liquidacion", periodo=periodo))
 
 
-@app.route("/liquidacion/<periodo>/sin-interes/<unidad>", methods=["POST"])
-def toggle_sin_interes(periodo, unidad):
-    if db.liq_esta_cerrada(periodo):
-        return jsonify({"ok": False, "error": "Liquidación cerrada"}), 403
-    valor = bool((request.get_json(silent=True) or {}).get("sin_interes", False))
-    res = db.aplicar_sin_interes(periodo, valor, unidad=unidad)
-    row = res["rows"].get(str(unidad))
-    if not row:
-        return jsonify({"ok": False, "error": "Unidad no encontrada en la liquidación"}), 404
-    return jsonify({"ok": True, **row, "total_periodo": res["total_periodo"]})
+# ---------------------------------------------------------------------------
+# COBRANZAS (v9.0): pagos de expensas sobre la última liquidación cerrada
+# ---------------------------------------------------------------------------
+
+@app.route("/cobranzas")
+@app.route("/cobranzas/<periodo>")
+def cobranzas(periodo=None):
+    actual = db.periodo_cobranza()
+    periodo = periodo or actual
+    liq = db.get_liquidacion(periodo) if periodo else []
+    info = db.info_cobranza(periodo, liq) if periodo else {"vencimiento": ""}
+    cobrable = bool(periodo) and periodo == actual
+    cfg = db.get_config()
+    unidades_map = {str(u["numero"]): u for u in db.get_unidades(solo_activas=False)}
+    cid = session.get("consorcio_id", "")
+    clave_firma = db.get_clave_firma()
+    url_app = cfg.get("url_app", "http://localhost:5000").rstrip("/")
+    recibo_tokens = {
+        str(r["unidad"]): _token_recibo_publico(clave_firma, cid, periodo, str(r["unidad"]))
+        for r in liq if r.get("tipo_pago", "PENDIENTE") != "PENDIENTE"
+    }
+    pagos = []
+    for r in liq:
+        for p in r.get("pagos", []):
+            pagos.append({**p, "persona": r["inquilino"] or r["propietario"]})
+    pagos.sort(key=lambda p: (p["fecha"], p["id"]), reverse=True)
+    cerradas = [r["periodo"] for r in db._fetchall(
+        "SELECT periodo FROM liquidaciones_estado WHERE consorcio_id=%s AND estado='CERRADA' "
+        "ORDER BY periodo DESC LIMIT 24", (db._cid(),))]
+    return render_template(
+        "cobranzas.html", periodo=periodo, periodo_cobranza=actual, cobrable=cobrable,
+        liq=liq, pagos=pagos, cfg=cfg, unidades_map=unidades_map, cerradas=cerradas,
+        liq_abierta=db.liquidacion_existe(db._next_periodo(actual)) and not db.liq_esta_cerrada(db._next_periodo(actual)) if actual else False,
+        total_a_pagar=round(sum(r["total_a_pagar"] for r in liq), 2),
+        total_cobrado=round(sum(r["monto_pagado"] for r in liq), 2),
+        pendientes=sum(1 for r in liq if r["tipo_pago"] != "TOTAL"),
+        recibo_tokens=recibo_tokens,
+        recibo_base_url=f"{url_app}/recibo/publico/{cid}/{periodo}",
+        vencimiento=info["vencimiento"],
+    )
 
 
-@app.route("/liquidacion/<periodo>/sin-interes-todos", methods=["POST"])
-def toggle_sin_interes_todos(periodo):
-    if db.liq_esta_cerrada(periodo):
-        return jsonify({"ok": False, "error": "Liquidación cerrada"}), 403
-    valor = bool((request.get_json(silent=True) or {}).get("sin_interes", False))
-    res = db.aplicar_sin_interes(periodo, valor)
-    return jsonify({"ok": True, "rows": res["rows"], "total_periodo": res["total_periodo"]})
-
-
-@app.route("/liquidacion/pagar-todo/<periodo>", methods=["POST"])
-def pagar_todo(periodo):
-    if db.liq_esta_cerrada(periodo):
-        flash(f"La liquidación de {periodo} está cerrada.", "danger")
-        return redirect(url_for("liquidacion", periodo=periodo))
+@app.route("/cobranzas/<periodo>/pagar/<unidad>", methods=["POST"])
+def cobranzas_pagar(periodo, unidad):
+    def _num(campo):
+        try:
+            return float((request.form.get(campo) or "0").strip().replace(",", "."))
+        except ValueError:
+            return 0.0
     fecha_pago = request.form.get("fecha_pago") or _fecha_hoy().strftime("%Y-%m-%d")
-    n = db.marcar_todos_pagado(periodo, fecha_pago)
+    monto, bonif = _num("monto_pagado"), _num("bonificacion")
+    res = db.registrar_pago(periodo, unidad, monto, fecha_pago, bonif,
+                            (request.form.get("bonif_motivo") or "").strip())
+    if res.get("error"):
+        flash(res["error"], "danger")
+    elif res["tipo"] == "PARCIAL":
+        flash(f"UF {unidad}: pago parcial de ${monto:,.2f}. Saldo pendiente: ${res['saldo']:,.2f}.", "warning")
+    elif res["saldo"] < 0:
+        flash(f"UF {unidad}: pago total registrado. Pagó de más: queda un saldo a favor de "
+              f"$ {-res['saldo']:,.2f} para la liquidación siguiente.", "success")
+    else:
+        flash(f"UF {unidad}: pago total registrado.", "success")
+    if not res.get("error") and bonif > 0:
+        flash(f"Bonificación de ${bonif:,.2f} registrada en Caja Diaria.", "info")
+    return redirect(url_for("cobranzas", periodo=periodo))
+
+
+@app.route("/cobranzas/<periodo>/pagar-todo", methods=["POST"])
+def cobranzas_pagar_todo(periodo):
+    fecha_pago = request.form.get("fecha_pago") or _fecha_hoy().strftime("%Y-%m-%d")
+    n, err = db.pagar_todo(periodo, fecha_pago)
+    if err:
+        flash(err, "danger")
     if n:
         flash(f"{n} unidad(es) marcada(s) como pagadas.", "success")
-    else:
-        flash("No hay unidades pendientes de pago.", "info")
-    return redirect(url_for("liquidacion", periodo=periodo))
+    elif not err:
+        flash("No hay unidades con saldo pendiente.", "info")
+    return redirect(url_for("cobranzas", periodo=periodo))
 
 
-@app.route("/liquidacion/pagar/<periodo>/<unidad>", methods=["POST"])
-def marcar_pagado(periodo, unidad):
-    monto_str = request.form.get("monto_pagado", "0").strip().replace(",", ".")
-    fecha_pago = request.form.get("fecha_pago") or _fecha_hoy().strftime("%Y-%m-%d")
-    try:
-        monto = float(monto_str)
-    except ValueError:
-        monto = 0.0
-    resultado = db.marcar_pagado(periodo, unidad, monto, fecha_pago)
-    if resultado:
-        tipo = resultado["tipo"]
-        if tipo == "CERRADA":
-            flash(f"No se puede registrar el pago: la liquidación de {periodo} está cerrada.", "danger")
-        elif tipo == "PENDIENTE":
-            flash(f"Pago de UF {unidad} revertido.", "warning")
-        elif tipo == "PARCIAL":
-            flash(f"UF {unidad}: pago parcial de ${monto:,.2f}. Saldo pendiente: ${resultado['saldo']:,.2f}.", "warning")
-        else:
-            flash(f"UF {unidad}: pago total registrado.", "success")
-
-    # Bonificación opcional: SALIDA en Caja Diaria, no afecta la liquidación
-    bonif_str = request.form.get("bonificacion", "0").strip().replace(",", ".")
-    try:
-        bonif = float(bonif_str)
-    except ValueError:
-        bonif = 0.0
-    if bonif > 0 and tipo != "CERRADA":
-        motivo = (request.form.get("bonif_motivo") or "").strip()
-        desc = f"Bonificación UF {unidad} {periodo}"
-        if motivo:
-            desc += f" - {motivo}"
-        db.save_movimiento(fecha_pago, desc[:200], "SALIDA", "BONIFICACION", bonif)
-        flash(f"Bonificación de ${bonif:,.2f} registrada en Caja Diaria.", "info")
-
-    return redirect(url_for("liquidacion", periodo=periodo))
+@app.route("/cobranzas/<periodo>/anular", methods=["POST"])
+def cobranzas_anular(periodo):
+    """Anula un pago (form 'pago_id'), los de una unidad ('unidad') o todos. Solo administradores."""
+    block = _require_admin()
+    if block:
+        return block
+    pago_id = request.form.get("pago_id", "").strip()
+    unidad = request.form.get("unidad", "").strip()
+    ok, msg, _n = db.anular_pagos(periodo, [unidad] if unidad else None,
+                                  pago_id=int(pago_id) if pago_id.isdigit() else None)
+    flash(msg, "success" if ok else "warning")
+    return redirect(url_for("cobranzas", periodo=periodo))
 
 
 # ---------------------------------------------------------------------------
@@ -1132,15 +1345,23 @@ def descargar_pdf(periodo):
     gastos = db.get_gastos(mes_gastos_pdf)
     cfg = db.get_config()
     yp2, mp2 = int(periodo[:4]), int(periodo[5:7])
-    hasta_pdf = f"{periodo}-{_cal.monthrange(yp2, mp2)[1]:02d}"
+    hasta_pdf = db.fecha_corte_liquidacion(periodo).strftime("%Y-%m-%d")  # cierre de la liquidación (o hoy)
     saldo_caja, _, _ = db.get_saldo_caja(hasta_fecha=hasta_pdf)
-    fondo = db.get_fondo_reserva_periodo(mes_gastos_pdf)
+    fondo = _resumen_fondo_seguro(mes_gastos_pdf, cfg)
     notas = db.get_notas_periodo(periodo)
     extras = db.get_gastos_extra(periodo)
     _logo = db.get_logo()
     _logo_bytes = base64.b64decode(_logo["b64"]) if _logo else None
+    try:
+        caja_mes = db.get_resumen_caja_periodo(periodo)
+    except Exception:
+        app.logger.exception("[pdf] resumen de caja")
+        caja_mes = None
+    # Liquidación anterior por UF: "Liquidado mes ant." y "Pago anterior" en la planilla
+    anterior = {str(r["unidad"]): r for r in db.get_liquidacion(mes_gastos_pdf)}
     pdf_bytes = generar_pdf_resumen_edificio(liq, gastos, cfg, periodo, saldo_caja, fondo,
-                                             notas=notas, extras=extras, logo_bytes=_logo_bytes)
+                                             notas=notas, extras=extras, logo_bytes=_logo_bytes,
+                                             caja_mes=caja_mes, anterior=anterior)
     _meses_pdf = ["enero","febrero","marzo","abril","mayo","junio",
                   "julio","agosto","septiembre","octubre","noviembre","diciembre"]
     _mes_str = _meses_pdf[int(periodo[5:7]) - 1] + "_" + periodo[:4]
@@ -1158,11 +1379,11 @@ def descargar_pdf(periodo):
 @app.route("/liquidacion/recibo/<periodo>/<unidad>")
 def descargar_recibo(periodo, unidad):
     """Resumen de expensas individual por unidad."""
-    liq = db.get_liquidacion(periodo)
+    liq = db.get_liquidacion(periodo, simular=False)  # recibo firmado: datos reales
     row = next((r for r in liq if str(r["unidad"]) == str(unidad)), None)
     if not row or row.get("tipo_pago", "PENDIENTE") == "PENDIENTE":
         flash("No hay pago registrado para esta unidad.", "warning")
-        return redirect(url_for("liquidacion", periodo=periodo))
+        return redirect(url_for("cobranzas", periodo=periodo))
     cfg = db.get_config()
     mes_gastos = db._prev_periodo(periodo)
     gastos = db.get_gastos(mes_gastos)
@@ -1200,7 +1421,7 @@ def _recibo_publico_get_row(cid, periodo, unidad, token):
     expected = _token_recibo_publico(clave, cid, periodo, unidad)
     if not _hmac_mod.compare_digest(token, expected):
         abort(403)
-    liq = db.get_liquidacion(periodo)
+    liq = db.get_liquidacion(periodo, simular=False)  # recibo firmado: datos reales
     row = next((r for r in liq if str(r["unidad"]) == str(unidad)), None)
     if not row or row.get("tipo_pago", "PENDIENTE") == "PENDIENTE":
         abort(404)
@@ -1259,7 +1480,7 @@ def verificar_recibo(periodo=None, unidad=None, codigo=None):
     if not periodo or not unidad or not codigo:
         return render_template("verificar.html", estado="formulario")
 
-    liq = db.get_liquidacion(periodo)
+    liq = db.get_liquidacion(periodo, simular=False)  # recibo firmado: datos reales
     row = next((r for r in liq if str(r["unidad"]) == str(unidad)), None)
     if not row:
         return render_template("verificar.html", estado="no_encontrado",
@@ -1368,7 +1589,13 @@ def facturas():
     provs = db.get_proveedores()
     total_pendiente = db.get_total_pendiente_facturas()
     gastos_recurrentes = db.get_gastos_recurrentes()
+    try:
+        saldo_fondo = db.get_saldo_fondo()
+    except Exception:
+        app.logger.exception("No se pudo calcular el saldo del fondo de reserva")
+        saldo_fondo = None
     return render_template("facturas.html", facturas=lista, proveedores=provs,
+                           saldo_fondo=saldo_fondo,
                            estado_filtro=estado, mes_filtro=mes,
                            total_pendiente=total_pendiente,
                            gastos_recurrentes=gastos_recurrentes,
@@ -1393,28 +1620,38 @@ def save_factura():
         "categoria": request.form.get("categoria", "").strip(),
         "numero_factura": request.form.get("numero_factura", "").strip(),
         "extraordinario": 1 if request.form.get("extraordinario") else 0,
+        "gasto_id": request.form.get("gasto_id", "").strip() or None,
     }
     if not data["descripcion"] or not data["fecha"]:
         flash("Fecha y descripción son obligatorias.", "danger")
         return redirect(url_for("facturas"))
     db.save_factura(data)
-    flash("Factura guardada.", "success")
+    flash("Factura guardada." + (" Quedó vinculada al gasto: al pagarla no se duplica."
+                                 if data["gasto_id"] else ""), "success")
     return redirect(url_for("facturas"))
 
 
 @app.route("/facturas/pagar/<int:fid>", methods=["POST"])
 def pagar_factura(fid):
-    fecha_pago = request.form.get("fecha_pago") or date.today().strftime("%Y-%m-%d")
+    fecha_pago = request.form.get("fecha_pago") or _fecha_hoy().strftime("%Y-%m-%d")
     factura = db.get_factura_by_id(fid)
     if factura:
         fecha_emision = str(factura.get("fecha") or "")
         if fecha_emision and fecha_pago < fecha_emision:
             flash(f"La fecha de pago ({fecha_pago}) no puede ser anterior a la fecha de emisión de la factura ({fecha_emision}).", "danger")
             return redirect(url_for("facturas"))
-    ok = db.pagar_factura(fid, fecha_pago)
+    con_fondo = bool(request.form.get("con_fondo"))
+    ok = db.pagar_factura(fid, fecha_pago, con_fondo=con_fondo,
+                          observacion=request.form.get("observacion", ""))
     if ok:
         periodo = fecha_pago[:7]
-        flash("Factura pagada. Se registró en Caja Diaria y Gastos Mensuales.", "success")
+        if con_fondo:
+            flash("Factura pagada con el Fondo de Reserva. Se registró en Caja Diaria y no se "
+                  "cobra en la liquidación.", "success")
+            if factura and str(factura.get("fecha") or "")[:7] not in ("", periodo):
+                _recalcular_liq_si_posible(str(factura["fecha"])[:7])
+        else:
+            flash("Factura pagada. Se registró en Caja Diaria y Gastos Mensuales.", "success")
         _recalcular_liq_si_posible(periodo)
     else:
         flash("No se encontró la factura.", "danger")
@@ -1450,7 +1687,7 @@ def presupuestos():
 def save_pedido():
     data = {
         "id": request.form.get("id") or None,
-        "fecha": request.form.get("fecha", date.today().strftime("%Y-%m-%d")),
+        "fecha": request.form.get("fecha", _fecha_hoy().strftime("%Y-%m-%d")),
         "descripcion": request.form.get("descripcion", "").strip(),
         "categoria": request.form.get("categoria", "").strip(),
         "estado": request.form.get("estado", "ABIERTO"),
@@ -1496,7 +1733,7 @@ def save_cotizacion():
         "pedido_id": pedido_id,
         "proveedor_id": prov_id,
         "proveedor_nombre": prov["nombre"] if prov else request.form.get("proveedor_nombre_libre", "").strip(),
-        "fecha": request.form.get("fecha", date.today().strftime("%Y-%m-%d")),
+        "fecha": request.form.get("fecha", _fecha_hoy().strftime("%Y-%m-%d")),
         "importe": float(importe) if importe else 0.0,
         "notas": request.form.get("notas", "").strip(),
         "seleccionado": 0,
@@ -1747,6 +1984,56 @@ def delete_logo():
     db.delete_logo()
     flash("Logo eliminado.", "info")
     return redirect(url_for("config"))
+
+
+# ---------------------------------------------------------------------------
+# ERRORES INTERNOS
+# ---------------------------------------------------------------------------
+
+@app.errorhandler(500)
+def error_interno(e):
+    """
+    Error 500: siempre queda el traceback en el log. A los administradores se les muestra
+    el detalle en pantalla (para diagnosticar sin acceso al log de Render); al resto, un
+    mensaje simple. La página no usa base.html, por si el error viene de ahí.
+    """
+    import traceback
+    from markupsafe import escape
+    orig = getattr(e, "original_exception", None) or e
+    detalle = "".join(traceback.format_exception(type(orig), orig, orig.__traceback__))
+    app.logger.error(f"Error 500 en {request.method} {request.path}:\n{detalle}")
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "version.txt")) as _f:
+            version = _f.read().strip()
+    except Exception:
+        version = "?"
+    cuerpo = ("<p>Ocurrió un error inesperado. Avisá al administrador del sistema.</p>"
+              f'<p><a href="{url_for("index")}">Volver al inicio</a></p>')
+    if session.get("es_admin"):
+        cuerpo = (
+            "<p>Ocurrió un error inesperado. Como sos administrador, abajo está el detalle técnico: "
+            "copialo completo y pasáselo a quien mantiene el sistema.</p>"
+            f"<p><b>Página:</b> {escape(request.method)} {escape(request.path)}<br>"
+            f"<b>Versión:</b> {escape(version)}<br>"
+            f"<b>Consorcio:</b> {escape(session.get('consorcio_id', ''))}<br>"
+            f"<b>Fecha del sistema fijada:</b> {escape(_fecha_fijada_segura())}</p>"
+            f'<pre style="white-space:pre-wrap;background:#f6f6f6;border:1px solid #ccc;padding:12px;'
+            f'font-size:12px">{escape(detalle)}</pre>'
+            f'<p><a href="{url_for("index")}">Volver al inicio</a></p>'
+        )
+    html = ('<!doctype html><html lang="es"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            '<title>Error del sistema</title></head>'
+            '<body style="font-family:system-ui,sans-serif;max-width:960px;margin:24px auto;padding:0 16px">'
+            f'<h2 style="color:#c00000">Error del sistema</h2>{cuerpo}</body></html>')
+    return html, 500
+
+
+def _fecha_fijada_segura() -> str:
+    try:
+        return db.get_config().get("fecha_simulada", "") or "(no)"
+    except Exception:
+        return "?"
 
 
 # ---------------------------------------------------------------------------

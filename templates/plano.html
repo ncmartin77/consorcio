@@ -15,7 +15,7 @@
 <div class="alert alert-success d-flex align-items-center gap-3 py-2 mb-3">
   <i class="bi bi-piggy-bank-fill fs-4"></i>
   <div>
-    <strong>Fondo de Reserva acumulado (pendiente de cobro):</strong>
+    <strong>Fondo de Reserva (saldo de caja al cierre del mes anterior):</strong>
     <span class="fs-5 ms-2">$ {{ "%.2f"|format(fondo)|replace(".",",") }}</span>
     <a href="{{ url_for('config') }}" class="ms-3 small text-muted">
       <i class="bi bi-pencil"></i> Actualizar
@@ -279,7 +279,7 @@ boxes.forEach(box => {
     const input = document.getElementById('pp_monto');
     input.value = saldo.toFixed(2);
     input.max = saldo;
-    document.getElementById('pp_fecha').value = new Date().toISOString().split('T')[0];
+    document.getElementById('pp_fecha').value = '{{ hoy_sistema }}';
     document.getElementById('pp_aviso_parcial').style.display = 'none';
     document.getElementById('formPagoPlano').action = '/liquidacion/pagar/{{ periodo }}/' + d.numero;
     new bootstrap.Modal(document.getElementById('modalPagoPlano')).show();

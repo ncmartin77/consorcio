@@ -12,6 +12,9 @@ Al empezar una sesión, leer `docs/memoria_sesion_claude.md` (estado actual, pen
 Después de cada cambio significativo, hacer commit y push a GitHub.
 Usar mensajes de commit descriptivos en español.
 
+## Pruebas
+Probar contra la base de **prueba** (`consorcio-tst`) con los scripts de `pruebas/` (cliente de pruebas de Flask, abortan si `DATABASE_URL` no es la base de prueba). Registrar cada prueba en `docs/pruebas_realizadas.md` con tablas (caso / esperado / resultado), la más nueva primero.
+
 ## Versionado (`version.txt`, formato `X.Y-DDMM`)
 Actualizar `version.txt` antes de **cada** commit. `DDMM` = día y mes real del commit. Claude decide el incremento según esta regla:
 
@@ -107,27 +110,31 @@ templates/                ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 
 **Liquidación a mes vencido:** when generating a liquidación for period `P`, the expense base is gastos from period `P-1`. Use `_prev_periodo()` / `_next_periodo()` to navigate periods.
 
-**CERRADA is immutable:** once a liquidación is closed via `set_liq_estado(periodo, "CERRADA")`, `generar_liquidacion()` and `marcar_pagado()` return early without changes. Saving a gasto auto-recalculates the *next* month's liquidación only if it is ABIERTA or doesn't exist yet.
+**Liquidación vs Cobranzas (v9.0, user rule):** a liquidación is ABIERTA while its expenses are loaded (amount recalculated); it is CLOSED once the month changed and there are no more expenses (`pg_db.error_cierre()` / `cerrar_liquidacion()`: from day 1 of its month per the system date, previous one closed; closing recalculates and freezes it). **Payments are made against the CLOSED liquidación**, only the last closed one (`periodo_cobranza()`), in the **Cobranzas** screen (`/cobranzas`, routes `cobranzas_pagar`, `cobranzas_pagar_todo`, `cobranzas_anular`; `pg_db.registrar_pago`, `pagar_todo`, `anular_pagos`). Payments live in table `pagos` (date, amount, bonificación, `caja_id`/`bonif_caja_id`); `get_liquidacion()` derives `monto_pagado`/`tipo_pago`/`saldo_pendiente`/`fecha_pago` from it (`_aplicar_pagos`); the payment columns of `liquidaciones` are legacy. Reopening: admin only, only without payments and if the next one is not closed (`error_reapertura`). `migrar_pagos_legacy()` (before_request, once per consorcio, config `pagos_migrados`) moved old payments to `pagos`.
+
+**CERRADA is immutable:** `generar_liquidacion()` returns early for a CERRADA period. Saving a gasto auto-recalculates the *next* month's liquidación only if it is ABIERTA or doesn't exist yet. `generar_liquidacion()` does not write if nothing changed.
 
 **CERRADA cascade rules:**
-- Caja Diaria blocks add/edit/delete of movements when the period's liquidación is CERRADA (checked in `save_movimiento` and `delete_movimiento` routes).
+- Caja Diaria of month M is blocked (add/edit/delete) when liquidación **M+1** (the one carrying M's expenses) is CERRADA — `caja_mes_bloqueado(mes)`. Editing/deleting in Caja the entry of a payment updates/deletes the payment.
 - Generating liquidación for P+1 requires liquidación P to be CERRADA (validated in `generar_liquidacion` route and shown in Gastos Mensuales UI).
 
 **Expense distribution rounding:** each unit's expensa is `round(total_gastos * pct / 100, 2)`. The last unit absorbs the cumulative rounding difference so that `sum(all_expensas) == total_gastos` exactly.
 
 **UNIDADES columns are dynamic:** each category in `CATEGORIAS_PCT` adds a `pct_NOMBRE` column to the UNIDADES sheet. When reading a unit's percentage, `excel_db.py` reads whichever `pct_*` columns exist. If a unit has multiple categories, the average is used.
 
-**`fecha_simulada`** in CONFIG overrides `date.today()` throughout the app (see `_fecha_hoy()` in `app.py`). Useful for testing past/future periods.
+**`fecha_simulada`** ("Fecha del sistema", tarjeta arriba en Configuración, `POST /config/fecha-sistema`): `pg_db.fecha_sistema()` / `_fecha_hoy()` la usan como "hoy" — also for writes since v9.0: default and maximum payment date, closing date/validation, debt and interest of open liquidaciones (recalculated when the date changes). `get_liquidacion()` (simular=True) ignores payments dated after it (`pago_posterior`); signed receipts use `simular=False`. Ver `docs/memoria_sesion_claude.md`.
 
-**Deuda anterior flow:** if a unit has no previous liquidación row, its `deuda_inicial` field (set in Apertura) seeds the first debt. Subsequent months carry forward `saldo_pendiente` for partial payments or `total_a_pagar` for unpaid units.
+**Deuda anterior flow (v9.0):** if a unit has no previous liquidación row, its `deuda_inicial` field (set in Apertura; positive = debt, negative = credit) seeds the first debt, with no interest that month. Afterwards `deuda_anterior(P+1) = total_a_pagar(P) − payments of P dated <= system date` (negative = credit). **Interest (v9.2, user rule):** an open liquidación carries NO interest. When CLOSING it, a modal lists the units with `deuda_anterior > 0` and their interest `tasa_mora × deuda_anterior` (`pg_db.propuesta_intereses`), with one switch per unit (on by default); `cerrar_liquidacion(periodo, con_interes=[...])` adds it to the total of the selected units (others get `sin_interes=TRUE`) and freezes it. The closed liquidación and the PDF show an Interés column. Cobranzas does not charge interest (the v9.1 columns `pagos.interes`/`interes_caja_id` are legacy). Credit never earns interest.
 
-**Fondo de reserva** is a special gasto of type `FONDO_RESERVA`, auto-inserted each month by `ensure_fondo_reserva_gasto()`. Its accumulated total is tracked separately via `get_fondo_reserva()` which sums CAJA entries of category `FONDO_RESERVA`.
+**Fondo de reserva (v6.0):** the monthly contribution is a gasto of type `FONDO_RESERVA` (auto-inserted by `ensure_fondo_reserva_gasto()`), charged in the expensas. Extraordinary expenses are either `VARIABLE_FR` (paid with the fund: not charged, deducted from the fund) or `EXTRAORDINARIO` (pending: charged in the next expensas as a separate line, fund untouched); switch with `POST /gastos/<id>/extraordinario/<FONDO|COBRAR>`. Fund balance (v8.0, user rule): the Fondo de Reserva of month X is the **cash (caja) balance at the end of month X-1** — `pg_db.get_resumen_fondo(mes_gastos)`. The accumulated balance is never charged; only the monthly contribution is. `get_desglose_gastos()` splits ordinarios / aporte / extraordinarios.
 
 **Gastos `VARIABLE_FR` (Fondo de Reserva variable):** when adding a VARIABLE gasto, the Agregar Gasto modal shows a checkbox "Usar de Fondo de Reserva". When checked, the gasto is saved to `GASTOS_MENSUALES` with `tipo="VARIABLE_FR"`. Key behaviors:
 - Shown in Gastos Mensuales in a separate subsection ("Gastos con Fondo de Reserva"), not in the main table.
 - Excluded from `total_gastos` in `get_total_gastos()` and `generar_liquidacion()` → does not affect expensa distribution.
 - Has a receipt button: opens `#modalFacturaVariable` with `categoria` pre-filled as `"FONDO_RESERVA"`.
 - When the factura is paid, `pagar_factura()` creates a CAJA SALIDA with `categoria=FONDO_RESERVA` (standard factura flow), and skips the duplicate `save_gasto()` call (detected via `factura.categoria == "FONDO_RESERVA"`).
+- **Pay any factura with the fund (v9.3):** the Registrar Pago modal in Facturas has a "Pagar con Fondo de Reserva" switch (`con_fondo`). `pagar_factura(fid, fecha, con_fondo=True)` sets the factura and the Caja SALIDA to categoria `FONDO_RESERVA` and saves the gasto as `VARIABLE_FR` (not charged in the liquidación); for a recurring-concept factura the FIJO gasto created on save is switched to `VARIABLE_FR` instead (if its liquidación is open).
+- **Gasto ↔ factura link (v9.4):** `gastos.factura_id` (created by `ensure_factura_vinculos()`, legacy rows linked once by `vincular_gastos_facturas_legacy()` in before_request). `pagar_factura` reuses the linked gasto (updates importe/tipo) instead of inserting; `save_factura(gasto_id=...)` links a factura emitted from Gastos Mensuales; recurrent facturas link (or reuse an orphan gasto) on save; `delete_factura` unlinks (gasto stays). Gastos without factura show the "Emitir factura de este gasto" button. `facturas.observacion` = free note entered when paying.
 - PDF resumen includes a "GASTOS CON FONDO DE RESERVA" section (amber style) when VARIABLE_FR gastos exist for the period.
 
 **Notas del período** (`NOTAS_PERIODO` sheet): text notices/announcements for a specific period. `tipo=AVISO` (highlighted) or `tipo=INFO`. Added/deleted via AJAX routes `POST /liquidacion/<periodo>/notas/add` and `POST /liquidacion/<periodo>/notas/<id>/delete`. Blocked if liquidación is CERRADA. Shown in UI and in resumen PDF.
@@ -142,7 +149,7 @@ templates/                ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 
 **Payment validations:**
 - `fecha_pago` must be ≥ `fecha` (emission date) of the factura — enforced in `pagar_factura` route (backend) and via `min=` on the date input (frontend).
-- `marcar_todos_pagado(periodo, fecha_pago)` pays all PENDIENTE units at once (used by the "Pago Completo" button in Liquidación).
+- Expensas payments (`registrar_pago`): only against the last closed liquidación, date not after the system date and not in a closed Caja month. `pagar_todo(periodo, fecha)` pays the balance of every unit with debt ("Pago Completo" in Cobranzas).
 
 **Factura desde gasto variable:** VARIABLE-type gastos in Gastos Mensuales show a receipt button that opens `#modalFacturaVariable` pre-filled with the gasto's concept and amount. Submits to the existing `save_factura` route.
 
@@ -167,7 +174,7 @@ templates/                ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 
 **Tareas — event handling:** checkboxes use event delegation on `#tareasList` (`.change` listener) instead of inline `onchange` attributes (which broke when task descriptions contained quotes). DOM elements use `data-id` and `data-desc` attributes. Show/hide of the undo bar uses `style.setProperty('display', 'flex'/'none', 'important')` to override Bootstrap utility classes reliably.
 
-**Bonificación en pago de liquidación:** the "Registrar Pago" modal in `liquidacion.html` includes optional fields `bonificacion` (amount) and `bonif_motivo` (reason). If a bonificación > 0 is submitted, the `marcar_pagado` route in `app.py` calls `db.save_movimiento()` with tipo=SALIDA and categoria=BONIFICACION after recording the payment. The bonificación does NOT modify the liquidación row (total_a_pagar, monto_pagado, saldo are unchanged). Only affects Caja Diaria.
+**Bonificación en pago:** the "Registrar Pago" modal in `cobranzas.html` includes optional fields `bonificacion` (amount) and `bonif_motivo` (reason). `registrar_pago()` stores it in the `pagos` row and creates a Caja SALIDA with categoria=BONIFICACION (`bonif_caja_id`). It does NOT change what the unit owes. Only affects Caja Diaria.
 
 **Tareas Pendientes:** a global memo/checklist shown in Gastos Mensuales (always visible, regardless of period). Stored in the `TAREAS` Excel sheet (`id`, `descripcion`). Operations are fully AJAX (no page reload):
 - `POST /tareas/add` → returns `{id, descripcion}` JSON
@@ -177,7 +184,7 @@ templates/                ← Jinja2 + Bootstrap 5 + Bootstrap Icons
 
 **Caja Diaria — fecha display:** dates are stored internally as `YYYY-MM-DD` but displayed to the user as `DD/MM/YYYY` in `caja.html`.
 
-**Caja Diaria — delete block:** `delete_movimiento()` in `excel_db.py` reads the movement's actual `fecha` from the Excel row, derives its period (`YYYY-MM`), and checks `liq_esta_cerrada()` for that period before deleting. Returns `False` if blocked (CERRADA), `True` on success. The route in `app.py` checks the return value and flashes an error if blocked. This prevents deletion even if the URL period parameter is manipulated.
+**Caja Diaria — delete block:** `delete_movimiento()` reads the movement's actual `fecha`, derives its month and checks `caja_mes_bloqueado()` (v9.0: liquidación of the next month closed) before deleting; a payment's entry can only be deleted if the payment belongs to the last closed liquidación. Returns `False` if blocked (CERRADA), `True` on success. The route in `app.py` checks the return value and flashes an error if blocked. This prevents deletion even if the URL period parameter is manipulated.
 
 **Checkpoint / Rollback:** file-based snapshot of a consorcio's Excel. No Excel schema changes — purely filesystem. One checkpoint per consorcio, stored in its `data/<cid>/` directory:
 - `_checkpoint.xlsx` — copy of `base.xlsx` at the moment of checkpoint creation
@@ -207,7 +214,7 @@ Costo estimado: $0/mes dentro del free tier de GCP.
 ## PDF generation
 
 `pdf_gen.py` exposes three functions called directly from `app.py` routes:
-- `generar_pdf_resumen_edificio()` — full building summary (all units)
+- `generar_pdf_resumen_edificio()` — full building summary (all units). **A4 landscape (v9.6)**; UF table columns: UF, Descripción, Prop./Inquilino, %, Liquidado mes ant., Pago anterior, Deuda, [Interés], Expensas, Total, Pagado, MONTO A PAGAR (v9.7, was "Saldo") (`anterior={unidad: row}` = previous liquidación, passed by the `descargar_pdf` route); the Total gastos / a cobrar / cobrado / pendiente box goes right below the UF table (KeepTogether)
 - `generar_recibo_pago()` — individual payment receipt per unit
 - `generar_pdf_liquidacion()` — detailed liquidation (currently unused in routes)
 
@@ -222,5 +229,5 @@ All return `bytes` which are streamed via Flask's `send_file`.
 - All DB changes of one HTTP request share an `op_id`: `@before_request _contexto_auditoria` calls `db.set_contexto_auditoria(email, descripcion)`; `_conn()` (write connections only — `_fetchall`/`_fetchone` use `write=False`) passes it to the transaction via `set_config('app.audit_op'|'app.audit_usuario'|'app.audit_desc', ..., true)`. Human-readable labels come from `_DESC_AUDITORIA` in `app.py` (add an entry when creating a new write route).
 - UPDATEs that don't change anything (e.g. upserts in `save_config`) are not logged. Retention: 180 days (purged when the log is listed).
 - `revertir_operacion(op_id, email)` undoes an operation in reverse order in a single transaction: INSERT→DELETE, DELETE→re-INSERT (`OVERRIDING SYSTEM VALUE`, keeps original id), UPDATE→restore old values. Rows are matched by `to_jsonb(row) = datos_despues`; if a row changed afterwards, the whole revert is aborted (`ConflictoReversion`). FK violations (cascades) are retried after the rest. The revert itself is logged as a new operation ("Reversión: ...") and can also be reverted.
-- **Closed periods are immutable for reverts:** an operation can only be reverted if every period it touches is after the last CERRADA liquidación (`get_ultima_liq_cerrada()`). Period per row (`_SQL_PERIODO`, min of before/after): `periodo` for liquidaciones/liquidaciones_estado/gastos_extra/notas_periodo, month of `fecha` for caja, `periodo + 1 month` for gastos (mes vencido). Other tables (unidades, config, proveedores, tareas…) have no period and are not blocked. `get_bloqueo_operacion()` returns the reason; the list shows a lock icon and the detail page an alert.
+- **Closed periods are immutable for reverts:** an operation can only be reverted if every period it touches is after the last CERRADA liquidación (`get_ultima_liq_cerrada()`). Period per row (`_SQL_PERIODO`, min of before/after): `periodo` for liquidaciones/liquidaciones_estado/gastos_extra/notas_periodo, month of `fecha` + 1 for caja (v9.0), `periodo + 1 month` for gastos (mes vencido) and pagos. Other tables (unidades, config, proveedores, tareas…) have no period and are not blocked. `get_bloqueo_operacion()` returns the reason; the list shows a lock icon and the detail page an alert.
 - Routes (admin only via `_require_admin()`): `GET /admin/auditoria` (list, filters `usuario`/`tabla`, pagination), `GET /admin/auditoria/<op_id>` (diff per row), `POST /admin/auditoria/<op_id>/revertir`. Entry point: card "Log de Movimientos" in `config.html#auditoria`, shown only if `es_admin`.

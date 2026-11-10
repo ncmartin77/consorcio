@@ -5,11 +5,11 @@ Formato basado en ejemplo.pdf: una página por unidad.
 import io
 from datetime import date
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import (
-    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable, PageBreak, Image as RLImage
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable, PageBreak, KeepTogether, Image as RLImage
 )
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 import qrcode
@@ -70,6 +70,18 @@ def _mes_abrev(periodo: str):
         return f"{meses[m-1]}/{y[-2:]}"
     except Exception:
         return periodo
+
+
+def _fecha_generacion(config: dict) -> str:
+    """'DD/MM/YYYY a las HH:MM' usando la fecha del sistema (config fecha_simulada) si está fijada."""
+    from datetime import datetime
+    ahora = datetime.now()
+    fs = (config or {}).get("fecha_simulada", "") or ""
+    try:
+        dia = datetime.strptime(fs.strip(), "%Y-%m-%d").date() if fs.strip() else ahora.date()
+    except ValueError:
+        dia = ahora.date()
+    return f"{dia.strftime('%d/%m/%Y')} a las {ahora.strftime('%H:%M')}"
 
 
 def generar_pdf_liquidacion(liquidacion_rows: list, gastos: list, config: dict, periodo: str,
@@ -286,7 +298,7 @@ def generar_pdf_liquidacion(liquidacion_rows: list, gastos: list, config: dict, 
     # Timestamp al pie de la última página
     story.append(Spacer(1, 0.3 * cm))
     story.append(Paragraph(
-        f"Generado el {date.today().strftime('%d/%m/%Y')} a las {__import__('datetime').datetime.now().strftime('%H:%M')}",
+        f"Generado el {_fecha_generacion(config)}",
         ParagraphStyle("ts", fontSize=7, fontName="Helvetica", alignment=TA_RIGHT,
                        textColor=colors.HexColor("#888888"))))
 
@@ -297,17 +309,21 @@ def generar_pdf_liquidacion(liquidacion_rows: list, gastos: list, config: dict, 
 def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: dict,
                                   periodo: str, saldo_caja: float, fondo_reserva: float,
                                   notas: list = None, extras: list = None,
-                                  logo_bytes: bytes = None) -> bytes:
+                                  logo_bytes: bytes = None, caja_mes: dict = None,
+                                  anterior: dict = None) -> bytes:
     """
-    PDF único de resumen para el edificio:
-    - Tabla de todas las unidades (UF, %, expensas, deuda, total, estado)
+    PDF único de resumen para el edificio (A4 horizontal, v9.6):
+    - Tabla de todas las unidades (UF, %, liquidado y pago del mes anterior, deuda, expensas,
+      total, estado) y, debajo, el cuadro de totales (gastos, a cobrar, cobrado, pendiente)
     - Detalle de gastos del mes
     - Saldo en caja y fondo de reserva
+    `anterior`: {unidad: fila de la liquidación anterior} para "Liquidado mes ant." y "Pago anterior".
     """
+    anterior = anterior or {}
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4,
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4),
                             rightMargin=1.2*cm, leftMargin=1.2*cm,
-                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+                            topMargin=1.2*cm, bottomMargin=1.2*cm)
     styles = getSampleStyleSheet()
     c_azul = colors.HexColor("#1a3a5c")
     c_verde = colors.HexColor("#155724")
@@ -333,23 +349,23 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
     story = []
 
     # Encabezado
-    logo_img = _make_logo_image(logo_bytes, max_height_cm=1.8)
+    logo_img = _make_logo_image(logo_bytes, max_height_cm=1.5)
     if logo_img:
         enc_t = Table(
             [[logo_img,
-              [Paragraph(edificio.upper(), st("tit", fontSize=14, fontName="Helvetica-Bold",
+              [Paragraph(edificio.upper(), st("tit", fontSize=14, leading=18, fontName="Helvetica-Bold",
                                               alignment=TA_CENTER, textColor=c_azul)),
                Paragraph(f"LIQUIDACIÓN DE EXPENSAS — {mes_nombre}",
                          st("sub", fontSize=10, fontName="Helvetica-Bold",
                             alignment=TA_CENTER, textColor=c_azul))],
               ""]],
-            colWidths=[3*cm, 12.6*cm, 3*cm]
+            colWidths=[3*cm, 21.3*cm, 3*cm]  # A4 horizontal: ancho útil 27.3 cm
         )
         enc_t.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "MIDDLE"),
                                     ("BOTTOMPADDING", (0,0), (-1,-1), 4)]))
         story.append(enc_t)
     else:
-        story.append(Paragraph(edificio.upper(), st("tit", fontSize=14, fontName="Helvetica-Bold",
+        story.append(Paragraph(edificio.upper(), st("tit", fontSize=14, leading=18, fontName="Helvetica-Bold",
                                                      alignment=TA_CENTER, textColor=c_azul)))
         story.append(Paragraph(f"LIQUIDACIÓN DE EXPENSAS — {mes_nombre}",
                                 st("sub", fontSize=10, fontName="Helvetica-Bold",
@@ -357,12 +373,12 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
     story.append(HRFlowable(width="100%", thickness=2, color=c_azul))
     story.append(Spacer(1, 0.3*cm))
 
-    # Resumen financiero en 4 cajas
+    # Resumen financiero en 4 cajas (se agrega debajo de la tabla de unidades)
     res_data = [
         ["TOTAL GASTOS", "TOTAL A COBRAR", "COBRADO", "PENDIENTE"],
         [_fmt(total_gastos), _fmt(total_a_cobrar), _fmt(total_cobrado), _fmt(total_pendiente)],
     ]
-    res_t = Table(res_data, colWidths=[4.5*cm]*4)
+    res_t = Table(res_data, colWidths=[6.8*cm]*4)  # = 27.2 cm
     res_t.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), c_azul), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
         ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,0), 8),
@@ -373,16 +389,28 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         ("GRID", (0,0), (-1,-1), 0.4, colors.grey),
         ("TOPPADDING", (0,0), (-1,-1), 5), ("BOTTOMPADDING", (0,0), (-1,-1), 5),
     ]))
-    story.append(res_t)
-    story.append(Spacer(1, 0.4*cm))
 
     # Tabla de unidades
     story.append(Paragraph("DETALLE POR UNIDAD FUNCIONAL",
                             st("h", fontSize=9, fontName="Helvetica-Bold", textColor=c_azul,
                                spaceAfter=4)))
-    uf_header = ["UF", "Descripción", "Prop./Inquilino", "%", "Expensas", "Deuda", "Total", "Pagado", "Saldo"]
+    con_interes = any(float(r.get("interes") or 0) for r in liquidacion_rows)
+    uf_header = ["UF", "Descripción", "Prop./Inquilino", "%", "Liquidado mes ant.", "Pago anterior",
+                 "Deuda", "Expensas", "Total", "Pagado", "MONTO A PAGAR"]
+    if con_interes:
+        uf_header.insert(7, "Interés")
     uf_data = [uf_header]
+    total_liq_ant = total_pago_ant = 0.0
     for r in liquidacion_rows:
+        ant = anterior.get(str(r["unidad"]))
+        if ant:
+            liq_ant = float(ant.get("total_a_pagar") or 0)
+            pago_ant = float(ant.get("monto_pagado") or 0)
+            total_liq_ant += liq_ant
+            total_pago_ant += pago_ant
+            liq_ant_txt, pago_ant_txt = _fmt(liq_ant), (_fmt(pago_ant) if pago_ant else "—")
+        else:
+            liq_ant_txt = pago_ant_txt = "—"
         ocupante = r.get("inquilino") or r.get("propietario") or "—"
         tipo = r.get("tipo_pago", "PENDIENTE")
         if tipo == "TOTAL":
@@ -394,25 +422,39 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         else:
             est = "—"
             saldo_display = _fmt(r["total_a_pagar"])  # aún no pagó nada → debe el total
-        monto_p = r.get("monto_pagado", 0)
-        uf_data.append([
+        fila_uf = [
             str(r["unidad"]),
-            r["descripcion"][:18],
-            ocupante[:20],
+            r["descripcion"][:20 if con_interes else 24],
+            ocupante[:22 if con_interes else 26],
             f"{r['pct_aplicado']:.3f}%",
-            _fmt(r["expensas"]),
+            liq_ant_txt,
+            pago_ant_txt,
             _fmt(r["deuda_anterior"]) if r["deuda_anterior"] else "—",
+            _fmt(r["expensas"]),
             _fmt(r["total_a_pagar"]),
             est,
             saldo_display,
-        ])
+        ]
+        if con_interes:
+            fila_uf.insert(7, _fmt(r["interes"]) if r.get("interes") else "—")
+        uf_data.append(fila_uf)
     # Fila totales
-    uf_data.append(["TOTAL", "", "", "100%",
-                    _fmt(total_gastos), "", _fmt(total_a_cobrar),
-                    _fmt(total_cobrado), _fmt(total_pendiente)])
+    # Total de la columna Deuda (neto: un saldo a favor, negativo, resta)
+    total_deuda = round(sum(float(r.get("deuda_anterior") or 0) for r in liquidacion_rows), 2)
+    fila_tot = ["TOTAL", "", "", "100%",
+                _fmt(round(total_liq_ant, 2)) if anterior else "—",
+                _fmt(round(total_pago_ant, 2)) if anterior else "—",
+                _fmt(total_deuda) if total_deuda else "—", _fmt(total_gastos), _fmt(total_a_cobrar),
+                _fmt(total_cobrado), _fmt(total_pendiente)]
+    if con_interes:
+        fila_tot.insert(7, _fmt(round(sum(float(r.get("interes") or 0) for r in liquidacion_rows), 2)))
+    uf_data.append(fila_tot)
 
-    # A4 ancho útil = 21 - 2*1.2 = 18.6 cm → repartir entre 9 cols
-    col_w = [0.9*cm, 2.8*cm, 2.8*cm, 1.5*cm, 2.0*cm, 1.8*cm, 2.0*cm, 1.8*cm, 1.9*cm]  # = 17.5 cm
+    # A4 horizontal: ancho útil = 29.7 - 2*1.2 = 27.3 cm → 11 columnas (12 con interés)
+    # Columnas de importes anchas para que entren los totales (ej. $ 1.316.352,34)
+    col_w = [1.0*cm, 3.2*cm, 3.4*cm, 1.6*cm, 2.6*cm, 2.6*cm, 2.5*cm, 2.6*cm, 2.7*cm, 2.4*cm, 2.6*cm]  # = 27.2 cm
+    if con_interes:
+        col_w = [1.0*cm, 2.8*cm, 3.0*cm, 1.4*cm, 2.5*cm, 2.5*cm, 2.4*cm, 1.8*cm, 2.5*cm, 2.6*cm, 2.2*cm, 2.5*cm]  # = 27.2 cm
     uf_t = Table(uf_data, colWidths=col_w, repeatRows=1)
     n = len(uf_data)
     uf_t.setStyle(TableStyle([
@@ -422,55 +464,103 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         ("FONTNAME", (0,n-1), (-1,n-1), "Helvetica-Bold"),
         ("BACKGROUND", (0,n-1), (-1,n-1), colors.HexColor("#dce8f8")),
         ("ROWBACKGROUNDS", (0,1), (-1,n-2), [colors.white, colors.HexColor("#f5f5f5")]),
-        ("ALIGN", (3,0), (-1,-1), "RIGHT"), ("ALIGN", (7,0), (7,-1), "CENTER"),
+        ("ALIGN", (3,0), (-1,-1), "RIGHT"), ("ALIGN", (len(uf_header)-2, 0), (len(uf_header)-2, -1), "CENTER"),
         ("ALIGN", (0,0), (0,-1), "CENTER"),
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
         ("GRID", (0,0), (-1,-1), 0.3, colors.grey),
-        ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+        ("TOPPADDING", (0,0), (-1,-1), 1), ("BOTTOMPADDING", (0,0), (-1,-1), 1),
         ("LEFTPADDING", (0,0), (-1,-1), 3),
     ]))
     story.append(uf_t)
+    story.append(Spacer(1, 0.2*cm))
+    story.append(KeepTogether([res_t]))  # totales inmediatamente debajo de la tabla de unidades, sin partirse
     story.append(Spacer(1, 0.5*cm))
 
-    # Detalle de gastos + caja en dos columnas
-    gasto_data = [["Concepto", "Tipo", "Importe"]]
-    for g in gastos_normal:
-        gasto_data.append([g["concepto"], g.get("tipo",""), _fmt(g["importe"])])
-    gasto_data.append(["TOTAL GASTOS", "", _fmt(total_gastos)])
+    # Gastos ordinarios del mes (sin aporte al fondo ni extraordinarios) + cuadros a la derecha
+    mes_gastos_txt = _mes_nombre_largo(_prev_periodo_helper(periodo)).title()
+    _rotulo = {"FIJO": "Fijo", "VARIABLE": "Variable"}
+    ordinarios = [g for g in gastos_normal if g.get("tipo") not in ("FONDO_RESERVA", "EXTRAORDINARIO")]
+    aporte_fr = round(sum(g["importe"] for g in gastos_normal if g.get("tipo") == "FONDO_RESERVA"), 2)
+    extra_cobrar = round(sum(g["importe"] for g in gastos_normal if g.get("tipo") == "EXTRAORDINARIO"), 2)
+    total_ordinarios = round(sum(g["importe"] for g in ordinarios), 2)
+    gasto_data = [[f"Gastos Ordinarios — {mes_gastos_txt}", "", ""], ["Concepto", "Tipo", "Importe"]]
+    for g in ordinarios:
+        gasto_data.append([g["concepto"], _rotulo.get(g.get("tipo", ""), g.get("tipo", "")), _fmt(g["importe"])])
+    gasto_data.append(["TOTAL GASTOS ORDINARIOS", "", _fmt(total_ordinarios)])
 
-    gt = Table(gasto_data, colWidths=[6.5*cm, 2.0*cm, 2.5*cm])  # = 11.0 cm
+    gt = Table(gasto_data, colWidths=[10.5*cm, 2.5*cm, 3.0*cm])  # = 16.0 cm
     ng = len(gasto_data)
     gt.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#2e6da4")),
-        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,-1), 8),
+        ("SPAN", (0,0), (-1,0)), ("ALIGN", (0,0), (-1,0), "CENTER"),
+        ("BACKGROUND", (0,0), (-1,0), c_azul), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+        ("BACKGROUND", (0,1), (-1,1), colors.HexColor("#2e6da4")),
+        ("TEXTCOLOR", (0,1), (-1,1), colors.white),
+        ("FONTNAME", (0,1), (-1,1), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,-1), 8),
         ("FONTNAME", (0,ng-1), (-1,ng-1), "Helvetica-Bold"),
         ("BACKGROUND", (0,ng-1), (-1,ng-1), colors.HexColor("#e8f0fe")),
-        ("ROWBACKGROUNDS", (0,1), (-1,ng-2), [colors.white, colors.HexColor("#f5f5f5")]),
-        ("ALIGN", (2,0), (2,-1), "RIGHT"),
+        ("ROWBACKGROUNDS", (0,2), (-1,ng-2), [colors.white, colors.HexColor("#f5f5f5")]),
+        ("ALIGN", (2,1), (2,-1), "RIGHT"),
         ("GRID", (0,0), (-1,-1), 0.3, colors.grey),
         ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3),
         ("LEFTPADDING", (0,0), (-1,-1), 4),
     ]))
 
-    caja_data = [
-        ["ESTADO FINANCIERO"],
-        ["Saldo en Caja", _fmt(saldo_caja)],
-    ]
-    ct = Table(caja_data, colWidths=[3.8*cm, 3.4*cm])  # = 7.2 cm
+    # Base de cálculo de la expensa
+    base_data = [["BASE DE LA EXPENSA"],
+                 ["Gastos ordinarios", _fmt(total_ordinarios)],
+                 ["+ Aporte al Fondo de Reserva", _fmt(aporte_fr)]]
+    if extra_cobrar:
+        base_data.append(["+ Gastos extraordinarios", _fmt(extra_cobrar)])
+    base_data.append(["= Total a repartir", _fmt(total_gastos)])
+    nb = len(base_data)
+    fila_total = nb - 1
+    bt = Table(base_data, colWidths=[7.4*cm, 3.4*cm])
+    bt.setStyle(TableStyle([
+        ("SPAN", (0,0), (-1,0)), ("ALIGN", (0,0), (-1,0), "CENTER"),
+        ("BACKGROUND", (0,0), (-1,0), c_azul), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,-1), 8),
+        ("ALIGN", (1,1), (1,-1), "RIGHT"),
+        ("FONTNAME", (0,fila_total), (-1,fila_total), "Helvetica-Bold"),
+        ("BACKGROUND", (0,fila_total), (-1,fila_total), colors.HexColor("#e8f0fe")),
+        ("GRID", (0,0), (-1,-1), 0.3, colors.grey),
+        ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+        ("LEFTPADDING", (0,0), (-1,-1), 5),
+    ]))
+
+    if caja_mes:
+        cm_ = caja_mes
+        caja_data = [
+            [f"INGRESOS Y EGRESOS — {_mes_nombre_largo(periodo).title()}"],
+            [f"Saldo de caja al {cm_['fecha_anterior'][8:10]}/{cm_['fecha_anterior'][5:7]}", _fmt(cm_["saldo_anterior"])],
+            ["+ Ingresos por pagos de expensas", _fmt(cm_["ingresos_expensas"])],
+        ]
+        if cm_["otros_ingresos"]:
+            caja_data.append(["+ Otros ingresos", _fmt(cm_["otros_ingresos"])])
+        caja_data.append(["− Egresos por pagos ordinarios", _fmt(cm_["egresos_ordinarios"])])
+        if cm_["egresos_fondo"]:
+            caja_data.append(["− Pagos con el Fondo de Reserva", _fmt(cm_["egresos_fondo"])])
+        if cm_["bonificaciones"]:
+            caja_data.append(["− Bonificaciones", _fmt(cm_["bonificaciones"])])
+        caja_data.append([f"Saldo de caja al {cm_['fecha_final'][8:10]}/{cm_['fecha_final'][5:7]}", _fmt(cm_["saldo_final"])])
+    else:
+        caja_data = [["INGRESOS Y EGRESOS"], ["Saldo en Caja", _fmt(saldo_caja)]]
+    nc = len(caja_data)
+    ct = Table(caja_data, colWidths=[7.4*cm, 3.4*cm])  # = 10.8 cm
     ct.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), c_verde), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
         ("SPAN", (0,0), (-1,0)), ("ALIGN", (0,0), (-1,0), "CENTER"),
         ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,-1), 8),
-        ("FONTNAME", (0,1), (-1,1), "Helvetica-Bold"),
-        ("BACKGROUND", (0,1), (-1,1), colors.HexColor("#d4edda")),
-        ("ALIGN", (1,1), (1,1), "RIGHT"),
+        ("ALIGN", (1,1), (1,-1), "RIGHT"),
+        ("FONTNAME", (0,nc-1), (-1,nc-1), "Helvetica-Bold"),
+        ("BACKGROUND", (0,nc-1), (-1,nc-1), colors.HexColor("#d4edda")),
         ("GRID", (0,0), (-1,-1), 0.3, colors.grey),
         ("TOPPADDING", (0,0), (-1,-1), 4), ("BOTTOMPADDING", (0,0), (-1,-1), 4),
         ("LEFTPADDING", (0,0), (-1,-1), 6),
     ]))
 
-    combo = Table([[gt, ct]], colWidths=[11.1*cm, 7.4*cm])  # = 18.5 cm
+    derecha = [bt, Spacer(1, 0.3*cm), ct]
+    combo = Table([[gt, derecha]], colWidths=[16.2*cm, 11.1*cm])  # = 27.3 cm
     combo.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
         ("LEFTPADDING", (1,0), (1,0), 8),
@@ -481,7 +571,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
     # Sección Fondo de Reserva (solo si hay gastos VARIABLE_FR)
     if gastos_fr:
         c_naranja = colors.HexColor("#856404")
-        story.append(Paragraph("GASTOS CON FONDO DE RESERVA",
+        story.append(Paragraph("GASTOS EXTRAORDINARIOS PAGADOS CON EL FONDO DE RESERVA (no se cobran en las expensas)",
                                 st("frh", fontSize=9, fontName="Helvetica-Bold",
                                    textColor=c_naranja, spaceAfter=4)))
         fr_data = [["Concepto", "Importe"]]
@@ -489,7 +579,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
             fr_data.append([g["concepto"], _fmt(g["importe"])])
         total_fr = sum(g["importe"] for g in gastos_fr)
         fr_data.append(["TOTAL", _fmt(total_fr)])
-        fr_t = Table(fr_data, colWidths=[13.5*cm, 5.0*cm])
+        fr_t = Table(fr_data, colWidths=[21.2*cm, 6.0*cm])
         nfr = len(fr_data)
         fr_t.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#856404")),
@@ -516,7 +606,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
             label = "AVISO" if n.get("tipo") == "AVISO" else "INFO"
             notas_data.append([label, n.get("texto", "")])
         nn = len(notas_data)
-        nt = Table(notas_data, colWidths=[2.5*cm, 16.0*cm])
+        nt = Table(notas_data, colWidths=[2.5*cm, 24.7*cm])
         nt.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), c_azul), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
             ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,-1), 8),
@@ -538,7 +628,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         for e in extras:
             ex_data.append([f"UF {e['unidad']}", e["descripcion"], _fmt(e["monto"])])
         ex_data.append(["TOTAL", "", _fmt(sum(float(e["monto"]) for e in extras))])
-        ex_t = Table(ex_data, colWidths=[2.0*cm, 13.5*cm, 3.0*cm])
+        ex_t = Table(ex_data, colWidths=[2.0*cm, 22.2*cm, 3.0*cm])
         nex = len(ex_data)
         ex_t.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), c_rojo), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
@@ -576,7 +666,7 @@ def generar_pdf_resumen_edificio(liquidacion_rows: list, gastos: list, config: d
         story.append(Paragraph("  |  ".join(res_line2), res_footer_style))
 
     story.append(Paragraph(
-        f"Generado el {date.today().strftime('%d/%m/%Y')} a las {__import__('datetime').datetime.now().strftime('%H:%M')}",
+        f"Generado el {_fecha_generacion(config)}",
         st("ts", fontSize=7, fontName="Helvetica", alignment=TA_RIGHT,
            textColor=colors.HexColor("#888888"))))
 
@@ -681,16 +771,27 @@ def generar_recibo_pago(row: dict, config: dict, periodo: str,
     ]
     if deuda_anterior > 0:
         resumen_data.append([f"SALDO DEUDOR {mes_gastos_abrev}", _fmt(deuda_anterior)])
-        resumen_data.append(["Mora", _fmt(interes)])
+    elif deuda_anterior < 0:
+        resumen_data.append([f"SALDO A FAVOR {mes_gastos_abrev}", "- " + _fmt(-deuda_anterior)])
     else:
         resumen_data.append([f"SALDO DEUDOR {mes_gastos_abrev}", "—"])
-        resumen_data.append(["Mora", "—"])
+    if interes:  # interés sobre la deuda anterior, decidido al cerrar la liquidación
+        resumen_data.append(["Interés sobre deuda anterior", _fmt(interes)])
     resumen_data.append(["TOTAL A PAGAR", _fmt(total_a_pagar)])
+
+    # v9.1 (solo pagos de esa versión): interés cobrado al registrar el pago, aparte del total
+    interes_cobrado = row.get("interes_cobrado", 0.0) or 0.0
+    if interes_cobrado > 0:
+        resumen_data.append(["Interés por pago fuera de término", _fmt(interes_cobrado)])
 
     # Estado de pago
     if tipo_pago == "TOTAL":
         resumen_data.append(["ABONADO", _fmt(monto_pagado)])
-        resumen_data.append(["SALDO", "—"])
+        saldo_favor = round(monto_pagado - total_a_pagar, 2)
+        if saldo_favor > 0:
+            resumen_data.append(["SALDO A FAVOR (próximo mes)", _fmt(saldo_favor)])
+        else:
+            resumen_data.append(["SALDO", "—"])
     elif tipo_pago == "PARCIAL":
         resumen_data.append(["ABONADO", _fmt(monto_pagado)])
         saldo_pend = round(total_a_pagar - monto_pagado, 2)
@@ -743,7 +844,7 @@ def generar_recibo_pago(row: dict, config: dict, periodo: str,
             ])
 
         ev_data = ev_header + ev_rows
-        ev_t = Table(ev_data, colWidths=col_w_det)
+        ev_t = Table(ev_data, colWidths=[8*cm, 2.5*cm, 3.5*cm, 4*cm])
         ev_t.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), c_gris),
             ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f5f5f5")]),
@@ -848,6 +949,152 @@ def generar_recibo_pago(row: dict, config: dict, periodo: str,
             ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ]))
         story.append(verif_table)
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
+_MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+             "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+
+
+def _fecha_larga(iso: str) -> str:
+    """'2026-11-06' -> '6 de noviembre de 2026'."""
+    try:
+        y, m, d = int(iso[:4]), int(iso[5:7]), int(iso[8:10])
+        return f"{d} de {_MESES_ES[m - 1]} de {y}"
+    except Exception:
+        return iso
+
+
+def _esc(texto) -> str:
+    """Escapa texto libre para usarlo dentro de un Paragraph de ReportLab."""
+    return (str(texto or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def _bloque_qr(codigo: str, url: str, st, leyenda: str):
+    qr = qrcode.QRCode(version=1, box_size=4, border=2,
+                       error_correction=qrcode.constants.ERROR_CORRECT_M)
+    qr.add_data(url or codigo)
+    qr.make(fit=True)
+    qr_buf = io.BytesIO()
+    qr.make_image(fill_color="black", back_color="white").save(qr_buf, format="PNG")
+    qr_buf.seek(0)
+    codigo_fmt = "  ".join(codigo[i:i+8] for i in range(0, len(codigo), 8))
+    t = Table([[
+        RLImage(qr_buf, width=2.2*cm, height=2.2*cm),
+        Paragraph(
+            f"<b>CÓDIGO DE VERIFICACIÓN</b><br/>"
+            f"<font size='7.5' color='#222222'><b>{codigo_fmt}</b></font><br/>"
+            f"<font size='6.5' color='#666666'>{leyenda}</font>",
+            st("verif_ld", fontSize=7, alignment=TA_LEFT)),
+    ]], colWidths=[2.6*cm, 14*cm])
+    t.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (0, -1), 0),
+        ("LEFTPADDING", (1, 0), (1, -1), 10),
+    ]))
+    return t
+
+
+def generar_libre_deuda(cert: dict, config: dict, url_verificacion: str = "",
+                        logo_bytes: bytes = None) -> bytes:
+    """Certificado de libre deuda de una unidad funcional."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                            rightMargin=2.2*cm, leftMargin=2.2*cm,
+                            topMargin=1.8*cm, bottomMargin=1.5*cm,
+                            title=f"Libre deuda N° {cert['numero']}")
+    c_azul = colors.HexColor("#1a3a5c")
+    c_gris = colors.HexColor("#4a4a4a")
+
+    def st(name, **kw):
+        base = {"fontName": "Helvetica", "fontSize": 10.5, "leading": 16, "textColor": colors.black}
+        base.update(kw)
+        return ParagraphStyle(name, **base)
+
+    edificio = _esc(config.get("edificio_nombre", "") or "Consorcio")
+    direccion = _esc(config.get("edificio_direccion", ""))
+    admin = _esc(config.get("administrador", ""))
+    numero = f"{int(cert['numero']):04d}"
+    unidad = _esc(cert.get("unidad", ""))
+    desc = _esc(cert.get("descripcion", ""))
+    propietario = _esc(cert.get("propietario", ""))
+    periodo_txt = _mes_nombre_largo(cert["periodo_hasta"]).title()
+    fecha_txt = _fecha_larga(cert["fecha_emision"])
+    vence_txt = _fecha_larga(cert.get("vence", ""))
+
+    story = []
+    titulo = Paragraph(edificio.upper(), st("ed", fontName="Helvetica-Bold", fontSize=13,
+                                             alignment=TA_CENTER, textColor=c_azul))
+    sub = Paragraph(direccion, st("dir", fontSize=9, alignment=TA_CENTER, textColor=c_gris))
+    logo_img = _make_logo_image(logo_bytes, max_height_cm=1.8)
+    if logo_img:
+        t = Table([[logo_img, [titulo, sub], ""]], colWidths=[3*cm, 10.6*cm, 3*cm])
+        t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+        story.append(t)
+    else:
+        story += [titulo, sub]
+    story.append(Spacer(1, 0.3*cm))
+    story.append(HRFlowable(width="100%", thickness=1.2, color=c_azul))
+    story.append(Spacer(1, 0.6*cm))
+
+    story.append(Paragraph("CERTIFICADO DE LIBRE DEUDA",
+                           st("tit", fontName="Helvetica-Bold", fontSize=16, leading=22, spaceAfter=4,
+                              alignment=TA_CENTER, textColor=c_azul)))
+    story.append(Paragraph(f"N° {numero}", st("num", fontSize=11, alignment=TA_CENTER, textColor=c_gris)))
+    story.append(Spacer(1, 0.8*cm))
+
+    lugar = f"{direccion}, " if direccion else ""
+    story.append(Paragraph(f"{lugar}{fecha_txt}.", st("fecha", alignment=TA_RIGHT)))
+    story.append(Spacer(1, 0.6*cm))
+
+    uf = f"la <b>Unidad Funcional N° {unidad}</b>"
+    if desc:
+        uf += f" ({desc})"
+    titular = f", cuyo titular registrado es <b>{propietario}</b>," if propietario else ","
+    cuerpo = (
+        f"Por medio del presente, la Administración del <b>{edificio}</b>"
+        f"{' sito en ' + direccion if direccion else ''} certifica que {uf}{titular} "
+        f"<b>no registra deuda</b> en concepto de expensas comunes ordinarias y extraordinarias, "
+        f"intereses ni cargos particulares, hasta la liquidación del período "
+        f"<b>{periodo_txt}</b> inclusive."
+    )
+    j = st("cuerpo", alignment=4, spaceAfter=10)  # 4 = justificado
+    story.append(Paragraph(cuerpo, j))
+    if cert.get("solicitante") or cert.get("destino"):
+        partes = "Se extiende el presente"
+        if cert.get("solicitante"):
+            partes += f" a pedido de <b>{_esc(cert['solicitante'])}</b>"
+        if cert.get("destino"):
+            partes += f", para ser presentado ante <b>{_esc(cert['destino'])}</b>"
+        story.append(Paragraph(partes + ".", j))
+    story.append(Paragraph(
+        f"El presente certificado tiene una validez de <b>{int(cert['validez_dias'])} días corridos</b> "
+        f"desde su fecha de emisión (hasta el {vence_txt}). No comprende expensas, cargos ni intereses "
+        f"que se devenguen con posterioridad al período indicado.", j))
+
+    # Firma
+    story.append(Spacer(1, 2.2*cm))
+    firma = Table([[""], [Paragraph(admin or "&nbsp;", st("f1", fontName="Helvetica-Bold", alignment=TA_CENTER))],
+                   [Paragraph("Administración", st("f2", fontSize=9, alignment=TA_CENTER, textColor=c_gris))]],
+                  colWidths=[7*cm], hAlign="RIGHT")
+    firma.setStyle(TableStyle([("LINEABOVE", (0, 1), (0, 1), 0.8, colors.black),
+                               ("TOPPADDING", (0, 0), (-1, -1), 1)]))
+    story.append(firma)
+
+    if cert.get("anulado"):
+        story.append(Spacer(1, 0.6*cm))
+        story.append(Paragraph("CERTIFICADO ANULADO", st("anul", fontName="Helvetica-Bold", fontSize=18,
+                                                          alignment=TA_CENTER,
+                                                          textColor=colors.HexColor("#c00000"))))
+
+    story.append(Spacer(1, 1.2*cm))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cccccc")))
+    story.append(Spacer(1, 0.15*cm))
+    story.append(_bloque_qr(
+        cert["codigo"], url_verificacion, st,
+        "Escaneá el QR para verificar la autenticidad y vigencia de este certificado."))
 
     doc.build(story)
     return buffer.getvalue()

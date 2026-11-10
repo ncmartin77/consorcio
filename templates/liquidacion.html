@@ -4,33 +4,54 @@
 
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h4><i class="bi bi-receipt"></i> Liquidación — <span class="text-primary">{{ periodo | mes_largo }}</span></h4>
+  {# Color de "Liquidación": verde abierta, rojo cerrada; estado debajo del título #}
+  {% set _color_liq = 'text-danger' if liq_cerrada else ('text-success' if liq_generada else '') %}
+  <div>
+    <h4 class="mb-1"><i class="bi bi-receipt {{ _color_liq }}"></i>
+      <span class="{{ _color_liq }}">Liquidación</span> — <span class="text-primary">{{ periodo | mes_largo }}</span></h4>
+    {% if liq_cerrada %}
+      <span class="badge bg-danger fs-6"><i class="bi bi-lock-fill"></i> Liquidación CERRADA</span>
+    {% elif liq_generada %}
+      <span class="badge bg-success fs-6"><i class="bi bi-unlock-fill"></i> Liquidación ABIERTA</span>
+    {% else %}
+      <span class="badge bg-secondary fs-6"><i class="bi bi-hourglass"></i> Sin generar</span>
+    {% endif %}
+  </div>
   <div class="d-flex gap-2 align-items-center flex-wrap">
     <input type="month" class="form-control form-control-sm" id="periodoSelector"
            value="{{ periodo }}">
     {% if liq_cerrada %}
-      <span class="badge bg-danger fs-6"><i class="bi bi-lock-fill"></i> Liquidación CERRADA</span>
+      <a href="{{ url_for('cobranzas', periodo=periodo) }}" class="btn btn-primary btn-sm"
+         data-ayuda="Registrá los pagos de esta liquidación en Cobranzas.">
+        <i class="bi bi-cash-coin"></i> Ir a Cobranzas
+      </a>
+      {% if es_admin %}
       <form method="POST" action="{{ url_for('reabrir_liquidacion', periodo=periodo) }}"
-            onsubmit="return confirm('¿Reabrir la liquidación de {{ periodo }}?')">
+            onsubmit="return confirm('¿Reabrir la liquidación de {{ periodo }}? Solo se puede si todavía no tiene pagos.')">
         <button type="submit" class="btn btn-outline-warning btn-sm">
           <i class="bi bi-unlock-fill"></i> Reabrir
         </button>
       </form>
+      {% endif %}
     {% elif liq_generada %}
-      <span class="badge bg-success"><i class="bi bi-unlock-fill"></i> ABIERTA</span>
       <form method="POST" action="{{ url_for('generar_liquidacion', periodo=periodo) }}">
         <button type="submit" class="btn btn-outline-secondary btn-sm"
-                data-ayuda="Recalculá la liquidación con los datos actuales (gastos, pagos, intereses). No borra pagos ya registrados.">
+                data-ayuda="Recalculá la liquidación con los datos actuales: gastos y pagos de la liquidación anterior. El interés se decide al cerrarla.">
           <i class="bi bi-arrow-clockwise"></i> Recalcular
         </button>
       </form>
-      <form method="POST" action="{{ url_for('cerrar_liquidacion', periodo=periodo) }}"
-            onsubmit="return confirm('¿Cerrar la liquidación de {{ periodo }}? Una vez cerrada no se podrán registrar más pagos.')">
-        <button type="submit" class="btn btn-warning btn-sm"
-                data-ayuda="Cerrá la liquidación: una vez cerrada no podrán registrarse más pagos en este período. Acción irreversible.">
+      {% if error_cierre %}
+      <span class="d-inline-block" tabindex="0" title="{{ error_cierre }}">
+        <button type="button" class="btn btn-warning btn-sm" disabled style="pointer-events:none">
           <i class="bi bi-lock-fill"></i> Cerrar Liquidación
         </button>
-      </form>
+      </span>
+      {% else %}
+      <button type="button" class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#modalCerrar"
+              data-ayuda="Cerrá la liquidación cuando cambió el mes y no hay más gastos: se decide el interés de cada unidad con deuda, el monto queda fijo y se empieza a cobrar en Cobranzas.">
+        <i class="bi bi-lock-fill"></i> Cerrar Liquidación
+      </button>
+      {% endif %}
     {% else %}
     <form method="POST" action="{{ url_for('generar_liquidacion', periodo=periodo) }}">
       <button type="submit" class="btn btn-success btn-sm"
@@ -40,26 +61,28 @@
       </button>
     </form>
     {% endif %}
-    {% if liq and not liq_cerrada and pendientes > 0 %}
-    <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#modalPagoCompleto"
-            data-ayuda="Pago Completo: marcá todas las unidades pendientes como pagadas en una sola operación.">
-      <i class="bi bi-check2-all"></i> Pago Completo
-    </button>
-    {% endif %}
     {% if liq %}
     <a href="{{ url_for('descargar_pdf', periodo=periodo) }}" class="btn btn-danger btn-sm"
        data-ayuda="Descargá el resumen completo del edificio en PDF: expensas de todas las unidades, totales y notas del período.">
       <i class="bi bi-file-earmark-pdf"></i> Resumen Edificio PDF
     </a>
     {% endif %}
-    {% if liq_generada and not liq_cerrada %}
-    <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#modalNotificarTodos"
-            data-ayuda="Enviá por WhatsApp la liquidación a todas las unidades que tienen celular configurado.">
-      <i class="bi bi-whatsapp"></i> Notificar a todos
-    </button>
-    {% endif %}
   </div>
 </div>
+
+{% if error_cierre and liq_generada and not liq_cerrada %}
+<div class="alert alert-light border py-1 small mb-2">
+  <i class="bi bi-info-circle"></i> {{ error_cierre }}
+</div>
+{% endif %}
+{% if liq_generada and not liq_cerrada %}
+<div class="alert alert-info py-1 small mb-3">
+  <i class="bi bi-info-circle"></i> Liquidación abierta: el monto todavía puede cambiar. Los pagos se registran en
+  <a href="{{ url_for('cobranzas') }}" class="alert-link">Cobranzas</a>{% if periodo_cobranza %}, contra la última
+  liquidación cerrada ({{ periodo_cobranza | mes_largo }}){% endif %}; la deuda anterior de esta liquidación se
+  actualiza con esos pagos hasta que se cierre.
+</div>
+{% endif %}
 
 <!-- ===== PANEL CAJA ===== -->
 <div class="row g-2 mb-3">
@@ -100,11 +123,14 @@
     </div>
   </div>
   <div class="col-md-2">
-    <div class="card border-info text-center h-100">
+    <div class="card border-info text-center h-100" title="Fondo de Reserva del mes = saldo de caja al cierre del mes anterior">
       <div class="card-body py-2 px-1">
         <div class="small text-info fw-bold">FONDO RESERVA</div>
-        <div class="fw-bold text-info">$ {{ "%.2f"|format(fondo_reserva)|replace(".",",") }}</div>
-        <div class="text-muted" style="font-size:0.65rem">{{ mes_gastos | mes_largo }}</div>
+        <div class="fw-bold {{ 'text-danger' if fondo.saldo < 0 else 'text-info' }}">$ {{ "%.2f"|format(fondo.saldo)|replace(".",",") }}</div>
+        <div class="text-muted" style="font-size:0.65rem">saldo de caja al {{ fondo.fecha | fecha_ar }}</div>
+        <div class="text-muted" style="font-size:0.6rem">
+          aporte del mes $ {{ "%.2f"|format(fondo.aporte)|replace(".",",") }}
+        </div>
       </div>
     </div>
   </div>
@@ -284,18 +310,7 @@
             <th class="text-center">% U.F.</th>
             <th class="text-end">Expensas</th>
             <th class="text-end">Deuda Ant.</th>
-            <th class="text-center" style="width:120px">
-              Interés
-              {% if not liq_cerrada %}
-              <div class="d-flex align-items-center justify-content-center gap-1 mt-1">
-                <span style="font-size:0.6rem;font-weight:normal">Todos</span>
-                <div class="form-check form-switch mb-0" title="Activar/desactivar interés para todas las unidades">
-                  <input class="form-check-input" type="checkbox" id="toggleTodosInteres"
-                         style="cursor:pointer">
-                </div>
-              </div>
-              {% endif %}
-            </th>
+            {% if liq_cerrada %}<th class="text-end">Interés</th>{% endif %}
             <th class="text-end">Extra</th>
             <th class="text-end">TOTAL</th>
             <th class="text-end">Abonado</th>
@@ -315,23 +330,17 @@
             <td>{{ r.inquilino or r.propietario }}</td>
             <td class="text-center">{{ "%.3f"|format(r.pct_aplicado) }}%</td>
             <td class="text-end">$ {{ "%.2f"|format(r.expensas)|replace(".",",") }}</td>
-            <td class="text-end {% if r.deuda_anterior > 0 %}text-danger fw-semibold{% endif %}">
-              {% if r.deuda_anterior > 0 %}$ {{ "%.2f"|format(r.deuda_anterior)|replace(".",",") }}{% else %}—{% endif %}
+            <td class="text-end {% if r.deuda_anterior > 0 %}text-danger fw-semibold{% elif r.deuda_anterior < 0 %}text-success fw-semibold{% endif %}">
+              {% if r.deuda_anterior > 0 %}$ {{ "%.2f"|format(r.deuda_anterior)|replace(".",",") }}
+              {% elif r.deuda_anterior < 0 %}$ {{ "%.2f"|format(-r.deuda_anterior)|replace(".",",") }}
+                <div style="font-size:0.65rem">a favor</div>
+              {% else %}—{% endif %}
             </td>
-            <td class="text-center">
-              <span class="celda-interes {% if r.interes > 0 %}text-danger fw-semibold{% else %}text-muted{% endif %}">
-                {% if r.interes > 0 %}$ {{ "%.2f"|format(r.interes)|replace(".",",") }}{% else %}—{% endif %}
-              </span>
-              {% if not liq_cerrada %}
-              <div class="form-check form-switch d-flex justify-content-center mb-0 mt-1">
-                <input class="form-check-input chk-sin-interes" type="checkbox"
-                       data-unidad="{{ r.unidad }}"
-                       {% if r.sin_interes %}checked{% endif %}
-                       title="{% if r.sin_interes %}Interés desactivado{% else %}Activar para omitir interés{% endif %}"
-                       style="cursor:pointer">
-              </div>
-              {% endif %}
+            {% if liq_cerrada %}
+            <td class="text-end {% if r.interes > 0 %}text-danger fw-semibold{% endif %}">
+              {% if r.interes > 0 %}$ {{ "%.2f"|format(r.interes)|replace(".",",") }}{% else %}—{% endif %}
             </td>
+            {% endif %}
             <td class="text-end {% if r.extras > 0 %}text-danger fw-semibold{% endif %}"
                 title="{% for e in extras_por_unidad.get(r.unidad|string, []) %}{{ e.descripcion }}: ${{ '%.2f'|format(e.monto) }}{% if not loop.last %} | {% endif %}{% endfor %}">
               {% if r.extras > 0 %}$ {{ "%.2f"|format(r.extras)|replace(".",",") }}{% else %}—{% endif %}
@@ -340,8 +349,11 @@
             <td class="text-end {% if tipo != 'PENDIENTE' %}text-success fw-semibold{% endif %}">
               {% if r.monto_pagado > 0 %}$ {{ "%.2f"|format(r.monto_pagado)|replace(".",",") }}{% else %}—{% endif %}
             </td>
-            <td class="text-end celda-saldo {% if r.saldo_pendiente > 0 %}text-danger fw-semibold{% endif %}">
-              {% if tipo == 'TOTAL' %}—
+            {% set _saldo_fila = 0 if tipo == 'TOTAL' else (r.saldo_pendiente if r.saldo_pendiente > 0 else r.total_a_pagar) %}
+            <td class="text-end celda-saldo {% if r.saldo_pendiente > 0 %}text-danger fw-semibold{% endif %}" data-v="{{ _saldo_fila }}">
+              {% if tipo == 'TOTAL' and r.saldo_pendiente < 0 %}<span class="text-success fw-semibold">$ {{ "%.2f"|format(-r.saldo_pendiente)|replace(".",",") }}</span>
+                <div class="text-success" style="font-size:0.65rem">a favor próx. mes</div>
+              {% elif tipo == 'TOTAL' %}—
               {% elif r.saldo_pendiente > 0 %}$ {{ "%.2f"|format(r.saldo_pendiente)|replace(".",",") }}
               {% else %}$ {{ "%.2f"|format(r.total_a_pagar)|replace(".",",") }}{% endif %}
             </td>
@@ -368,61 +380,42 @@
               {% else %}
                 <span class="badge bg-danger">Pendiente</span>
               {% endif %}
+              {% if r.pago_posterior %}
+                <div class="text-muted" style="font-size:0.65rem"
+                     title="Hay un pago registrado después de la fecha del sistema: no se cuenta mientras esa fecha esté fijada.">
+                  <i class="bi bi-calendar-event"></i> pagó el {{ r.pago_posterior.fecha | fecha_ar }}
+                </div>
+              {% endif %}
             </td>
             <td class="text-center text-nowrap">
-              {% if liq_cerrada %}
-                {% if tipo != 'PENDIENTE' %}
-                <a href="{{ url_for('descargar_recibo', periodo=periodo, unidad=r.unidad) }}"
-                   class="btn btn-sm btn-outline-primary" title="Descargar recibo">
-                  <i class="bi bi-receipt"></i>
-                </a>
-                {% else %}
-                <span class="text-muted small"><i class="bi bi-lock-fill"></i></span>
-                {% endif %}
-              {% elif tipo == 'PENDIENTE' %}
-              <button class="btn btn-sm btn-success"
-                      onclick='abrirModalPago({{ r|tojson }}, false)'
-                      title="Registrar pago">
-                <i class="bi bi-cash"></i>
-              </button>
-              {% elif tipo == 'PARCIAL' %}
-              <button class="btn btn-sm btn-warning"
-                      onclick='abrirModalPago({{ r|tojson }}, true)'
-                      title="Agregar pago adicional">
-                <i class="bi bi-cash-stack"></i>
-              </button>
+              {% if tipo != 'PENDIENTE' %}
               <a href="{{ url_for('descargar_recibo', periodo=periodo, unidad=r.unidad) }}"
                  class="btn btn-sm btn-outline-primary" title="Descargar recibo">
                 <i class="bi bi-receipt"></i>
               </a>
-              {% elif tipo == 'TOTAL' %}
-              <a href="{{ url_for('descargar_recibo', periodo=periodo, unidad=r.unidad) }}"
-                 class="btn btn-sm btn-outline-primary" title="Descargar recibo">
-                <i class="bi bi-receipt"></i>
-              </a>
-              {% endif %}
-              {# WhatsApp/mail — solo si hay pago registrado #}
-              {% if liq_generada and r.tipo_pago != 'PENDIENTE' %}
-              <button class="btn btn-sm btn-outline-success"
-                      onclick='enviarWA({{ r|tojson }})'
-                      title="Enviar recibo por WhatsApp o mail">
-                <i class="bi bi-whatsapp"></i>
-              </button>
-              {% endif %}
+              {% elif liq_cerrada %}
+              <a href="{{ url_for('cobranzas', periodo=periodo) }}" class="btn btn-sm btn-outline-success"
+                 title="Registrar el pago en Cobranzas"><i class="bi bi-cash-coin"></i></a>
+              {% else %}<span class="text-muted">—</span>{% endif %}
             </td>
           </tr>
           {% endfor %}
         </tbody>
         <tfoot class="table-light fw-bold">
           <tr>
+            {% set _tot_extras = liq|sum(attribute='extras') %}
+            {% set _ns = namespace(saldo=0) %}
+            {% for r in liq %}{% set _t = r.get('tipo_pago', 'PENDIENTE') %}{% if _t != 'TOTAL' %}{% set _ns.saldo = _ns.saldo + (r.saldo_pendiente if r.saldo_pendiente > 0 else r.total_a_pagar) %}{% endif %}{% endfor %}
             <td colspan="3">TOTALES</td>
             <td class="text-center">100%</td>
             <td class="text-end">$ {{ "%.2f"|format(total_gastos)|replace(".",",") }}</td>
             <td class="text-end">$ {{ "%.2f"|format(total_deuda)|replace(".",",") }}</td>
-            <td></td>
+            {% if liq_cerrada %}<td class="text-end text-danger">$ {{ "%.2f"|format(liq|sum(attribute='interes'))|replace(".",",") }}</td>{% endif %}
+            <td class="text-end">$ {{ "%.2f"|format(_tot_extras)|replace(".",",") }}</td>
             <td class="text-end text-danger" id="totAPagar">$ {{ "%.2f"|format(total_a_pagar)|replace(".",",") }}</td>
             <td class="text-end text-success">$ {{ "%.2f"|format(total_cobrado)|replace(".",",") }}</td>
-            <td colspan="4"></td>
+            <td class="text-end text-danger" id="totSaldo">$ {{ "%.2f"|format(_ns.saldo)|replace(".",",") }}</td>
+            <td colspan="3"></td>
           </tr>
         </tfoot>
       </table>
@@ -430,38 +423,85 @@
   </div>
 </div>
 
-<!-- Detalle de gastos -->
+<!-- Detalle de gastos (base de cálculo) -->
+<div class="row g-3 mt-1">
 <div class="col-md-6">
   <div class="card shadow-sm">
     <div class="card-header bg-secondary text-white">
-      <i class="bi bi-list-ul"></i> Gastos de {{ mes_gastos | mes_largo }} (base de cálculo)
+      <i class="bi bi-list-ul"></i> Expensas de {{ periodo | mes_largo }}: gastos de {{ mes_gastos | mes_largo }}
     </div>
     <div class="card-body p-0">
       <table class="table table-sm mb-0">
         <thead class="table-light">
-          <tr><th>Concepto</th><th class="text-end">Importe</th><th>Tipo</th></tr>
+          <tr><th>Concepto</th><th class="text-end">Importe</th></tr>
         </thead>
         <tbody>
-          {% for g in gastos %}
-          <tr>
-            <td>{{ g.concepto }}</td>
-            <td class="text-end">$ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td>
-            <td class="text-muted small">{{ g.tipo }}</td>
-          </tr>
+          <tr class="table-light"><td colspan="2" class="fw-semibold small">Gastos ordinarios</td></tr>
+          {% for g in desglose.ordinarios %}
+          <tr><td class="ps-3">{{ g.concepto }} <span class="text-muted small">{{ g.tipo|lower }}</span></td>
+              <td class="text-end">$ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td></tr>
           {% else %}
-          <tr><td colspan="3" class="text-muted text-center">Sin gastos cargados.</td></tr>
+          <tr><td colspan="2" class="text-muted text-center small">Sin gastos ordinarios.</td></tr>
           {% endfor %}
+          <tr><td class="ps-3 fw-semibold">Subtotal ordinarios</td>
+              <td class="text-end fw-semibold">$ {{ "%.2f"|format(desglose.total_ordinarios)|replace(".",",") }}</td></tr>
+          <tr class="text-info"><td><i class="bi bi-piggy-bank"></i> Aporte del período al Fondo de Reserva</td>
+              <td class="text-end fw-semibold">$ {{ "%.2f"|format(desglose.total_aporte)|replace(".",",") }}</td></tr>
+          <tr class="table-light fw-bold"><td>Base ordinaria</td>
+              <td class="text-end">$ {{ "%.2f"|format(desglose.total_ordinarios + desglose.total_aporte)|replace(".",",") }}</td></tr>
+          {% if desglose.extra_cobrar %}
+          <tr class="table-light"><td colspan="2" class="fw-semibold small text-danger">Gastos extraordinarios a cobrar (línea aparte)</td></tr>
+          {% for g in desglose.extra_cobrar %}
+          <tr><td class="ps-3">{{ g.concepto }}</td>
+              <td class="text-end text-danger">$ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td></tr>
+          {% endfor %}
+          {% endif %}
         </tbody>
         <tfoot class="table-light fw-bold">
           <tr>
-            <td>TOTAL</td>
+            <td>TOTAL REPARTIDO ENTRE LAS UNIDADES</td>
             <td class="text-end text-danger">$ {{ "%.2f"|format(total_gastos)|replace(".",",") }}</td>
-            <td></td>
           </tr>
         </tfoot>
       </table>
     </div>
   </div>
+</div>
+
+<!-- Fondo de reserva -->
+<div class="col-md-6">
+  <div class="card shadow-sm border-info">
+    <div class="card-header bg-info text-dark fw-semibold">
+      <i class="bi bi-piggy-bank-fill"></i> Fondo de Reserva
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0">
+        <tbody>
+          <tr class="fw-bold"><td>Fondo de Reserva {{ periodo | mes_largo }}
+                <div class="text-muted small fw-normal">= saldo de caja al {{ fondo.fecha | fecha_ar }}</div></td>
+              <td class="text-end {{ 'text-danger' if fondo.saldo < 0 else 'text-info' }}">$ {{ "%.2f"|format(fondo.saldo)|replace(".",",") }}</td></tr>
+          <tr><td>Aporte al fondo que se cobra en estas expensas</td>
+              <td class="text-end text-success">$ {{ "%.2f"|format(fondo.aporte)|replace(".",",") }}</td></tr>
+          {% for g in desglose.extra_fondo %}
+          <tr><td class="ps-3">{{ g.concepto }} <span class="text-muted small">pagado con el fondo (no se cobra)</span></td>
+              <td class="text-end text-danger">$ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="small text-muted px-2 py-1 border-top">
+        El Fondo de Reserva del mes es el saldo de caja al cierre del mes anterior. Lo que se cobra del aporte y lo
+        que se paga con el fondo se reflejan en la caja cuando se registran.
+      </div>
+      {% if desglose.extra_cobrar %}
+      <div class="alert alert-warning m-2 py-2 small">
+        <i class="bi bi-exclamation-diamond"></i>
+        <strong>Extraordinarios pendientes</strong> (se cobran en estas expensas, no salen del fondo):
+        $ {{ "%.2f"|format(desglose.total_extra_cobrar)|replace(".",",") }}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
 </div>
 
 {% endif %}
@@ -503,205 +543,66 @@
   </div>
 </div>
 
-<!-- ===== MODAL PAGO COMPLETO ===== -->
-<div class="modal fade" id="modalPagoCompleto" tabindex="-1">
-  <div class="modal-dialog modal-sm">
-    <div class="modal-content">
-      <form method="POST" action="{{ url_for('pagar_todo', periodo=periodo) }}">
-        <div class="modal-header bg-success text-white">
-          <h5 class="modal-title"><i class="bi bi-check2-all"></i> Pago Completo</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <p class="mb-3 small">
-            Se registrarán como <strong>pagadas</strong> las <strong>{{ pendientes }}</strong> unidad(es) pendientes, cada una por su total a pagar.
-          </p>
-          <label class="form-label fw-semibold">Fecha de Pago *</label>
-          <input type="date" class="form-control" name="fecha_pago" id="pc_fecha" required>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-success">
-            <i class="bi bi-check2-all"></i> Confirmar Todo
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-
-<!-- ===== MODAL PAGO ===== -->
-<div class="modal fade" id="modalPago" tabindex="-1">
-  <div class="modal-dialog modal-sm">
-    <div class="modal-content">
-      <form method="POST" id="formPago">
-        <div class="modal-header bg-success text-white">
-          <h5 class="modal-title"><i class="bi bi-cash"></i> Registrar Pago</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <div class="mb-2">
-            <span class="fw-bold" id="mp_unidad"></span>
-            <span class="text-muted small ms-1" id="mp_ocupante"></span>
-          </div>
-          <div class="mb-3 small">
-            <div class="d-flex justify-content-between text-muted mb-1">
-              <span>Total a pagar:</span>
-              <strong id="mp_total" class="text-danger"></strong>
-            </div>
-            <div id="mp_ya_pagado_row" class="d-flex justify-content-between text-muted mb-1" style="display:none">
-              <span>Ya abonado:</span>
-              <strong id="mp_ya_pagado" class="text-success"></strong>
-            </div>
-            <div id="mp_saldo_row" class="d-flex justify-content-between text-muted mb-1" style="display:none">
-              <span>Saldo pendiente:</span>
-              <strong id="mp_saldo" class="text-warning"></strong>
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold" id="mp_label_monto">Monto Abonado *</label>
-            <div class="input-group">
-              <span class="input-group-text">$</span>
-              <input type="number" class="form-control" name="monto_pagado" id="mp_monto"
-                     step="0.01" min="0.01" required>
-            </div>
-            <div class="d-flex gap-2 mt-1">
-              <button type="button" class="btn btn-sm btn-outline-success w-100"
-                      onclick="usarMontoTotal()">Pago total</button>
-            </div>
-          </div>
-          <div class="mb-2">
-            <label class="form-label fw-semibold">Fecha de Pago *</label>
-            <input type="date" class="form-control" name="fecha_pago" id="mp_fecha" required>
-          </div>
-          <div id="mp_aviso_parcial" class="alert alert-warning py-1 small mb-0" style="display:none">
-            <i class="bi bi-exclamation-triangle"></i>
-            El monto es menor al saldo → se registrará como <strong>pago parcial</strong>.
-          </div>
-          <hr class="my-2">
-          <div class="mb-2">
-            <label class="form-label fw-semibold text-warning small">
-              <i class="bi bi-tag"></i> Bonificación (opcional)
-            </label>
-            <div class="input-group input-group-sm">
-              <span class="input-group-text">$</span>
-              <input type="number" class="form-control" name="bonificacion" id="mp_bonif"
-                     step="0.01" min="0" placeholder="0.00">
-            </div>
-          </div>
-          <div class="mb-0">
-            <label class="form-label small text-muted">Motivo de la bonificación</label>
-            <input type="text" class="form-control form-control-sm" name="bonif_motivo"
-                   id="mp_bonif_motivo" placeholder="Ej: Error de cálculo mes anterior" maxlength="150">
-            <div class="form-text">Se registrará como SALIDA en Caja Diaria, no afecta la liquidación.</div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-success">
-            <i class="bi bi-check-circle"></i> Confirmar
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-
-<!-- ===== MODAL SIN CELULAR ===== -->
-<div class="modal fade" id="modalSinCelular" tabindex="-1">
-  <div class="modal-dialog modal-sm">
-    <div class="modal-content">
-      <div class="modal-header bg-warning text-dark py-2">
-        <h6 class="modal-title"><i class="bi bi-exclamation-triangle-fill"></i> Sin celular configurado</h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <p class="mb-1">La unidad <strong id="sinCelularUnidad"></strong> no tiene celular registrado.</p>
-        <p class="small text-muted mb-0">Andá a <strong>Unidades → lápiz</strong> y completá el celular del propietario o inquilino para poder enviar WhatsApp.</p>
-      </div>
-      <div class="modal-footer py-2">
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
-        <button class="btn btn-primary btn-sm" onclick="irAEditarUnidad()">
-          <i class="bi bi-pencil-fill"></i> Editar contacto
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ===== MODAL WHATSAPP PREVIEW ===== -->
-<div class="modal fade" id="modalWAPreview" tabindex="-1">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header bg-success text-white py-2">
-        <h6 class="modal-title" id="waPreviewTitulo"><i class="bi bi-whatsapp"></i> Enviar por WhatsApp</h6>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body pb-2">
-        <div class="mb-2 small text-muted" id="waPreviewDestinatario"></div>
-        <textarea class="form-control" id="waPreviewTexto" rows="15"
-                  style="font-size:0.82rem;font-family:monospace;white-space:pre;resize:vertical"></textarea>
-        <small class="text-muted">Podés editar el mensaje antes de enviarlo.</small>
-      </div>
-      <div class="modal-footer py-2 gap-2" id="waPreviewBotones">
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ===== MODAL NOTIFICAR A TODOS ===== -->
-<div class="modal fade" id="modalNotificarTodos" tabindex="-1">
+<!-- ===== MODAL CERRAR LIQUIDACIÓN (v9.2: se decide el interés) ===== -->
+{% if liq_generada and not liq_cerrada and not error_cierre %}
+<div class="modal fade" id="modalCerrar" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
-      <div class="modal-header bg-success text-white py-2">
-        <h6 class="modal-title"><i class="bi bi-whatsapp"></i> Notificar a todos por WhatsApp</h6>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body p-2">
-        <p class="small text-muted mb-2">Hacé click en <i class="bi bi-whatsapp text-success"></i> de cada unidad para abrir WhatsApp. Las unidades sin celular configurado aparecen en gris.</p>
-        <table class="table table-sm table-hover mb-0">
-          <thead class="table-light"><tr>
-            <th>UF</th><th>Nombre</th><th>Celular</th><th class="text-end">Total</th><th class="text-center">Estado</th><th></th>
-          </tr></thead>
-          <tbody>
-          {% for r in liq %}
-          {% set u = unidades_map.get(r.unidad|string, {}) %}
-          {% set dest = u.get('envio_destinatario','propietario') %}
-          {% set celular = u.get('propietario_celular','') if dest == 'propietario' else (u.get('inquilino_celular','') if dest == 'inquilino' else (u.get('propietario_celular','') or u.get('inquilino_celular',''))) %}
-          {% set nombre = (u.get('inquilino','') or u.get('propietario','')) if dest == 'inquilino' else u.get('propietario','') %}
-          <tr class="{% if not celular %}text-muted{% endif %}">
-            <td><strong>{{ r.unidad }}</strong></td>
-            <td>{{ nombre or r.propietario }}</td>
-            <td>{{ celular or '<span class="badge bg-secondary">Sin celular</span>'|safe }}</td>
-            <td class="text-end">$ {{ "%.2f"|format(r.total_a_pagar)|replace(".",",") }}</td>
-            <td class="text-center">
-              {% if r.tipo_pago == 'TOTAL' %}<span class="badge bg-success">Pagado</span>
-              {% elif r.tipo_pago == 'PARCIAL' %}<span class="badge bg-warning text-dark">Parcial</span>
-              {% else %}<span class="badge bg-danger">Pendiente</span>{% endif %}
-            </td>
-            <td>
-              {% if celular %}
-              <button class="btn btn-sm btn-success" onclick="enviarWA({{ r|tojson }})" title="Enviar WhatsApp">
-                <i class="bi bi-whatsapp"></i>
-              </button>
-              {% else %}
-              <a href="{{ url_for('unidades') }}" class="btn btn-sm btn-outline-secondary" title="Configurar celular">
-                <i class="bi bi-pencil"></i>
-              </a>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      <div class="modal-footer py-2">
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
-      </div>
+      <form method="POST" action="{{ url_for('cerrar_liquidacion', periodo=periodo) }}">
+        <div class="modal-header bg-warning">
+          <h5 class="modal-title"><i class="bi bi-lock-fill"></i> Cerrar liquidación de {{ periodo | mes_largo }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small mb-2">Al cerrar, el monto queda <strong>fijo</strong> (no se cargan más gastos) y se empieza a
+            cobrar en Cobranzas. Antes, decidí a qué unidades con deuda se les ajusta el <strong>interés</strong>
+            ({{ tasa_mora }} % de la deuda anterior).</p>
+          {% if propuesta_interes %}
+          <table class="table table-sm align-middle mb-1">
+            <thead class="table-light">
+              <tr>
+                <th>UF</th><th>Nombre</th><th class="text-end">Deuda anterior</th><th class="text-end">Interés</th>
+                <th class="text-center">
+                  <div class="form-check form-switch d-inline-block mb-0" title="Todas / ninguna">
+                    <input class="form-check-input" type="checkbox" id="intTodas" checked>
+                  </div> Aplicar
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in propuesta_interes %}
+              <tr>
+                <td><strong>{{ p.unidad }}</strong></td>
+                <td>{{ p.persona }}</td>
+                <td class="text-end">$ {{ "%.2f"|format(p.deuda)|replace(".",",") }}</td>
+                <td class="text-end text-danger">$ {{ "%.2f"|format(p.interes)|replace(".",",") }}</td>
+                <td class="text-center">
+                  <div class="form-check form-switch d-inline-block mb-0">
+                    <input class="form-check-input chk-int-uf" type="checkbox" name="interes_uf"
+                           value="{{ p.unidad }}" data-interes="{{ p.interes }}" checked>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot class="fw-bold">
+              <tr><td colspan="3">Total de intereses</td><td class="text-end text-danger" id="intTotal"></td><td></td></tr>
+            </tfoot>
+          </table>
+          <div class="form-text">Los montos son con la deuda de hoy; se recalculan al confirmar si entra algún pago antes.</div>
+          {% else %}
+          <div class="alert alert-light border small mb-0">Ninguna unidad tiene deuda anterior: no hay intereses para ajustar.</div>
+          {% endif %}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-warning"><i class="bi bi-lock-fill"></i> Cerrar liquidación</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
+{% endif %}
 
 {% endblock %}
 {% block scripts %}
@@ -711,11 +612,6 @@ document.getElementById('periodoSelector').addEventListener('change', function()
   window.location.href = '{{ url_for("liquidacion") }}/' + this.value;
 });
 
-const _hoy = new Date().toISOString().split('T')[0];
-const pcFecha = document.getElementById('pc_fecha');
-if (pcFecha) pcFecha.value = _hoy;
-
-let _saldoActual = 0;
 
 function fmt(v) {
   return '$ ' + parseFloat(v).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -738,53 +634,6 @@ function guardarEnvio() {
   fetch('/unidades/' + encodeURIComponent(unidad) + '/envio', { method: 'POST', body: fd })
     .then(r => { if (r.ok) location.reload(); });
 }
-
-function abrirModalPago(r, esParcial) {
-  // Si el interés se cambió sin recargar la página, usar los montos actualizados
-  if (_filasActualizadas[String(r.unidad)]) r = Object.assign({}, r, _filasActualizadas[String(r.unidad)]);
-  const saldo = r.saldo_pendiente > 0 ? r.saldo_pendiente : r.total_a_pagar;
-  _saldoActual = saldo;
-
-  document.getElementById('mp_unidad').textContent = 'UF ' + r.unidad;
-  document.getElementById('mp_ocupante').textContent = r.inquilino || r.propietario || '';
-  document.getElementById('mp_total').textContent = fmt(r.total_a_pagar);
-
-  const yaPagadoRow = document.getElementById('mp_ya_pagado_row');
-  const saldoRow = document.getElementById('mp_saldo_row');
-
-  if (esParcial) {
-    document.getElementById('mp_label_monto').textContent = 'Monto a agregar *';
-    document.getElementById('mp_ya_pagado').textContent = fmt(r.monto_pagado);
-    yaPagadoRow.style.display = 'flex';
-    document.getElementById('mp_saldo').textContent = fmt(saldo);
-    saldoRow.style.display = 'flex';
-  } else {
-    document.getElementById('mp_label_monto').textContent = 'Monto Abonado *';
-    yaPagadoRow.style.display = 'none';
-    saldoRow.style.display = 'none';
-  }
-
-  const input = document.getElementById('mp_monto');
-  input.value = saldo.toFixed(2);
-  input.max = saldo;
-  document.getElementById('mp_fecha').value = new Date().toISOString().split('T')[0];
-  document.getElementById('mp_aviso_parcial').style.display = 'none';
-  document.getElementById('mp_bonif').value = '';
-  document.getElementById('mp_bonif_motivo').value = '';
-  document.getElementById('formPago').action = '/liquidacion/pagar/{{ periodo }}/' + r.unidad;
-  new bootstrap.Modal(document.getElementById('modalPago')).show();
-}
-
-function usarMontoTotal() {
-  document.getElementById('mp_monto').value = _saldoActual.toFixed(2);
-  document.getElementById('mp_aviso_parcial').style.display = 'none';
-}
-
-document.getElementById('mp_monto').addEventListener('input', function() {
-  const v = parseFloat(this.value) || 0;
-  document.getElementById('mp_aviso_parcial').style.display =
-    (v > 0 && v < _saldoActual) ? 'block' : 'none';
-});
 
 // ── Notas ──────────────────────────────────────────────────────────────────
 function agregarNota() {
@@ -876,202 +725,20 @@ function eliminarExtra(eid, btn) {
     });
 }
 
-// ── WhatsApp ────────────────────────────────────────────────────────────────────────────
-const _WA_EDIFICIO    = {{ consorcio_nombre | tojson }};
-const _WA_PERIODO     = {{ (periodo | mes_largo) | tojson }};
-const _WA_DIA_VENC    = {{ (cfg.dia_vencimiento or '15') | tojson }};
-const _WA_ALIAS       = {{ (cfg.alias_cbu or '') | tojson }};
-const _unidades_map   = {{ unidades_map | tojson }};
-const _recibo_tokens  = {{ recibo_tokens | tojson }};
-const _recibo_base    = {{ recibo_base_url | tojson }};
 
-function fmt(n) {
-  return '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+// ── Cierre: interés por unidad ──────────────────────────────────────────────
+function totalIntereses() {
+  const t = Array.from(document.querySelectorAll('.chk-int-uf:checked'))
+    .reduce((a, c) => a + (parseFloat(c.dataset.interes) || 0), 0);
+  const el = document.getElementById('intTotal');
+  if (el) el.textContent = '$ ' + t.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
-
-function _buildWAMensaje(r, nombre) {
-  const tipo = r.tipo_pago || 'PENDIENTE';
-  const token = _recibo_tokens[String(r.unidad)] || '';
-  const urlRecibo = token ? `${_recibo_base}/${r.unidad}/${token}` : '';
-  const diaVenc = parseInt(_WA_DIA_VENC, 10);
-  let L = [];
-  L.push(`🏢 *${_WA_EDIFICIO}*  |  Unidad *${r.unidad}*`);
-  L.push(`📅 ${_WA_PERIODO}`);
-  L.push('');
-  if (tipo === 'TOTAL') {
-    L.push(`✅ *Pago registrado: ${fmt(r.monto_pagado)}*`);
-    L.push('¡Gracias por su pago!');
-  } else if (tipo === 'PARCIAL') {
-    L.push(`⚠️ *Saldo pendiente: ${fmt(r.saldo_pendiente)}*`);
-    L.push(`   Abonado ${fmt(r.monto_pagado)} de ${fmt(r.total_a_pagar)}`);
-    if (diaVenc > 0) L.push(`📆 Vencimiento: día ${diaVenc}`);
-    if (_WA_ALIAS)   L.push(`🏦 ${_WA_ALIAS}`);
-  }
-  if (urlRecibo) {
-    L.push('');
-    L.push(`🧾 Recibo: ${urlRecibo}`);
-  }
-  L.push('');
-  L.push(`_Administración_`);
-  return L.join('\n');
-}
-
-function enviarWA(r) {
-  const u = _unidades_map[String(r.unidad)] || {};
-  const dest = u.envio_destinatario || 'propietario';
-
-  let destinatarios = [];
-  if (dest === 'propietario' || dest === 'ambos') {
-    const cel = (u.propietario_celular || '').replace(/\D/g,'');
-    if (cel) destinatarios.push({ num: cel, nombre: u.propietario || 'Propietario' });
-  }
-  if (dest === 'inquilino' || dest === 'ambos') {
-    const cel = (u.inquilino_celular || '').replace(/\D/g,'');
-    if (cel) destinatarios.push({ num: cel, nombre: u.inquilino || 'Inquilino' });
-  }
-
-  if (!destinatarios.length) {
-    const sinCelular = document.getElementById('modalSinCelular');
-    if (sinCelular) {
-      document.getElementById('sinCelularUnidad').textContent = r.unidad;
-      new bootstrap.Modal(sinCelular).show();
-    } else {
-      alert('⚠️ La unidad ' + r.unidad + ' no tiene celular configurado.\nAndá a Unidades → lápiz → completá el celular del propietario o inquilino.');
-    }
-    return;
-  }
-
-  const nombrePrincipal = destinatarios[0].nombre;
-  const texto = _buildWAMensaje(r, nombrePrincipal);
-
-  // Título
-  document.getElementById('waPreviewTitulo').innerHTML =
-    '<i class="bi bi-whatsapp"></i> Unidad ' + r.unidad + ' — ' + destinatarios.map(d=>d.nombre).join(' / ');
-
-  // Info destinatario
-  document.getElementById('waPreviewDestinatario').innerHTML =
-    destinatarios.map(d => `<i class="bi bi-phone-fill text-success"></i> <strong>${d.nombre}</strong>: ${d.num}`).join('&nbsp;&nbsp;');
-
-  // Mensaje editable
-  document.getElementById('waPreviewTexto').value = texto;
-
-  // Botones: uno por destinatario
-  const footer = document.getElementById('waPreviewBotones');
-  footer.innerHTML = '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>';
-  destinatarios.forEach(d => {
-    const label = destinatarios.length > 1 ? d.nombre : 'Abrir WhatsApp';
-    footer.innerHTML += `<button class="btn btn-success btn-sm" onclick="abrirWA('${d.num}')">
-      <i class="bi bi-whatsapp"></i> ${label}
-    </button>`;
-  });
-
-  new bootstrap.Modal(document.getElementById('modalWAPreview')).show();
-}
-
-function abrirWA(num) {
-  const texto = document.getElementById('waPreviewTexto').value;
-  window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(texto), '_blank');
-}
-
-function irAEditarUnidad() {
-  const num = document.getElementById('sinCelularUnidad').textContent;
-  window.location.href = '{{ url_for("unidades") }}?editar=' + encodeURIComponent(num);
-}
-
-// ── Sin interés ──────────────────────────────────────────────────────────────
-function formatPesos(v) {
-  return v === 0 ? '—' : '$ ' + v.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
-}
-
-// Montos recalculados sin recargar la página (los usa abrirModalPago)
-const _filasActualizadas = {};
-
-function pesos(v) {
-  return '$ ' + v.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
-}
-
-// Devuelve false si la fila cambió de estado (ej. Parcial → Pagado) y hay que recargar
-function actualizarFila(unidad, data) {
-  const tr = document.querySelector(`tr[data-unidad="${unidad}"]`);
-  if (!tr) return true;
-  if (data.tipo_pago && tr.dataset.tipo && data.tipo_pago !== tr.dataset.tipo) return false;
-  _filasActualizadas[String(unidad)] = data;
-
-  const celda = tr.querySelector('.celda-interes');
-  if (celda) {
-    celda.textContent = formatPesos(data.interes);
-    celda.className = 'celda-interes ' + (data.interes > 0 ? 'text-danger fw-semibold' : 'text-muted');
-  }
-  const total = tr.querySelector('.celda-total');
-  if (total) total.textContent = pesos(data.total_a_pagar);
-
-  const saldo = tr.querySelector('.celda-saldo');
-  if (saldo && data.tipo_pago !== 'TOTAL') {
-    saldo.textContent = pesos(data.saldo_pendiente > 0 ? data.saldo_pendiente : data.total_a_pagar);
-  }
-  [total, saldo, celda].forEach(el => {
-    if (!el) return;
-    el.style.transition = 'background-color .6s';
-    el.style.backgroundColor = '#fff3cd';
-    setTimeout(() => { el.style.backgroundColor = ''; }, 700);
-  });
-  return true;
-}
-
-function actualizarTotalPeriodo(v) {
-  const el = document.getElementById('totAPagar');
-  if (el && typeof v === 'number') el.textContent = pesos(v);
-}
-
-function postSinInteres(url, valor) {
-  return fetch(url, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({sin_interes: valor})
-  }).then(r => r.json().catch(() => ({ok: false, error: 'Respuesta inválida del servidor (' + r.status + ')'})));
-}
-
-function errorSinInteres(chk, valor, msg) {
-  chk.checked = !valor;
-  alert('No se pudo actualizar el interés: ' + (msg || 'error de conexión'));
-}
-
-document.querySelectorAll('.chk-sin-interes').forEach(chk => {
-  chk.addEventListener('change', function() {
-    const unidad = this.dataset.unidad;
-    const valor = this.checked;
-    const celda = document.querySelector(`tr[data-unidad="${unidad}"] .celda-interes`);
-    this.disabled = true;
-    if (celda) celda.style.opacity = '0.4';
-    postSinInteres('{{ url_for("toggle_sin_interes", periodo=periodo, unidad="__U__") }}'.replace('__U__', encodeURIComponent(unidad)), valor)
-      .then(data => {
-        if (!data.ok) return errorSinInteres(this, valor, data.error);
-        if (!actualizarFila(unidad, data)) return location.reload();
-        actualizarTotalPeriodo(data.total_periodo);
-      })
-      .catch(() => errorSinInteres(this, valor))
-      .finally(() => { this.disabled = false; if (celda) celda.style.opacity = ''; });
-  });
+document.querySelectorAll('.chk-int-uf').forEach(c => c.addEventListener('change', totalIntereses));
+const _intTodas = document.getElementById('intTodas');
+if (_intTodas) _intTodas.addEventListener('change', function() {
+  document.querySelectorAll('.chk-int-uf').forEach(c => { c.checked = this.checked; });
+  totalIntereses();
 });
-
-const toggleTodos = document.getElementById('toggleTodosInteres');
-if (toggleTodos) {
-  toggleTodos.addEventListener('change', function() {
-    const valor = this.checked;
-    const checks = document.querySelectorAll('.chk-sin-interes');
-    this.disabled = true;
-    checks.forEach(c => { c.disabled = true; });
-    postSinInteres('{{ url_for("toggle_sin_interes_todos", periodo=periodo) }}', valor)
-      .then(data => {
-        if (!data.ok) return errorSinInteres(this, valor, data.error);
-        checks.forEach(c => { c.checked = valor; });
-        const ok = Object.entries(data.rows).map(([u, row]) => actualizarFila(u, row)).every(Boolean);
-        if (!ok) return location.reload();
-        actualizarTotalPeriodo(data.total_periodo);
-      })
-      .catch(() => errorSinInteres(this, valor))
-      .finally(() => { this.disabled = false; checks.forEach(c => { c.disabled = false; }); });
-  });
-}
+totalIntereses();
 </script>
 {% endblock %}

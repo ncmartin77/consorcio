@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 5.5-0411
+**Versión actual:** 9.7-0811
 
 ---
 
@@ -75,6 +75,8 @@ Para este tipo de proyecto (app de producción, equipo pequeño, sin dependencia
 ---
 
 ## Historial completo de versiones
+
+Las pruebas hechas en cada versión (desde la 5.6) están en [`pruebas_realizadas.md`](pruebas_realizadas.md).
 
 ---
 
@@ -324,12 +326,344 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 #### v5.5-0411 — Memoria de Claude en el repo (sin claves)
 
-**Lanzamiento:** 4 de noviembre  
-**Versión actual**
+**Lanzamiento:** 4 de noviembre
 
 **Cambios:**
 
 - `docs/memoria_claude/`: copia de las notas de memoria de Claude de la PC original (consorcio), con contraseñas, tokens y emails reemplazados por `***`.
+
+---
+
+### v9.x — Cobranzas separada de Liquidación
+
+#### v9.7-0811 — "MONTO A PAGAR" en la planilla
+
+**Lanzamiento:** 8 de noviembre
+**Versión actual**
+
+**Cambios (pedido del usuario):** en la tabla de UF del PDF de liquidación, la última columna se llama **MONTO A PAGAR** (en mayúsculas) en lugar de "Saldo". Prueba: `pruebas/probar_pdf_planilla.py` 15/15 OK y revisión visual (también con columna Interés).
+
+---
+
+#### v9.6-0811 — Planilla de liquidación horizontal
+
+**Lanzamiento:** 8 de noviembre
+
+**Cambios (pedido del usuario), PDF resumen de la liquidación:**
+
+- Hoja **A4 horizontal**; las 24 UF y los totales entran en la primera hoja.
+- Columnas nuevas por UF: **Liquidado mes ant.** (total de la liquidación anterior) y **Pago anterior** (lo que pagó de esa liquidación), antes de Deuda. Orden: UF, Descripción, Prop./Inquilino, %, Liquidado mes ant., Pago anterior, Deuda, [Interés], Expensas, Total, Pagado, Saldo.
+- El cuadro **Total gastos / Total a cobrar / Cobrado / Pendiente** pasa de arriba a **inmediatamente debajo de la tabla de UF** (sin partirse entre hojas).
+- Fix: el nombre del edificio se superponía con el subtítulo; el total de la columna Pagado no entraba.
+- Prueba: `pruebas/probar_pdf_planilla.py` (15/15 OK) y revisión visual de las páginas.
+
+---
+
+#### v9.5-0811 — Registro del reset de datos de Perú 376
+
+**Lanzamiento:** 8 de noviembre
+
+**Cambios:** sin cambios de código. Se documenta en `docs/memoria_sesion_claude.md` el reset de movimientos de Perú 376 en producción pedido por el usuario (gastos, facturas, caja y liquidaciones borrados; apertura en cero; fecha del sistema 01/10/2026), revertible desde el Log de Movimientos.
+
+---
+
+#### v9.4-0811 — Gasto vinculado a su factura y observación del pago
+
+**Lanzamiento:** 8 de noviembre
+
+**Cambios (pedido del usuario):**
+
+- **Borrar una factura (o su pago) ya no deja el gasto "trabado":** cada gasto queda vinculado a la factura que lo generó (`gastos.factura_id`). Al borrar la factura el gasto queda sin vínculo y en Gastos Mensuales aparece el botón **"Emitir factura de este gasto"** en cualquier gasto sin factura (antes solo en los Variables). Los gastos con factura muestran un ícono verde.
+- Emitir la factura desde el gasto la vincula: al pagarla se actualiza ese mismo gasto, **no se duplica**. Lo mismo al borrar el pago en Caja y volver a pagar, y al volver a emitir la factura de un gasto recurrente.
+- Los gastos anteriores se vinculan solos con su factura (mismo concepto e importe, mes de pago o de la factura), una vez por consorcio.
+- **Observación del pago:** el modal Registrar Pago de Facturas tiene un campo "Observación" (`facturas.observacion`), que se muestra debajo de la descripción en la lista.
+- Fix: guardar una factura **sin proveedor** daba error 500 (proveedor vacío → NULL).
+- Prueba: `pruebas/probar_factura_vinculo.py` (16/16 OK) y `probar_factura_con_fondo.py` (14/14 OK).
+
+---
+
+#### v9.3-0811 — Pagar una factura con el Fondo de Reserva
+
+**Lanzamiento:** 8 de noviembre
+
+**Cambios (pedido del usuario):**
+
+- El modal **Registrar Pago** de Facturas tiene el switch **"Pagar con Fondo de Reserva"**, con el saldo disponible del fondo y un aviso si el importe lo supera (no bloquea).
+- Pagada con el fondo, la factura queda con categoría `FONDO_RESERVA`, la salida de Caja también (descripción "[Fondo de Reserva] ...") y el gasto se registra como `VARIABLE_FR`: **no genera gasto para la liquidación**; se ve en "Gastos con Fondo de Reserva".
+- Si la factura es de un gasto recurrente (cargado como ordinario al guardarla), ese gasto pasa a `VARIABLE_FR` en vez de duplicarse, si su liquidación sigue abierta.
+- Prueba: `pruebas/probar_factura_con_fondo.py` (14/14 OK).
+
+---
+
+#### v9.2-0711 — El interés se decide al cerrar la liquidación
+
+**Lanzamiento:** 7 de noviembre
+
+**Cambios (regla del usuario, reemplaza a la v9.1):**
+
+- Mientras la liquidación está **abierta** no lleva interés.
+- Al **cerrarla** se abre una ventana con las unidades que tienen deuda anterior, el interés que les corresponde (**tasa × deuda anterior**) y un **switch por unidad** (activado por defecto; "todas / ninguna" arriba). Las tildadas quedan con el interés sumado al total, congelado con la liquidación; las demás sin interés.
+- La liquidación cerrada y el PDF resumen muestran la columna **Interés** (en el PDF solo si alguna unidad lo tiene). El recibo muestra "Interés sobre deuda anterior".
+- **Cobranzas ya no cobra interés** (se quita el switch de la v9.1): se cobra el total de la liquidación. Para no cobrar el interés después de cerrar, se puede usar la bonificación.
+
+---
+
+#### v9.1-0711 — El interés se decide al cobrar (reemplazada por la v9.2)
+
+**Lanzamiento:** 7 de noviembre
+
+**Cambios (regla del usuario):**
+
+- La **liquidación no lleva interés**: se quitan la columna Interés y el switch de la pantalla Liquidación. La deuda que pasa a la liquidación siguiente va sin interés.
+- En **Cobranzas**, al registrar un pago con fecha posterior al vencimiento de la liquidación, aparece el switch **"Cobrar interés"** (activado por defecto): interés = tasa × saldo adeudado, **una sola vez** por unidad y liquidación. Se puede desactivar para no cobrarlo. "Pago Completo" tiene el mismo switch.
+- El interés cobrado se guarda en el pago (`pagos.interes`) y entra en Caja como ingreso aparte (categoría **Intereses**); no cambia lo que la unidad debe. Se ve en la columna Interés de Cobranzas ("si paga hoy" / "cobrado"), en el historial de pagos, en el recibo ("Interés por pago fuera de término") y en el WhatsApp de las vencidas.
+- Fix: el recibo PDF fallaba si el mes tenía facturas extraordinarias (`col_w_det` sin definir).
+
+---
+
+#### v9.0-0711 — Se cobra sobre la liquidación cerrada (pantalla Cobranzas)
+
+**Lanzamiento:** 7 de noviembre
+**Por qué es mayor:** cambia qué significa "cerrada", dónde y cuándo se registran los pagos y la regla del interés, y los pagos pasan a una tabla nueva (migración automática). Aprobado por el usuario. La migración a Supabase Storage pasa a **10.0**.
+
+**Concepto nuevo (pedido del usuario):**
+
+| Momento | Liquidación | Pagos |
+|---|---|---|
+| Mes de los gastos | **Abierta**: se cargan gastos, el monto se recalcula | se cobra la última cerrada |
+| Cambia el mes, no hay más gastos | **Se cierra**: monto fijo | — |
+| Mes de la liquidación | Cerrada, no cambia | se cobra contra ella en **Cobranzas** |
+| Al generar / mientras está abierta la siguiente | lo impago pasa como deuda anterior (o saldo a favor) | cuando se cierra la siguiente, se cobra contra esa |
+
+**Cambios:**
+
+- **Pantalla nueva Cobranzas** (`/cobranzas`, menú al lado de Liquidación): registrar pago (monto, fecha = fecha del sistema, bonificación), pago completo, anular (admin; un pago, una unidad o todos), recibos, WhatsApp, "Notificar a todos", filtro "solo pendientes" e historial de pagos. Siempre cobra contra la **última liquidación cerrada**; las anteriores se pueden consultar.
+- **Liquidación** queda para generar, sin interés, extras, notas, cerrar/reabrir y PDF: sin botones de pago. Se **cierra** desde el día 1 del mes de la liquidación (según la fecha del sistema) y con la anterior cerrada; al cerrar se recalcula y el monto queda fijo. **Reabrir** solo admin y solo si no tiene pagos (y la siguiente no está cerrada).
+- **Tabla `pagos`** (fecha, monto, bonificación, vínculo con Caja), auditada. El estado de pago de cada fila (`monto_pagado`, `tipo_pago`, `saldo_pendiente`, `fecha_pago`) se calcula desde ahí. Migración automática (una vez por consorcio, `config.pagos_migrados`): los pagos viejos se vinculan con sus entradas "Expensas P - … - UF n" y bonificaciones de Caja.
+- **Deuda anterior** = total de la liquidación anterior − sus pagos (negativa = saldo a favor). Se actualiza en la liquidación abierta con cada pago hasta que se cierra.
+- **Interés** = tasa × lo que seguía **impago el día del vencimiento** de la liquidación anterior, cobrado en la siguiente (aunque después se cancele). Ya no hay recargo dentro de la misma liquidación. Saldo a favor sin interés; deuda de apertura sin interés el 1er mes.
+- **Caja:** el mes M se bloquea cuando se cierra la liquidación que lleva sus gastos (M+1). Editar/borrar en Caja el cobro de un pago actualiza/borra el pago.
+- **Fecha del sistema:** pagos (por defecto y como máximo), cierres, interés y deuda usan la fecha del sistema; los pagos con fecha posterior no se cuentan. Al cambiarla se recalculan las liquidaciones abiertas.
+- **Libre deuda:** según la última liquidación cerrada.
+
+---
+
+### v8.x — Fondo de Reserva = saldo de caja
+
+#### v8.1-0611 — Saldo de caja a la fecha de cierre de la liquidación
+
+**Lanzamiento:** 6 de noviembre
+
+**Cambios:**
+
+- Se guarda la **fecha de cierre** de cada liquidación (`liquidaciones_estado.fecha_cierre`, fecha del sistema al cerrar; se borra al reabrir).
+- El saldo de caja de la liquidación (PDF "Ingresos y egresos", encabezado del PDF y tarjeta SALDO EN CAJA) se informa a la **fecha de cierre**; si está abierta, a la fecha del sistema; si se cerró antes de este cambio, a fin de mes (`fecha_corte_liquidacion()`). Antes era siempre el último día del mes, y no coincidía con la fecha de generación del PDF.
+
+---
+
+#### v8.0-0611 — El Fondo de Reserva del mes es el saldo de caja del mes anterior
+
+**Lanzamiento:** 6 de noviembre
+**Por qué es mayor:** cambia la regla de cálculo del Fondo de Reserva (aprobado por el usuario). La migración a Supabase Storage pasa a **9.0**.
+
+**Cambios:**
+
+- Regla aclarada por el usuario: el **Fondo de Reserva del mes X = saldo de caja al cierre del mes X-1** (ej.: liquidación de octubre → caja al 30/09 = $ 249.736,46). `get_resumen_fondo(mes_gastos)` devuelve ese saldo; `get_saldo_fondo()` usa el mes anterior a la fecha del sistema.
+- Deja de usarse el cálculo "saldo inicial + aportes liquidados − gastos con el fondo" (v6.0–v6.6) y los campos de saldo inicial del fondo en Configuración.
+- Sin cambios en lo que se cobra: el aporte mensual se sigue cobrando en las expensas y los extraordinarios pagados con el fondo siguen sin cobrarse.
+- Liquidación: tarjeta y panel del fondo muestran el saldo de caja al cierre del mes anterior, el aporte que se cobra y lo pagado con el fondo. Gastos y plano usan el mismo valor.
+
+---
+
+### v7.x — Saldo a favor
+
+#### v7.3-0611 — PDF resumen sin "Fondo de Reserva disponible"
+
+**Lanzamiento:** 6 de noviembre
+
+**Cambios:**
+
+- Se quita la línea "Fondo de Reserva disponible" del cuadro "Base de la expensa" del PDF resumen (pedido del usuario).
+
+---
+
+#### v7.2-0611 — PDF resumen: gastos ordinarios, base de la expensa e ingresos/egresos
+
+**Lanzamiento:** 6 de noviembre
+
+**Cambios:**
+
+- PDF resumen, página 2: tabla **"Gastos Ordinarios — {mes de gastos}"** solo con gastos ordinarios (sin el aporte al fondo ni extraordinarios), total "TOTAL GASTOS ORDINARIOS".
+- Cuadro nuevo **"Base de la expensa"**: gastos ordinarios + aporte al Fondo de Reserva (+ extraordinarios a cobrar) = total a repartir; y el saldo disponible del fondo.
+- "Estado financiero" pasa a **"Ingresos y egresos — {mes de la liquidación}"**: saldo de caja al cierre del mes anterior + ingresos por pagos de expensas − egresos por pagos ordinarios = saldo de caja al cierre del mes (otros ingresos, pagos con el fondo y bonificaciones solo si los hay). `pg_db.get_resumen_caja_periodo()`.
+- Pantalla Liquidación, tarjeta **GASTOS PAGADOS**: ahora suma las facturas pagadas en el mes de gastos (aunque no hayan generado movimiento en Caja) más las salidas de Caja que no vienen de una factura (`get_gastos_pagados_periodo()`). Antes sumaba solo Caja y daba $ 0 con facturas marcadas pagadas sin Caja.
+
+---
+
+#### v7.1-0611 — Totales en el PDF resumen y en la pantalla Liquidación
+
+**Lanzamiento:** 6 de noviembre
+
+**Cambios:**
+
+- PDF resumen: la fila TOTAL ahora incluye la suma de la columna **Deuda** (neta: un saldo a favor resta). Columnas de importes más anchas para que entren los totales.
+- Pantalla Liquidación: el pie de la tabla estaba corrido una columna (el total quedaba bajo "Extra" y lo abonado bajo "TOTAL"; "Saldo" sin total). Ahora cada total va bajo su columna y se agregan los de **Interés**, **Extra** y **Saldo**. Interés y saldo se recalculan al usar el switch de interés.
+
+---
+
+#### v7.0-0611 — Pagos de más: saldo a favor para el mes siguiente
+
+**Lanzamiento:** 6 de noviembre
+**Por qué es mayor:** cambia el cálculo cuando una unidad paga de más (antes el excedente se perdía) y la mora con saldo a favor. Aprobado por el usuario. La migración a Supabase Storage pasa a **8.0**.
+
+**Cambios:**
+
+- El formulario de pago ya no limita el monto al saldo; si se paga de más avisa cuánto queda a favor.
+- Pago de más: la unidad queda **pagada** y el excedente se guarda como saldo negativo (`saldo_pendiente < 0`) = **saldo a favor**. El cobro completo entra a Caja.
+- Mes siguiente: `deuda_anterior` negativa = saldo a favor, que reduce el total (`_deuda_desde_mes_anterior`). Si el saldo a favor cubre todo el mes, la unidad queda pagada sin abonar y el resto sigue a favor.
+- Interés: el saldo a favor nunca genera interés; la mora del mes (vencido y sin pagos) se cobra solo sobre la parte de las expensas que el saldo a favor no cubre.
+- Pantallas: "a favor" en verde en deuda anterior y en saldo ("a favor próx. mes"); recibo PDF con "SALDO A FAVOR".
+- Unidades: la vista del saldo inicial mostraba el signo al revés del cálculo (positivo decía "A favor"); ahora positivo = **Deuda** y negativo = **A favor**, igual que en la liquidación.
+
+---
+
+### v6.x — Fondo de reserva y gastos extraordinarios
+
+#### v6.6-0611 — Fix: el aporte al fondo cuenta cuando se cobra
+
+**Lanzamiento:** 6 de noviembre
+
+**Cambios:**
+
+- Saldo del fondo respecto del saldo inicial (al mes P): un **aporte** entra al fondo cuando se cobra, es decir en la liquidación siguiente a su mes; cuenta si esa liquidación es posterior a P. Antes se tomaba el mes del gasto, y el aporte de P (que se cobra en P+1) quedaba afuera. Un **gasto pagado con el fondo** sigue contando por su propio mes.
+- Caso real: Perú 376 con saldo inicial del fondo $ 0 a sep-2026 y aporte de septiembre $ 80.000 cobrado en octubre → el fondo pasa a mostrar $ 80.000 (antes $ 0).
+
+---
+
+#### v6.5-0611 — Estado de la liquidación debajo del título
+
+**Lanzamiento:** 6 de noviembre
+
+**Cambios:**
+
+- Pantalla Liquidación: el aviso de estado pasa de la barra de botones a debajo del título ("Liquidación ABIERTA" verde, "Liquidación CERRADA" rojo, "Sin generar" gris).
+- La palabra "Liquidación" del título (y su ícono) se colorea: verde si está abierta, rojo si está cerrada.
+
+---
+
+#### v6.4-0611 — Anular pagos y fecha del sistema en los formularios
+
+**Lanzamiento:** 6 de noviembre
+
+**Cambios:**
+
+- **Anular pago** (solo administradores, liquidación abierta): botón por unidad y "Anular todos los pagos" del período en Liquidación. Deja la fila sin pago, borra de Caja la entrada "Expensas <período> - … - UF <n>" y la bonificación si la hubo, y recalcula el interés. Todo en una transacción, auditada: se revierte desde el Log de Movimientos. No anula si algún cobro está en Caja de un mes con liquidación cerrada (`pg_db.anular_pagos`, `POST /liquidacion/<periodo>/anular-pagos`).
+- Los formularios (pagos, pago completo, caja, facturas, gastos, plano, presupuestos) proponían la fecha **real** del navegador; ahora proponen la **fecha del sistema** (`hoy_sistema` en el context processor). Así, con una fecha fijada, el pago queda registrado con esa fecha.
+
+---
+
+#### v6.3-0611 — Fix: error 500 en Liquidación cerrada o sin generar
+
+**Lanzamiento:** 6 de noviembre
+
+**Cambios:**
+
+- Causa real del error 500 en `/liquidacion/2026-10` (obtenida con la página de error de la v6.2): `UnboundLocalError: cannot access local variable '_cal'`. La ruta `liquidacion()` tenía `import calendar as _cal` dentro de un `if` que solo corre si la liquidación existe y está abierta; ese import vuelve local a `_cal` en toda la función, así que con la liquidación **cerrada o sin generar** fallaba más abajo. Error antiguo (no de esta sesión); en la base de prueba no aparecía porque octubre está abierta. Se quitó el import local (ya estaba importado arriba).
+- La v6.1 (períodos mal cargados) atacó otra causa posible; queda como protección extra.
+
+---
+
+#### v6.2-0611 — Detalle de errores para administradores
+
+**Lanzamiento:** 6 de noviembre
+
+**Cambios:**
+
+- Página de error 500 propia: a los administradores les muestra el detalle técnico (traceback, página, versión, consorcio, fecha del sistema) para diagnosticar sin acceso al log de Render; a los demás, un mensaje simple. Siempre queda en el log. No usa `base.html`, por si el error viene de ahí.
+- Motivo: después de la v6.1, `/liquidacion/2026-10` con fecha 06/10 seguía dando error 500 en producción y no se reproduce en la base de prueba.
+
+---
+
+#### v6.1-0611 — Fix: error 500 por períodos mal cargados en el fondo
+
+**Lanzamiento:** 6 de noviembre
+
+**Cambios:**
+
+- El cálculo del saldo del fondo ignora gastos con período mal formado (vacío, "2026-9"): antes daban error 500 en Gastos, Liquidación, Plano y PDF (reportado al liquidar octubre con fecha 06/10).
+- Red de seguridad: si el cálculo del fondo falla por otro motivo, la pantalla se muestra igual con el fondo en 0, un aviso, y el error queda en el log.
+
+---
+
+#### v6.0-0611 — Fondo de reserva con saldo y gastos extraordinarios separados
+
+**Lanzamiento:** 6 de noviembre
+**Por qué es mayor:** cambia cómo se arman las expensas (los extraordinarios pagados con el fondo dejan de cobrarse, las facturas extraordinarias se cobran como línea aparte) y corrige datos existentes. Aprobado por el usuario. La migración a Supabase Storage, que estaba planeada como 6.0, pasa a ser 7.0.
+
+**Cambios:**
+
+- **Base de las expensas** = gastos ordinarios y recurrentes + **aporte del período** al fondo (+ extraordinarios a cobrar, como línea aparte). El saldo acumulado del fondo nunca se cobra.
+- **Gastos extraordinarios** (tipo nuevo en "Agregar gasto"): cada uno se **paga con el fondo** (`VARIABLE_FR`: no se cobra y se descuenta del saldo) o queda **pendiente** y se cobra en las expensas siguientes (`EXTRAORDINARIO`: no toca el fondo). Botón para cambiar el modo mientras la liquidación que lo cobra esté abierta (recalcula).
+- **Saldo del fondo** = saldo inicial + aportes liquidados − gastos pagados con el fondo (`get_resumen_fondo()`). Campos nuevos en Configuración → Fondo de Reserva: saldo inicial y mes.
+- **Liquidación:** la tarjeta del fondo muestra el saldo disponible (antes, solo el aporte del mes); paneles nuevos con el desglose de las expensas y la cuenta del fondo (anterior + aporte − usado = saldo) y aviso de extraordinarios pendientes.
+- **Gastos:** desglose ordinarios / aporte / base ordinaria / extraordinarios a cobrar / total a repartir; tabla de extraordinarios con su modo; saldo del fondo.
+- **PDF resumen:** gastos rotulados por tipo, total a repartir, fondo en el estado financiero, tabla de pagados con el fondo. **Plano:** saldo disponible (antes "acumulado pendiente de cobro").
+- Pagar una factura marcada **extraordinaria** crea el gasto como extraordinario a cobrar (antes, con la categoría de la factura como tipo, mezclado con los ordinarios).
+- **Migración automática** (una vez por proceso y consorcio, auditada): gastos cobrados como ordinarios cuya factura se pagó con el fondo (categoría FONDO_RESERVA, mismo mes e importe) pasan a "pagado con el fondo" y se recalcula su liquidación si está abierta.
+- Pruebas: `docs/pruebas_realizadas.md` y `pruebas/probar_fondo_reserva.py`, `pruebas/diagnostico_fondo.py`.
+
+---
+
+#### v5.9-0611 — Documentación de pruebas
+
+**Lanzamiento:** 6 de noviembre
+
+**Cambios:**
+
+- `docs/pruebas_realizadas.md`: entorno de pruebas y resultados (con tablas) de las pruebas de v5.6 (libre deuda), diagnóstico del switch de interés, v5.7 y v5.8 (fecha del sistema).
+- `pruebas/`: scripts para repetirlas contra la base de prueba (`entorno_prueba.py`, `diagnostico_intereses.py`, `probar_switch_interes.py`, `probar_libre_deuda.py`, `probar_fecha_sistema.py`).
+- Regla en `CLAUDE.md` y en la memoria: registrar las pruebas de cada cambio.
+- Sin cambios en la app.
+
+---
+
+#### v5.8-0611 — Fecha del sistema como vista (sin pagos posteriores, sin guardar)
+
+**Lanzamiento:** 6 de noviembre
+
+**Cambios:**
+
+- Con fecha del sistema fijada, los **pagos con fecha posterior no se cuentan**: la unidad aparece pendiente (con su mora si ya venció) y una nota "pagó el DD/MM/AAAA". Antes, fijando 06/10 octubre aparecía todo "Pagado" por pagos del 03/11.
+- La simulación es **solo de lectura** (`get_liquidacion(simular=True)` → `_simular_a_fecha()`): liquidación, estado de cuenta, plano, PDF resumen, libre deuda y el switch muestran los valores a esa fecha, pero la base **no se modifica**. Reemplaza el "recalcular y guardar" de la v5.7.
+- Lo que escribe usa siempre datos y fecha reales: generar liquidación, pagos, pago completo, switch (guarda con fecha real y muestra el simulado). Los recibos firmados y su verificación usan los datos reales.
+- Al fijar o quitar la fecha se normalizan los intereses guardados de las liquidaciones abiertas con la fecha real (corrige lo que haya guardado la v5.7 con una fecha fijada).
+
+---
+
+#### v5.7-0611 — Fecha del sistema (intereses calculados a una fecha)
+
+**Lanzamiento:** 6 de noviembre
+
+**Cambios:**
+
+- La "Fecha Simulada" de la Zona de Pruebas pasa a ser la **Fecha del sistema**, con su propia tarjeta arriba de todo en Configuración. Con una fecha fijada la app trabaja como si hoy fuera ese día: intereses y mora (vencimiento), período actual, fechas sugeridas de pagos/caja/facturas/presupuestos, libre deuda y la marca "Generado el" de los PDFs. El vencimiento de checkpoints sigue con la fecha real (borra archivos).
+- La fórmula de interés no cambia: la fecha solo decide si ya pasó el vencimiento.
+- Al fijar o quitar la fecha se **recalculan los intereses de todas las liquidaciones abiertas** (`recalcular_intereses_abiertas()`), respetando el switch "sin interés" de cada unidad; las cerradas no se tocan.
+- Aviso visible mientras está fijada: franja amarilla bajo la barra superior en todas las páginas y etiqueta con la fecha en la barra.
+- Fix: guardar el formulario principal de Configuración borraba la fecha (y cualquier dato que ese form no mandaba). Ahora cada form solo actualiza sus campos.
+
+---
+
+#### v5.6-0611 — Certificado de libre deuda
+
+**Lanzamiento:** 6 de noviembre
+
+**Cambios:**
+
+- Unidades: botón por unidad para emitir un **certificado de libre deuda** (PDF). Solo se habilita si la unidad tiene pagada en TOTAL la última liquidación emitida (abierta o cerrada); si no, el botón aparece deshabilitado con el monto adeudado. La validación se repite en el servidor.
+- Datos del certificado: número correlativo por consorcio, unidad, titular, "sin deuda hasta el período X inclusive", solicitante, destino, validez en días (sugerida desde Configuración → Libre Deuda, default 30), firma con el campo *Administrador*.
+- Tabla nueva `libres_deuda` (creada sola con `ensure_libres_deuda()`, auditada). Listado de emitidos en Unidades, con PDF y opción **Anular** (solo admin).
+- Verificación pública por QR: `/libre-deuda/verificar/<consorcio>/<numero>/<codigo>` (HMAC con `clave_firma` sobre los datos registrados). Muestra válido / vencido / anulado / inválido.
 
 ---
 
