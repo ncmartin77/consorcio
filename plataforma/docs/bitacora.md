@@ -10,6 +10,42 @@ Documentos relacionados:
 
 ---
 
+## 10/11/2026
+
+### Volver a descargar y tomar la última versión como referencia
+
+**Qué se hizo**
+- **Copia local actualizada sin borrar nada.** Las claves (`.env`, `deploy/.env.supabase`), el backup cifrado, `plan-consorcio.html` y las ramas locales siguen donde estaban.
+- **Trabajo sin subir del 06/11:** el motor y la bitácora se subieron a `feat/plataforma`.
+- **`master` local actualizado a la v9.7:** en GitHub tenía 25 commits nuevos (del 06 al 08/11, de la 5.5 a la 9.7).
+- **`master` traído a `feat/plataforma`:** sin conflictos y con las pruebas en verde.
+- **La última versión no estaba en `master`:** es la **v10.1, en la rama `feat/lineamientos-v10`** (09/11), que todavía no se mergeó. Se descargó como rama local.
+- **Revisión de reglas:** se leyeron el historial y el código de la v10.1 (`pg_db.py`: interés, tasas, cierre, clasificación de gastos y fondo) y se compararon con las decisiones del 06/11.
+
+**Decisiones del usuario**
+1. **Trabajar sobre la última versión disponible (v10.1).** Para la mora del mes, eso significa **sin mora del mes**, como el sistema actual desde la v9.0. Reemplaza la decisión del 06/11.
+2. **Interés simple, sobre el capital:** se confirma. Coincide con el "interés sin capitalizar" de la v10.
+3. **Reabrir una liquidación cerrada:** se permite si no tiene pagos, la siguiente no está cerrada y lo hace un administrador. Reemplaza "emitida = inmutable".
+
+**Se adopta de la v10.1**
+- tasa de mora con vigencia y fundamento, congelada al cerrar
+- clasificación de gastos: naturaleza, habitualidad, financiación y respaldo
+- extraordinarios a cobrar en una línea aparte
+- los gastos pagados con el fondo no se cobran
+- libro del fondo de reserva
+
+**Cambios en el motor**
+- Sin mora del mes.
+- Línea `Extraordinaria`.
+- La base del interés queda documentada como "capital impago a la fecha de cierre".
+- 10 pruebas en verde.
+
+**Para tener en cuenta**
+- La memoria de la v10 avisa que, en la PC original, la rama `supabase-storage` tiene un commit (`6495413`) con `.env.local` y claves. **Esa rama no se sube ni se mergea.** El commit local de esta PC (`b231ea9`) no tiene claves, pero tampoco se sube.
+- La v10.1 dejó pruebas para repetir antes de mergearla a `master`. Están en su `docs/memoria_sesion_claude.md` ("DONDE QUEDAMOS"); son del carril A.
+
+---
+
 ## 06/11/2026
 
 ### Etapa 3: motor de expensas (sin base de datos todavía)

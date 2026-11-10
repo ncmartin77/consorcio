@@ -3,7 +3,7 @@
 Lo que se dejó para después, con el motivo. Actualizar al cerrar cada sesión de trabajo:
 agregar lo nuevo, tachar (borrar) lo resuelto.
 
-Última actualización: 10/11/2026.
+Última actualización: 10/11/2026 (revisión contra la v10.1).
 
 ---
 
@@ -24,7 +24,8 @@ agregar lo nuevo, tachar (borrar) lo resuelto.
 - [ ] API de liquidación: borrador → calculada → aprobada → emitida, con snapshot.
 - [ ] PDF de la liquidación (worker).
 - [ ] Comparar contra el sistema actual: cada diferencia tiene que explicarse con una decisión.
-- [ ] **Revisar `docs/decisiones-liquidaciones.md` contra la v9.7 del sistema actual.** Entre el 06 y el 08/11 se subieron a `master` 25 commits (de la 5.5 a la 9.7), con cambios de reglas: saldo a favor, interés decidido al cerrar con un switch por unidad, cobranza sobre la liquidación cerrada, fondo de reserva igual al saldo de caja del mes anterior, entre otros.
+- [x] Revisar las decisiones contra la última versión del sistema actual (v10.1): hecho el 10/11, ver "Revisión del 10/11" en `docs/decisiones-liquidaciones.md`.
+- [ ] En la base: tasas de mora con vigencia y fundamento, clasificación de gastos (naturaleza, habitualidad, financiación y respaldo), reapertura auditada y libro del fondo de reserva.
 
 ### Etapa 2 — Inmuebles y personas (hecha; quedó afuera)
 
@@ -65,10 +66,17 @@ a favor, mayor resto, etc.). Siguen abiertas:
 
 ## Carril A — sistema actual (Flask, en producción en Render)
 
-- [ ] **Archivos en Supabase Storage (v6.0)**:
-  - El código está listo y probado en la rama `supabase-storage`.
-  - El commit `b231ea9` (versión 6.0-0511) está **solo en local, sin push**.
-  - **No va a Render por ahora**, por decisión del 05/11.
+- [ ] **Merge de la v10.1** (`feat/lineamientos-v10`) **a `master`**, que es hacer el deploy. Antes, lo que anotó su memoria ("DONDE QUEDAMOS"):
+  - confirmar que Render tiene `SECRET_KEY`
+  - repetir `probar_v10.py` y `probar_fondo_reserva.py`
+  - actualizar 3 pruebas viejas
+  - limpiar el consorcio temporal "Prueba v10 lineamientos" de la base de prueba
+  - registrar los resultados en `pruebas_realizadas.md`
+- [ ] **Nunca subir ni mergear la rama `supabase-storage`.** En la PC original tiene un commit con claves (`6495413`). La migración a Storage quedó planeada para una versión mayor futura.
+
+- [ ] **Archivos en Supabase Storage**:
+  - El código está en la rama `supabase-storage`, basada en la 5.5: quedó muy atrás de la v10.1 y habría que rehacerlo sobre la versión nueva.
+  - El commit local `b231ea9` no se sube.
 - [ ] **Flask en Docker** (rama local `feat/docker-flask`, sin push): `Dockerfile`, `compose.yaml` y `ProxyFix`. Está trabado porque desde esta red no se llega a la base de Supabase.
 - [ ] **Cambiar la contraseña de la base de producción**: quedó expuesta en `gen_nov.py`, en un tar.gz viejo y en un chat. Después, actualizar `DATABASE_URL` en Render y borrar `gen_nov.py`.
 - [ ] **Importes exactos** (paso A3 del plan): pasar `pg_db.py` de `float` a `Decimal`.

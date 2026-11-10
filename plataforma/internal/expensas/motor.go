@@ -5,11 +5,14 @@
 // Reglas (docs/decisiones-liquidaciones.md):
 //   - Prorrateo por grupo con los coeficientes vigentes; centavos repartidos por
 //     mayor resto (desempate por código de unidad): la suma da exacto el total.
-//   - Interés simple: tasa mensual × capital vencido impago. Nunca sobre intereses.
+//   - Interés simple (CCyC 770): tasa mensual × capital impago a la fecha de cierre
+//     (deuda anterior menos intereses impagos). Nunca sobre intereses.
 //     La deuda inicial migrada no genera interés el primer mes.
-//   - Mora del mes: si a la fecha de cálculo ya pasó el vencimiento y la unidad no
-//     pagó nada del período, tasa × expensas del mes.
-//   - Condonación: la unidad no genera interés ni mora en esta liquidación.
+//   - Sin mora del mes: el atraso se cobra como interés en la liquidación siguiente
+//     (como el sistema actual desde la v9.0).
+//   - Condonación (el switch "sin interés" de cada unidad al cerrar): sin interés.
+//   - Gastos extraordinarios a cobrar: se prorratean igual pero van en una línea
+//     aparte. Los pagados con el fondo de reserva no llegan al motor.
 //   - Saldo anterior con signo: positivo es deuda, negativo es saldo a favor.
 package expensas
 
@@ -33,12 +36,12 @@ var (
 type Concepto string
 
 const (
-	SaldoAnterior Concepto = "saldo_anterior" // informativo: ya está en la cuenta corriente
-	Expensas      Concepto = "expensas"       // gastos del grupo prorrateados
-	FondoReserva  Concepto = "fondo_reserva"
-	Particular    Concepto = "particular" // cargo a una sola unidad
-	InteresDeuda  Concepto = "interes_deuda"
-	MoraMes       Concepto = "mora_mes"
+	SaldoAnterior  Concepto = "saldo_anterior" // informativo: ya está en la cuenta corriente
+	Expensas       Concepto = "expensas"       // gastos del grupo prorrateados
+	FondoReserva   Concepto = "fondo_reserva"
+	Particular     Concepto = "particular" // cargo a una sola unidad
+	InteresDeuda   Concepto = "interes_deuda"
+	Extraordinaria Concepto = "extraordinaria" // gastos extraordinarios a cobrar, prorrateados
 )
 
 type Unidad struct {
@@ -53,10 +56,11 @@ type Grupo struct {
 }
 
 type Gasto struct {
-	ID       uuid.UUID
-	GrupoID  uuid.UUID
-	Concepto string
-	Importe  decimal.Decimal
+	ID             uuid.UUID
+	GrupoID        uuid.UUID
+	Concepto       string
+	Importe        decimal.Decimal
+	Extraordinario bool // naturaleza extraordinaria y se cobra con las expensas
 }
 
 type CargoParticular struct {
@@ -68,10 +72,9 @@ type CargoParticular struct {
 // Situacion de la unidad al momento de liquidar, sacada de la cuenta corriente.
 type Situacion struct {
 	SaldoAnterior  decimal.Decimal // con signo: >0 debe, <0 saldo a favor
-	CapitalVencido decimal.Decimal // capital impago ya vencido: base del interés
+	CapitalVencido decimal.Decimal // capital impago a la fecha de cierre: base del interés
 	DeudaInicial   bool            // la deuda viene de la migración y es el primer mes
-	PagosPeriodo   decimal.Decimal // pagado del período que se liquida (para la mora del mes)
-	Condonada      bool            // sin interés ni mora esta liquidación
+	Condonada      bool            // sin interés en esta liquidación
 }
 
 type Entrada struct {
@@ -82,9 +85,8 @@ type Entrada struct {
 	GrupoFondo   uuid.UUID       // grupo con el que se reparte el fondo
 	Particulares []CargoParticular
 	Situaciones  map[uuid.UUID]Situacion
-	TasaMensual  decimal.Decimal // 0.05 = 5 %
-	Vencimiento  fecha.Fecha
-	FechaCalculo fecha.Fecha
+	TasaMensual  decimal.Decimal // 0.05 = 5 %; la vigente el día 1 del mes de la liquidación
+	FechaCalculo fecha.Fecha     // fecha de cierre: queda guardada con la liquidación
 }
 
 type Linea struct {
@@ -103,9 +105,10 @@ type ResultadoUnidad struct {
 }
 
 type Resultado struct {
-	Unidades      []ResultadoUnidad             `json:"unidades"`
-	TotalPorGrupo map[uuid.UUID]decimal.Decimal `json:"total_por_grupo"`
-	TotalCargos   decimal.Decimal               `json:"total_cargos"`
+	Unidades            []ResultadoUnidad             `json:"unidades"`
+	TotalPorGrupo       map[uuid.UUID]decimal.Decimal `json:"total_por_grupo"` // ordinarios
+	TotalExtraordinario map[uuid.UUID]decimal.Decimal `json:"total_extraordinario"`
+	TotalCargos         decimal.Decimal               `json:"total_cargos"`
 }
 
 // Redondear: half-up a centavos.
@@ -168,8 +171,8 @@ func Calcular(e Entrada) (Resultado, error) {
 	if len(e.Unidades) == 0 {
 		return Resultado{}, errors.New("el consorcio no tiene unidades activas")
 	}
-	if e.Vencimiento.EsCero() || e.FechaCalculo.EsCero() {
-		return Resultado{}, errors.New("faltan la fecha de vencimiento o la de cálculo")
+	if e.FechaCalculo.EsCero() {
+		return Resultado{}, errors.New("falta la fecha de cálculo")
 	}
 	if e.TasaMensual.IsNegative() {
 		return Resultado{}, errors.New("tasa de mora negativa")
@@ -179,13 +182,18 @@ func Calcular(e Entrada) (Resultado, error) {
 		activas[u.ID] = u.Codigo
 	}
 
-	// Total a repartir por grupo: gastos + fondo de reserva.
+	// Total a repartir por grupo: ordinarios y extraordinarios por separado.
 	totales := map[uuid.UUID]decimal.Decimal{}
+	extraord := map[uuid.UUID]decimal.Decimal{}
 	for _, g := range e.Gastos {
 		if _, ok := e.Grupos[g.GrupoID]; !ok {
 			return Resultado{}, fmt.Errorf("el gasto %q usa un grupo sin coeficientes vigentes", g.Concepto)
 		}
-		totales[g.GrupoID] = totales[g.GrupoID].Add(g.Importe)
+		if g.Extraordinario {
+			extraord[g.GrupoID] = extraord[g.GrupoID].Add(g.Importe)
+		} else {
+			totales[g.GrupoID] = totales[g.GrupoID].Add(g.Importe)
+		}
 	}
 	if e.FondoReserva.IsPositive() {
 		if _, ok := e.Grupos[e.GrupoFondo]; !ok {
@@ -211,13 +219,21 @@ func Calcular(e Entrada) (Resultado, error) {
 		}
 		return nil
 	}
-	ids := make([]uuid.UUID, 0, len(totales))
-	for id := range totales {
-		ids = append(ids, id)
+	porNombre := func(m map[uuid.UUID]decimal.Decimal) []uuid.UUID {
+		ids := make([]uuid.UUID, 0, len(m))
+		for id := range m {
+			ids = append(ids, id)
+		}
+		sort.Slice(ids, func(i, j int) bool { return e.Grupos[ids[i]].Nombre < e.Grupos[ids[j]].Nombre })
+		return ids
 	}
-	sort.Slice(ids, func(i, j int) bool { return e.Grupos[ids[i]].Nombre < e.Grupos[ids[j]].Nombre })
-	for _, gid := range ids {
+	for _, gid := range porNombre(totales) {
 		if err := repartir(gid, totales[gid], Expensas, "Expensas "+e.Grupos[gid].Nombre); err != nil {
+			return Resultado{}, err
+		}
+	}
+	for _, gid := range porNombre(extraord) {
+		if err := repartir(gid, extraord[gid], Extraordinaria, "Gastos extraordinarios "+e.Grupos[gid].Nombre); err != nil {
 			return Resultado{}, err
 		}
 	}
@@ -233,26 +249,14 @@ func Calcular(e Entrada) (Resultado, error) {
 		lineas[p.UnidadID] = append(lineas[p.UnidadID], Linea{Concepto: Particular, Detalle: p.Concepto, Importe: Redondear(p.Importe)})
 	}
 
-	res := Resultado{TotalPorGrupo: totales, TotalCargos: decimal.Zero}
-	vencida := e.FechaCalculo.Despues(e.Vencimiento)
+	res := Resultado{TotalPorGrupo: totales, TotalExtraordinario: extraord, TotalCargos: decimal.Zero}
 	for _, u := range e.Unidades {
 		s := e.Situaciones[u.ID]
 		ls := lineas[u.ID]
 
-		expensasMes := decimal.Zero
-		for _, l := range ls {
-			if l.Concepto == Expensas || l.Concepto == FondoReserva {
-				expensasMes = expensasMes.Add(l.Importe)
-			}
-		}
 		if !s.Condonada && !s.DeudaInicial && s.CapitalVencido.IsPositive() {
 			if i := Redondear(s.CapitalVencido.Mul(e.TasaMensual)); i.IsPositive() {
 				ls = append(ls, Linea{Concepto: InteresDeuda, Detalle: "Interés sobre deuda vencida", Importe: i})
-			}
-		}
-		if !s.Condonada && vencida && !s.PagosPeriodo.IsPositive() && expensasMes.IsPositive() {
-			if m := Redondear(expensasMes.Mul(e.TasaMensual)); m.IsPositive() {
-				ls = append(ls, Linea{Concepto: MoraMes, Detalle: "Mora del mes", Importe: m})
 			}
 		}
 

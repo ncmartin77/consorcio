@@ -35,7 +35,6 @@ func (c casa) entrada(gastos ...string) Entrada {
 		Grupos:       map[uuid.UUID]Grupo{c.grupo.ID: c.grupo},
 		Situaciones:  map[uuid.UUID]Situacion{},
 		TasaMensual:  d("0.05"),
-		Vencimiento:  fecha.Nueva(2026, 11, 30),
 		FechaCalculo: fecha.Nueva(2026, 11, 1),
 	}
 	for _, g := range gastos {
@@ -149,7 +148,7 @@ func TestInteresSimple(t *testing.T) {
 	e.Situaciones[c.ids[0]] = Situacion{SaldoAnterior: d("10600"), CapitalVencido: d("10000")} // 600 de intereses viejos
 	res, _ := Calcular(e)
 	u := porID(res, c.ids[0])
-	// Simple: 5 % de 10.000 de capital = 500. Compuesto (sistema actual) daría 5 % de 10.600 = 530.
+	// Simple: 5 % de 10.000 de capital = 500. Compuesto (v9.x, o v10 con "capitalizar") daría 530.
 	igual(t, "interés sobre el capital", linea(u, InteresDeuda), "500")
 	igual(t, "total = saldo + expensas + interés", u.Total, "11600")
 	igual(t, "cargos nuevos", u.Cargos, "1000")
@@ -171,22 +170,34 @@ func TestInteresSimple(t *testing.T) {
 	})
 }
 
-func TestMoraDelMes(t *testing.T) {
+func TestSinMoraDelMes(t *testing.T) {
+	// Desde la v9.0 del sistema actual no hay recargo dentro de la misma liquidación:
+	// aunque se cierre después del vencimiento y sin pagos, solo hay expensas.
 	c := nuevaCasa("50", "50")
 	e := c.entrada("1000")
-	t.Run("antes del vencimiento no hay mora", func(t *testing.T) {
-		res, _ := Calcular(e)
-		igual(t, "mora", linea(porID(res, c.ids[0]), MoraMes), "0")
-	})
-	e.FechaCalculo = fecha.Nueva(2026, 12, 2) // ya pasó el 30/11
-	e.Situaciones[c.ids[1]] = Situacion{PagosPeriodo: d("100")}
+	e.FechaCalculo = fecha.Nueva(2026, 12, 20)
 	res, _ := Calcular(e)
-	igual(t, "u1 no pagó nada: 5 % de 500", linea(porID(res, c.ids[0]), MoraMes), "25")
-	igual(t, "u2 pagó algo: sin mora", linea(porID(res, c.ids[1]), MoraMes), "0")
-	t.Run("el mismo cálculo con la misma fecha da lo mismo", func(t *testing.T) {
-		otra, _ := Calcular(e)
-		igual(t, "mora repetida", linea(porID(otra, c.ids[0]), MoraMes), "25")
-	})
+	u := porID(res, c.ids[0])
+	igual(t, "cargos sin deuda anterior", u.Cargos, "500")
+	if len(u.Lineas) != 1 {
+		t.Errorf("líneas de más: %+v", u.Lineas)
+	}
+}
+
+func TestExtraordinariosEnLineaAparte(t *testing.T) {
+	c := nuevaCasa("40", "60")
+	e := c.entrada("1000")
+	e.Gastos = append(e.Gastos, Gasto{ID: uuid.New(), GrupoID: c.grupo.ID, Concepto: "impermeabilización", Importe: d("5000"), Extraordinario: true})
+	res, err := Calcular(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u1 := porID(res, c.ids[0])
+	igual(t, "ordinarias u1", linea(u1, Expensas), "400")
+	igual(t, "extraordinarias u1", linea(u1, Extraordinaria), "2000")
+	igual(t, "total ordinario del grupo", res.TotalPorGrupo[c.grupo.ID], "1000")
+	igual(t, "total extraordinario del grupo", res.TotalExtraordinario[c.grupo.ID], "5000")
+	igual(t, "total de cargos", res.TotalCargos, "6000")
 }
 
 func TestSaldoAFavor(t *testing.T) {
