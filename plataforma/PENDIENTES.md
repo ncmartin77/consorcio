@@ -3,7 +3,7 @@
 Lo que se dejó para después, con el motivo. Actualizar al cerrar cada sesión de trabajo:
 agregar lo nuevo, tachar (borrar) lo resuelto.
 
-Última actualización: 06/11/2026.
+Última actualización: 10/11/2026.
 
 ---
 
@@ -16,6 +16,15 @@ agregar lo nuevo, tachar (borrar) lo resuelto.
 - [ ] **Roles y permisos finos**: el documento prevé las tablas `roles`, `permisos` y `accesos_consorcio` (acceso por consorcio y por unidad). Hoy hay tres roles fijos en `membresias`: `admin`, `operador` y `consulta`.
 - [ ] **Lectura de la auditoría** para administradores, con un rol o vista aparte. Hoy la aplicación solo puede insertar.
 - [ ] **Límite de intentos de login**: es en memoria y sirve para una sola instancia de la API. Si hay varias, pasarlo a la base.
+
+### Etapa 3 — Liquidaciones (en curso)
+
+- [x] Motor de expensas puro y pruebas (`internal/expensas`).
+- [ ] Guardar gastos, proveedores, liquidaciones y cuenta corriente en la base (migración `00004`).
+- [ ] API de liquidación: borrador → calculada → aprobada → emitida, con snapshot.
+- [ ] PDF de la liquidación (worker).
+- [ ] Comparar contra el sistema actual: cada diferencia tiene que explicarse con una decisión.
+- [ ] **Revisar `docs/decisiones-liquidaciones.md` contra la v9.7 del sistema actual.** Entre el 06 y el 08/11 se subieron a `master` 25 commits (de la 5.5 a la 9.7), con cambios de reglas: saldo a favor, interés decidido al cerrar con un switch por unidad, cobranza sobre la liquidación cerrada, fondo de reserva igual al saldo de caja del mes anterior, entre otros.
 
 ### Etapa 2 — Inmuebles y personas (hecha; quedó afuera)
 
