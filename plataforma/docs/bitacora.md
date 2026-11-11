@@ -27,6 +27,21 @@ Documentos relacionados:
 - **`probar_anular_pagos`** termina "sin errores" pero no anula nada: usa una ruta que la v9.0 movió a Cobranzas. La anulación sí está probada en `probar_cobranzas`.
 - **Subido** a `feat/lineamientos-v10` como **v10.2** (solo pruebas y documentos; sin cambios en la app). No toca `master` ni Render.
 
+### Las 6 pruebas viejas, actualizadas (v10.3)
+
+**Qué se hizo**
+- **`pruebas/escenario.py`:** cada prueba crea un **consorcio temporal** (2 UF al 50 %, expensa de $100.000, tasa 3 %), arma lo que necesita y lo borra al terminar. Las pruebas ya no dependen de los datos de la base.
+- **Reescritas con la lógica actual:**
+  - página de error, con un usuario no administrador real
+  - anular pagos, por Cobranzas
+  - libre deuda
+  - fecha del sistema
+  - interés al cerrar, que reemplaza al switch viejo
+  - saldo a favor
+- **Resultado:** 65 controles, todos OK.
+- **Corrida completa:** las **16 pruebas** (no 17, como se dijo antes) dan OK contra la base local limpia, sin dejar restos.
+- **Subido** como **v10.3** a `feat/lineamientos-v10`. Sin cambios en la app; no toca `master` ni Render.
+
 ## 10/11/2026
 
 ### Base local para probar el sistema actual (v10.1)

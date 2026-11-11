@@ -68,12 +68,12 @@ a favor, mayor resto, etc.). Siguen abiertas:
 
 - [x] Base local de pruebas `consorcio_pruebas` (10/11): copia del 03/11 en el Postgres local, con usuario propio. Ver la bitácora.
 - [x] Correr las pruebas de la v10.1 contra la base local (11/11): ninguna falla es del código. Ver `docs/pruebas_realizadas.md` (v10.2) en la rama `feat/lineamientos-v10`.
-- [ ] **Actualizar 6 pruebas viejas** del sistema actual: libre_deuda (que prepare su escenario), pagina_error (usar un usuario no administrador real), anular_pagos (ruta de Cobranzas), fecha_sistema y switch_interes (switch quitado en la v9.2), saldo_a_favor (`_calcular_interes` ya no existe).
+- [x] Actualizar las 6 pruebas viejas del sistema actual (11/11, v10.3): ahora usan un escenario propio y las 16 pruebas dan OK.
 - [ ] **Merge de la v10.1** (`feat/lineamientos-v10`) **a `master`**, que es hacer el deploy. Antes, lo que anotó su memoria ("DONDE QUEDAMOS"):
   - confirmar que Render tiene `SECRET_KEY`
   - ~~repetir `probar_v10.py` y `probar_fondo_reserva.py`~~ (hecho el 11/11 en local)
   - ~~registrar los resultados en `pruebas_realizadas.md`~~ (hecho)
-  - actualizar las 6 pruebas viejas (punto anterior)
+  - ~~actualizar las 6 pruebas viejas~~ (hecho, v10.3)
   - limpiar el consorcio temporal "Prueba v10 lineamientos" de `consorcio-tst` (en la base local no quedó)
 - [ ] **Nunca subir ni mergear la rama `supabase-storage`.** En la PC original tiene un commit con claves (`6495413`). La migración a Storage quedó planeada para una versión mayor futura.
 
