@@ -42,6 +42,14 @@ Documentos relacionados:
 - **Corrida completa:** las **16 pruebas** (no 17, como se dijo antes) dan OK contra la base local limpia, sin dejar restos.
 - **Subido** como **v10.3** a `feat/lineamientos-v10`. Sin cambios en la app; no toca `master` ni Render.
 
+### La app vieja corriendo en esta PC (v10.4)
+
+- **`pruebas/servidor_local.py`** (rama `feat/lineamientos-v10`): levanta la app en `http://127.0.0.1:5000` contra `consorcio_pruebas`.
+- **Ingreso de prueba `/__login_local`:** el login con Google no funciona en local. Esta ruta solo responde desde esta PC y sin proxy.
+- **No es parte de la app:** Render nunca carga ese archivo.
+- **Probado en el navegador:** se eligió Peru 376 y se abrió Liquidación, con la franja "MODO PRUEBAS".
+- **Para usarla:** desde `~/consorcio-v10`, correr `pruebas/correr_en_docker.sh pruebas/servidor_local.py` y abrir `http://127.0.0.1:5000/__login_local`.
+
 ## 10/11/2026
 
 ### Base local para probar el sistema actual (v10.1)
