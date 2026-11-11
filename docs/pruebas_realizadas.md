@@ -9,10 +9,10 @@ Las más recientes van primero. Los scripts para repetirlas están en [`pruebas/
 
 | Item | Valor |
 |---|---|
-| Base de datos | Supabase **`consorcio-tst`** (proyecto de prueba, copia de producción). **Nunca** producción. |
+| Base de datos | Supabase **`consorcio-tst`** (proyecto de prueba, copia de producción), o desde el 11/11 una **base local** (`consorcio_pruebas` en el Postgres de Docker de `plataforma/`, copia de producción del 03/11). **Nunca** producción: `entorno_prueba.py` lo controla. |
 | Consorcio usado | Edificio Perú 376 (`consorcio_id = 28693516`), 24 unidades |
 | Cómo se ejecutan | Cliente de pruebas de Flask (`app.test_client()`) con sesión de admin: recorre las rutas reales sin login de Google ni navegador |
-| Python | venv de Windows `C:\Users\Maria\.venvs\consorcio` |
+| Python | venv de Windows `C:\Users\Maria\.venvs\consorcio`, o contenedor Docker con `pruebas/correr_en_docker.sh` (Python 3.12, sin instalar nada) |
 | Fecha real de las pruebas | 06/11/2026 |
 | Configuración de la base de prueba | `tasa_mora` = 5 %, `dia_vencimiento` = 0 (último día del mes) |
 | Liquidaciones en la base de prueba | 2026-10, 2026-11 y 2026-12, todas ABIERTAS. Octubre pagada completa (pagos registrados el 03/11/2026); noviembre y diciembre pendientes |
@@ -57,6 +57,35 @@ las demás.
 | PDF: registro "en trámite" y CUIT | sin presentarlo como inscripción | ✅ |
 | Página Ayuda (navegador) | manual renderizado, 17 enlaces del índice OK, sin diagramas | ✅ (revisado a mano) |
 | Diagramas `docs/diagramas.md` | 23 diagramas Mermaid sin errores | ✅ (dibujados en el navegador) |
+
+---
+
+## v10.2-1111 — Corrida completa en una base local (10 y 11/11/2026)
+
+**Por qué:** desde la red del Senado no se llega a Supabase, y las pruebas de la v10.0 se habían cortado.
+
+**Cómo:**
+- Base `consorcio_pruebas` en el Postgres local de Docker (rama `feat/plataforma`, `scripts/restaurar_legado.sh`), con la copia de producción del 03/11 (v5.x). Al arrancar, las funciones `ensure_*` de la v10.1 pusieron al día la estructura: de 21 a 25 tablas, con `tasas_mora`, `pagos` y las columnas nuevas. Las 11 páginas principales respondieron 200.
+- Foto limpia en `consorcio_pruebas_inicial`: después de las pruebas que modifican datos, la base se vuelve a crear desde esa foto.
+- Cada prueba corrida de a una con `pruebas/correr_en_docker.sh`. `entorno_prueba.py` ahora acepta una base local además de `consorcio-tst`, y sigue rechazando producción: probado con una URL de producción, que aborta.
+
+| Prueba | Resultado | Nota |
+|---|---|---|
+| `probar_v10.py` | ✅ **53/53** | Incluye los 3 controles de la página Ayuda que faltaba repetir |
+| `probar_cobranzas.py` | ✅ 44/44 | Incluye anular un pago con la ruta de Cobranzas |
+| `probar_factura_con_fondo.py` | ✅ 14/14 | |
+| `probar_factura_vinculo.py` | ✅ 16/16 | |
+| `probar_pdf_planilla.py` | ✅ 15/15 | |
+| `probar_seguridad.py` | ✅ 24/24 | |
+| `probar_fondo_reserva.py` | ✅ sin fallas | Regla del libro del fondo |
+| `probar_liquidacion_estados.py`, `probar_periodos_invalidos.py`, `probar_saldo_cierre.py` | ✅ sin errores | |
+| `probar_libre_deuda.py` | ✅ con datos preparados | Necesita una liquidación **cerrada** con la unidad pagada: es el "`Location` sin `ld=`" del 09/11. Se preparó con la app (fecha del sistema 05/11, cierre de 2026-10, pago de la UF 01) y emitió, bloqueó, verificó y anuló bien. **La prueba debería preparar su propio escenario.** |
+| `probar_pagina_error.py` | ⚠️ prueba desactualizada; la app está bien | Desde la v9.8 el rol de administrador se lee de la base en cada pedido, y la prueba solo cambia `es_admin` en la sesión: su "usuario común" sigue siendo admin. **Verificado a mano** con un usuario no administrador real: ve el mensaje simple, sin detalle. |
+| `probar_anular_pagos.py` | ⚠️ desactualizada | Usa `/liquidacion/<p>/anular-pagos` (v6.4), que la v9.0 movió a `/cobranzas/<p>/anular`: termina sin error pero **no anula nada**. La anulación queda cubierta por `probar_cobranzas.py`. |
+| `probar_fecha_sistema.py`, `probar_switch_interes.py` | ❌ desactualizadas | Usan el switch "sin interés" de Liquidación, quitado en la v9.2 |
+| `probar_saldo_a_favor.py` | ❌ desactualizada | Usa `pg_db._calcular_interes`, que no existe desde la v9.2 |
+
+**Conclusión:** ninguna falla es del código de la v10.1. Quedan **6 pruebas para actualizar**: libre_deuda (que prepare su escenario), pagina_error, anular_pagos, fecha_sistema, switch_interes y saldo_a_favor.
 
 ---
 

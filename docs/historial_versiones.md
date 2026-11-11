@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 10.1-0911
+**Versión actual:** 10.2-1111
 
 ---
 
@@ -336,10 +336,19 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v10.x — Lineamientos jurídicos (Paraná, Entre Ríos)
 
+#### v10.2-1111 — Pruebas contra una base local
+
+**Lanzamiento:** 11 de noviembre
+**Versión actual**
+
+- Sin cambios en la app. `pruebas/entorno_prueba.py` acepta, además de `consorcio-tst`, una base **local** (127.0.0.1 / localhost) y sigue rechazando producción. Nuevo `pruebas/correr_en_docker.sh`: corre cualquier prueba en un contenedor de Python 3.12 con las dependencias, sin instalar nada en la PC.
+- Corrida completa contra la copia del 03/11 en una base local: ver `docs/pruebas_realizadas.md` (v10.2). Ninguna falla es del código; quedan 6 pruebas viejas para actualizar.
+
+---
+
 #### v10.1-0911 — Pendientes de pruebas para seguir en otra PC
 
 **Lanzamiento:** 9 de noviembre
-**Versión actual**
 
 - Solo documentación: en `docs/memoria_sesion_claude.md` ("DONDE QUEDAMOS") quedan anotados los resultados de las pruebas, las que hay que repetir (se cortaron por falta de red), las pruebas viejas a actualizar y la limpieza de la base de prueba.
 

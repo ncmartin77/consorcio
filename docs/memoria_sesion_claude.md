@@ -103,6 +103,7 @@
 
 **Antes de mergear `feat/lineamientos-v10` a `master` (= deploy):**
 - [ ] Confirmar en Render (consorcio → Environment) que existe `SECRET_KEY`: desde la v9.8, sin ella la app NO arranca.
+- [x] **11/11: corrida completa contra una base LOCAL** (copia del 03/11; ver la entrada v10.2 de `docs/pruebas_realizadas.md` y `pruebas/correr_en_docker.sh`). Ninguna falla es del código: v10 53/53 y la regresión OK. Quedan **6 pruebas viejas para actualizar**: libre_deuda (que prepare su escenario), pagina_error, anular_pagos, fecha_sistema, switch_interes y saldo_a_favor. Lo de abajo es el estado al 09/11.
 - [ ] Pruebas — resultado al 09/11 (corridas de a una, contra la v10.0):
   - OK: cobranzas 44/44, factura_con_fondo 14/14, factura_vinculo 16/16, pdf_planilla 15/15, seguridad 24/24; saldo_cierre, liquidacion_estados, anular_pagos y periodos_invalidos terminaron sin errores (revisar su salida completa).
   - **Correr de nuevo** (se cortaron por falta de red en la PC, no por el codigo): `probar_v10.py` (dio 50/50 antes de agregarle los 3 controles de Ayuda) y `probar_fondo_reserva.py` (ya actualizada a la regla del libro del fondo).

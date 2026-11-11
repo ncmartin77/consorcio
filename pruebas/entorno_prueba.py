@@ -1,8 +1,12 @@
 """
-Entorno común de las pruebas: SOLO contra la base de PRUEBA (Supabase `consorcio-tst`).
+Entorno común de las pruebas: SOLO contra una base de PRUEBA.
 
 - Lee `.env.local` (no versionado) y carga sus variables, salvo `ORIGEN_*` (producción).
-- Aborta si `DATABASE_URL` no apunta al proyecto de prueba.
+- Acepta dos bases: el proyecto de prueba de Supabase (`consorcio-tst`) o una base LOCAL
+  (host 127.0.0.1 / localhost / ::1), por ejemplo la `consorcio_pruebas` del Postgres de
+  Docker de `plataforma/` (copia restaurada con `scripts/restaurar_legado.sh`). Útil donde la
+  red no llega a Supabase.
+- Aborta con cualquier otra base y, siempre, si aparece el proyecto de producción.
 - Devuelve la app Flask, el módulo de datos y un cliente de pruebas con sesión de admin
   (no hace falta el login de Google).
 
@@ -11,6 +15,7 @@ Uso desde la raíz del repo (venv de Windows):
 """
 import os
 import sys
+from urllib.parse import urlsplit
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROYECTO_PRUEBA = "rbwjkgqvfaxxvcwaywtj"      # consorcio-tst
@@ -30,8 +35,14 @@ def _cargar_env():
         if not k.startswith("ORIGEN_"):
             os.environ[k] = v
     url = os.environ.get("DATABASE_URL", "")
-    if PROYECTO_PRUEBA not in url or PROYECTO_PRODUCCION in url:
-        sys.exit("DATABASE_URL no apunta a la base de PRUEBA: no se corre nada.")
+    if PROYECTO_PRODUCCION in url:
+        sys.exit("DATABASE_URL apunta a PRODUCCIÓN: no se corre nada.")
+    try:
+        host = (urlsplit(url).hostname or "").lower()
+    except ValueError:
+        host = ""
+    if PROYECTO_PRUEBA not in url and host not in ("127.0.0.1", "localhost", "::1"):
+        sys.exit("DATABASE_URL no apunta a la base de PRUEBA (consorcio-tst o una base local): no se corre nada.")
 
 
 def preparar(cid: str = CID):
