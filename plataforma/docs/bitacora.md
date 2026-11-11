@@ -10,6 +10,23 @@ Documentos relacionados:
 
 ---
 
+## 11/11/2026
+
+### Pruebas del sistema actual (v10.1) en la base local
+
+**Qué se hizo**
+- **Carpeta aparte para la v10:** `~/consorcio-v10` (`git worktree`), así la carpeta de la plataforma no se toca.
+- **`entorno_prueba.py`** acepta una base local además de `consorcio-tst`, y sigue rechazando producción (probado).
+- **`pruebas/correr_en_docker.sh`:** corre las pruebas en Python 3.12 dentro de Docker, sin instalar nada en la PC.
+- **La app v10.1 arrancó contra `consorcio_pruebas`:** la copia del 03/11 se puso al día sola (de 21 a 25 tablas). Se guardó la foto limpia `consorcio_pruebas_inicial`.
+- **Corrida completa, de a una:**
+  - ✅ v10 53/53, cobranzas 44/44, seguridad 24/24, facturas 14/14 y 16/16, planilla 15/15, fondo y estados sin fallas.
+  - ✅ libre deuda, con un escenario preparado: liquidación de octubre cerrada y un pago.
+  - ⚠️ 6 pruebas quedaron viejas por cambios de la v9.x. Ninguna falla es del código.
+- **Página de error:** la prueba decía que un usuario no administrador veía el detalle técnico. Se verificó con un usuario no administrador real: **no lo ve**. La prueba está desactualizada desde la v9.8.
+- **`probar_anular_pagos`** termina "sin errores" pero no anula nada: usa una ruta que la v9.0 movió a Cobranzas. La anulación sí está probada en `probar_cobranzas`.
+- **Subido** a `feat/lineamientos-v10` como **v10.2** (solo pruebas y documentos; sin cambios en la app). No toca `master` ni Render.
+
 ## 10/11/2026
 
 ### Base local para probar el sistema actual (v10.1)
