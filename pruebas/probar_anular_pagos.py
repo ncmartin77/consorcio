@@ -1,74 +1,54 @@
 """
-Prueba de "Anular pago" y de la fecha de pago con fecha del sistema (v6.4) contra la base de PRUEBA.
+Anular pagos (v6.4; desde la v9.0 en Cobranzas; actualizada en la v10.3).
 
-1. Con fecha fijada, los formularios proponen la fecha del sistema.
-2. Anular el pago de una unidad: la fila queda sin pago y se borra su entrada en Caja.
-3. Anular todos los pagos del período.
-4. Pagar con fecha fijada: el pago queda con esa fecha (fila y Caja) y cuenta en la vista.
-5. Restaurar: se revierten todas las operaciones desde el Log de Movimientos (prueba que
-   la anulación se puede deshacer) y se compara con el estado inicial.
-Uso: probar_anular_pagos.py [periodo] [fecha]   (por defecto 2026-10 y 2026-10-06)
+Escenario propio: octubre cerrado y cobrado. Verifica:
+1. Anular UN pago (pago_id): desaparece ese pago y su entrada en Caja; lo demás no cambia.
+2. Un usuario NO administrador no puede anular.
+3. Anular los pagos de una unidad.
+4. Con pagos no se puede reabrir la liquidación; sin pagos, sí.
+5. Anular TODOS los pagos del período.
+6. Pagar sin indicar fecha usa la fecha del sistema (fila y Caja).
 """
-import sys
+from escenario import Escenario
 
-from entorno_prueba import preparar
+P = "2026-10"
+with Escenario("Prueba anular pagos") as e:
+    e.fecha("2026-10-01"); e.generar(P); e.cerrar(P)
+    e.fecha("2026-10-08")
+    e.pagar(P, "1", 100000, "2026-10-05")
+    e.pagar(P, "2", 30000, "2026-10-06")
+    e.pagar(P, "2", 20000, "2026-10-08")
+    e.check("Inicio: 3 pagos y 3 entradas de Caja", (3, 3), (len(e.pagos(P)), len(e.caja_expensas(P))))
+    e.check("Inicio: UF 2 parcial con saldo 50.000", ("PARCIAL", 50000),
+            (e.fila(P, "2")["tipo_pago"], e.fila(P, "2")["saldo_pendiente"]))
 
-app, db, cliente = preparar()
-cid = db._cid()
-PERIODO = sys.argv[1] if len(sys.argv) > 1 else "2026-10"
-FECHA = sys.argv[2] if len(sys.argv) > 2 else "2026-10-06"
-admin_email = db.get_usuario(1)["email"]
+    # 1. Anular un pago
+    p20 = next(p for p in e.pagos(P, "2") if p["monto"] == 20000)
+    e.cliente.post(f"/cobranzas/{P}/anular", data={"pago_id": p20["id"]})
+    e.check("Anular el pago de 20.000: UF 2 queda con un pago de 30.000", [30000],
+            [p["monto"] for p in e.pagos(P, "2")])
+    e.check("Anular el pago de 20.000: su entrada de Caja se borra", 2, len(e.caja_expensas(P)))
+    e.check("Anular el pago de 20.000: UF 1 intacta", ("TOTAL", 1), (e.fila(P, "1")["tipo_pago"], len(e.pagos(P, "1"))))
 
+    # 2. No administrador
+    with e.como_usuario_no_admin():
+        e.cliente.post(f"/cobranzas/{P}/anular", data={"unidad": "1"})
+    e.check("Un usuario no administrador no puede anular", 1, len(e.pagos(P, "1")))
 
-def filas():
-    return {str(r["unidad"]): (r["tipo_pago"], r["monto_pagado"], r["fecha_pago"], r["interes"], r["total_a_pagar"])
-            for r in db.get_liquidacion(PERIODO, simular=False)}
+    # 3 y 4. Anular una unidad; reabrir con y sin pagos
+    e.check("Con pagos no se puede reabrir", True, bool(e.db.error_reapertura(P)))
+    e.cliente.post(f"/cobranzas/{P}/anular", data={"unidad": "1"})
+    e.check("Anular la UF 1: sin pagos y PENDIENTE", (0, "PENDIENTE"),
+            (len(e.pagos(P, "1")), e.fila(P, "1")["tipo_pago"]))
 
+    # 5. Anular todos
+    e.cliente.post(f"/cobranzas/{P}/anular")
+    e.check("Anular todos: sin pagos ni entradas de Caja", (0, 0), (len(e.pagos(P)), len(e.caja_expensas(P))))
+    e.check("Sin pagos se puede reabrir", None, e.db.error_reapertura(P))
 
-def caja_expensas():
-    return sorted((str(r["fecha"]), r["descripcion"], float(r["importe"])) for r in db._fetchall(
-        "SELECT fecha, descripcion, importe FROM caja WHERE consorcio_id=%s AND categoria='Expensas' "
-        "AND descripcion LIKE %s", (cid, f"Expensas {PERIODO} - %")))
-
-
-fecha0 = db.get_config().get("fecha_simulada", "")
-inicio_audit = db._fetchone("SELECT COALESCE(MAX(id),0) AS m FROM audit_log")["m"]
-f0, c0 = filas(), caja_expensas()
-con_pago = [u for u, v in f0.items() if (v[1] or 0) > 0]
-print(f"{PERIODO}: {len(con_pago)} unidades con pago, {len(c0)} entradas de Caja 'Expensas {PERIODO}'")
-assert con_pago, "No hay pagos para probar"
-u1 = con_pago[0]
-
-try:
-    cliente.post("/config/fecha-sistema", data={"fecha_sistema": FECHA})
-    h = cliente.get(f"/liquidacion/{PERIODO}").get_data(as_text=True)
-    print(f"\n[1] Fecha fijada {FECHA}: formularios proponen esa fecha:", f"'{FECHA}'" in h,
-          "| botón 'Anular todos los pagos':", "Anular todos los pagos" in h,
-          "| botones por unidad:", h.count("Anular pago (solo admin)"))
-    h2 = cliente.get("/caja").get_data(as_text=True)
-    print("    Caja propone la fecha fijada:", f"'{FECHA}'" in h2)
-
-    r = cliente.post(f"/liquidacion/{PERIODO}/anular-pagos", data={"unidad": u1}, follow_redirects=True)
-    f1, c1 = filas(), caja_expensas()
-    print(f"\n[2] Anular UF {u1}: fila {f0[u1][:3]} → {f1[u1][:3]} | Caja {len(c0)} → {len(c1)} | "
-          f"otras unidades intactas: {all(f1[u] == f0[u] for u in f0 if u != u1)}")
-
-    cliente.post(f"/liquidacion/{PERIODO}/anular-pagos", follow_redirects=True)
-    f2, c2 = filas(), caja_expensas()
-    print(f"[3] Anular todos: unidades con pago {sum(1 for v in f2.values() if (v[1] or 0) > 0)} | Caja {len(c2)}")
-
-    total = f2[u1][4]
-    cliente.post(f"/liquidacion/pagar/{PERIODO}/{u1}", data={"monto_pagado": str(total)})  # sin fecha: usa la del sistema
-    f3, c3 = filas(), caja_expensas()
-    vista = next(r for r in db.get_liquidacion(PERIODO) if str(r["unidad"]) == u1)
-    print(f"[4] Pagar UF {u1} sin indicar fecha: fecha_pago={f3[u1][2]} | Caja: {c3} | en la vista: {vista['tipo_pago']}")
-finally:
-    cliente.post("/config/fecha-sistema", data=({"fecha_sistema": fecha0} if fecha0 else {"accion": "quitar"}))
-    ops = db._fetchall("SELECT op_id, MAX(id) AS ult FROM audit_log WHERE id > %s AND consorcio_id=%s "
-                       "AND revertida_en IS NULL AND (descripcion LIKE 'Liquidación:%%') "
-                       "GROUP BY op_id ORDER BY ult DESC", (inicio_audit, cid))
-    for o in ops:
-        ok, msg = db.revertir_operacion(o["op_id"], admin_email)
-        print("  revertir:", ok, msg)
-    print(f"\n[5] Restaurado desde el Log de Movimientos: liquidación igual al inicio: {filas() == f0} | "
-          f"Caja igual: {caja_expensas() == c0} | fecha: {db.get_config().get('fecha_simulada')!r}")
+    # 6. Pago sin fecha → fecha del sistema
+    e.fecha("2026-10-09")
+    e.pagar(P, "1", 100000)
+    pago = e.pagos(P, "1")[0]
+    e.check("Pago sin fecha: toma la fecha del sistema", "2026-10-09", str(pago["fecha"]))
+    e.check("Pago sin fecha: Caja con la fecha del sistema", "2026-10-09", e.caja_expensas(P)[0][0])

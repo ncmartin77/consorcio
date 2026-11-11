@@ -1,10 +1,15 @@
 """
-Prueba de la página de error 500 (contra la base de PRUEBA): fuerza un error en una ruta
-temporal y verifica que el admin ve el detalle técnico y un usuario común no.
+Página de error 500 (v6.2, actualizada en la v10.3): fuerza un error en una ruta temporal y
+verifica que un administrador ve el detalle técnico y un usuario NO administrador no.
+
+Desde la v9.8 el rol se lee de la base en cada pedido: la prueba usa un usuario no
+administrador real (creado y borrado acá); cambiar `es_admin` en la sesión no alcanza.
 """
 from entorno_prueba import preparar
+from escenario import Escenario
 
-app, db, cliente = preparar()
+# La ruta temporal se registra ANTES del primer pedido (Flask no acepta rutas nuevas después).
+app, _, _ = preparar()
 app.config["PROPAGATE_EXCEPTIONS"] = False
 
 
@@ -13,13 +18,15 @@ def __prueba_error():
     return {}["clave_que_no_existe"]
 
 
-r = cliente.get("/__prueba_error")
-h = r.get_data(as_text=True)
-print("Admin  ->", r.status_code, "| detalle:", "KeyError" in h and "Traceback" in h,
-      "| versión:", "Versión:" in h)
+with Escenario("Prueba página de error") as e:
+    r = e.cliente.get("/__prueba_error")
+    h = r.get_data(as_text=True)
+    e.check("Admin: error 500", 500, r.status_code)
+    e.check("Admin: ve el detalle técnico y la versión", True, "Traceback" in h and "KeyError" in h and "Versión:" in h)
 
-with cliente.session_transaction() as s:
-    s["es_admin"] = False
-r = cliente.get("/__prueba_error")
-h = r.get_data(as_text=True)
-print("Común  ->", r.status_code, "| sin detalle:", "Traceback" not in h and "KeyError" not in h)
+    with e.como_usuario_no_admin():
+        r = e.cliente.get("/__prueba_error")
+        h = r.get_data(as_text=True)
+        e.check("No admin (aunque la sesión diga es_admin=True): error 500", 500, r.status_code)
+        e.check("No admin: NO ve el detalle técnico", True, "Traceback" not in h and "KeyError" not in h)
+        e.check("No admin: ve el mensaje simple", True, "Avisá al administrador" in h)

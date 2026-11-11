@@ -60,6 +60,29 @@ las demás.
 
 ---
 
+## v10.3-1111 — Las 6 pruebas viejas, actualizadas con escenario propio (11/11/2026)
+
+**Qué cambió:** las 6 pruebas que la v10.2 marcó como viejas se reescribieron con la lógica actual (v9.x/v10) y con un
+**escenario propio** (`pruebas/escenario.py`). Cada una crea un consorcio temporal (2 UF al 50 %, expensa de $100.000
+por UF, tasa 3 % y vencimiento el día 10), arma lo que necesita y lo borra al terminar. Ya no dependen de los datos de
+la base de prueba y terminan con código 1 si algún control falla.
+
+| Prueba | Antes | Ahora | Controles |
+|---|---|---|---|
+| `probar_pagina_error.py` | Cambiaba `es_admin` en la sesión (sin efecto desde la v9.8) | Usuario **no administrador real** (creado y borrado), con `es_admin=True` en la sesión a propósito | ✅ 5/5 |
+| `probar_anular_pagos.py` | Ruta de la v6.4 (`/liquidacion/<p>/anular-pagos`): no anulaba nada | `/cobranzas/<p>/anular`: un pago, una unidad, todos; no admin bloqueado; reabrir solo sin pagos; pago sin fecha = fecha del sistema | ✅ 12/12 |
+| `probar_libre_deuda.py` | Dependía de que hubiera una liquidación cerrada | Escenario con octubre cerrado (UF 1 pagó, UF 2 no): bloqueo, emisión, PDF, verificación pública, anulación, auditoría | ✅ 12/12 |
+| `probar_fecha_sistema.py` | Usaba el switch quitado en la v9.2 | Vista a una fecha anterior al pago (pendiente) sin cambiar la base, franja de aviso, pantallas y PDF, fecha inválida | ✅ 17/17 |
+| `probar_switch_interes.py` | Switch de la pantalla Liquidación (quitado en la v9.2) | Interés al **cerrar** (v9.2) con la regla v10: abierta sin interés, propuesta 3 % sobre el capital, switch por UF, tasa congelada | ✅ 7/7 |
+| `probar_saldo_a_favor.py` | Usaba `pg_db._calcular_interes` (no existe desde la v9.2) | Pago de más → saldo −150.000; noviembre pagado sin abonar; sin interés sobre saldo a favor; diciembre arrastra −50.000 | ✅ 12/12 |
+
+**Corrida completa** de las **16** pruebas, de a una, contra la base local limpia (`consorcio_pruebas`, recreada desde
+`consorcio_pruebas_inicial`): **las 16 con código 0**. v10 53/53, cobranzas 44/44, seguridad 24/24, factura_con_fondo
+14/14, factura_vinculo 16/16, pdf_planilla 15/15, las 6 de arriba (65 controles) y fondo_reserva, liquidacion_estados,
+periodos_invalidos y saldo_cierre sin fallas. Al terminar no quedó ningún consorcio ni usuario temporal.
+
+---
+
 ## v10.2-1111 — Corrida completa en una base local (10 y 11/11/2026)
 
 **Por qué:** desde la red del Senado no se llega a Supabase, y las pruebas de la v10.0 se habían cortado.

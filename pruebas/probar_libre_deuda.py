@@ -1,79 +1,46 @@
 """
-Prueba del certificado de libre deuda (v5.6) contra la base de PRUEBA.
+Certificado de libre deuda (v5.6; desde la v9.0 según la última liquidación CERRADA;
+actualizada en la v10.3 con escenario propio).
 
-Cubre: bloqueo por deuda, emisión y numeración, PDF, verificación pública
-(válido / código falso / inexistente / anulado), anulación y auditoría.
-Si ninguna unidad está libre de deuda, simula el pago total de la primera unidad
-y lo restaura al final. Con --limpiar borra los certificados de prueba emitidos.
+Escenario: octubre cerrado; la UF 1 paga todo y la UF 2 no. Verifica bloqueo por deuda,
+emisión y numeración, PDF, verificación pública (válido / código falso / inexistente /
+anulado), anulación y auditoría.
 """
-import os
-import re
-import sys
-import tempfile
+from escenario import Escenario
 
-from entorno_prueba import preparar, CID
+P = "2026-10"
+with Escenario("Prueba libre deuda") as e:
+    e.fecha("2026-10-01"); e.generar(P); e.cerrar(P)
+    e.fecha("2026-10-05"); e.pagar(P, "1", 100000, "2026-10-05")
+    estado = e.db.get_estado_libre_deuda()
+    e.check("UF 1 libre de deuda, UF 2 con deuda", (True, False), (estado["1"]["libre"], estado["2"]["libre"]))
+    e.check("GET /unidades", 200, e.cliente.get("/unidades").status_code)
 
-app, db, cliente = preparar()
-db.ensure_libres_deuda()
-db.ensure_auditoria()
+    r = e.cliente.post("/unidades/2/libre-deuda", data={"solicitante": "x"}, follow_redirects=True)
+    e.check("Emitir a la UF 2 (con deuda): bloqueado", True, "No se puede emitir" in r.get_data(as_text=True))
+    e.check("Emitir a la UF 2: no se creó ningún certificado", 0, len(e.db.get_libres_deuda()))
 
-estado = db.get_estado_libre_deuda()
-libres = [n for n, e in estado.items() if e["libre"]]
-deudores = [n for n, e in estado.items() if not e["libre"]]
-print("Último período liquidado:", db.get_ultimo_periodo_liquidado())
-print("Libres:", libres, "| con deuda:", len(deudores), "(ej.:", estado[deudores[0]]["motivo"] if deudores else "-", ")")
+    r = e.cliente.post("/unidades/1/libre-deuda",
+                       data={"solicitante": "Juan <Pérez> & Cía", "destino": "Escribanía García", "validez_dias": "30"})
+    certs = e.db.get_libres_deuda()
+    e.check("Emitir a la UF 1: certificado número 1", [1], [c["numero"] for c in certs])
+    cert = e.db.get_libre_deuda(1)
+    e.check("Datos: UF 1, sin deuda hasta 2026-10, vence a los 30 días", ("1", "2026-10", "2026-11-04"),
+            (str(cert["unidad"]), cert["periodo_hasta"], str(cert["vence"])))
 
-r = cliente.get("/unidades")
-assert r.status_code == 200
-print("GET /unidades:", r.status_code)
+    r = e.cliente.get("/libre-deuda/1/pdf")
+    e.check("PDF del certificado", (200, "application/pdf"), (r.status_code, r.mimetype))
 
-if deudores:
-    r = cliente.post(f"/unidades/{deudores[0]}/libre-deuda", data={"solicitante": "x"}, follow_redirects=True)
-    print("Emitir a unidad con deuda -> bloqueado:", b"No se puede emitir" in r.data)
+    publico = e.app.test_client()  # sin sesión
+    url = f"/libre-deuda/verificar/{e.cid}/1/{cert['codigo']}"
+    e.check("Verificación pública: válido", True, "auténtico y vigente" in publico.get(url).get_data(as_text=True))
+    e.check("Verificación pública: código falso", True, "Verificación fallida" in publico.get(
+        f"/libre-deuda/verificar/{e.cid}/1/{'0' * 32}").get_data(as_text=True))
+    e.check("Verificación pública: inexistente", True, "no encontrado" in publico.get(
+        f"/libre-deuda/verificar/{e.cid}/99999/{cert['codigo']}").get_data(as_text=True))
 
-original, periodo = None, db.get_ultimo_periodo_liquidado()
-if libres:
-    u = libres[0]
-else:
-    u = deudores[0]
-    original = db._fetchone("SELECT pagado, monto_pagado, tipo_pago, saldo_pendiente, fecha_pago FROM liquidaciones "
-                            "WHERE consorcio_id=%s AND periodo=%s AND unidad=%s", (CID, periodo, u))
-    db._exec("UPDATE liquidaciones SET pagado=TRUE, monto_pagado=total_a_pagar, tipo_pago='TOTAL', "
-             "saldo_pendiente=0, fecha_pago=CURRENT_DATE WHERE consorcio_id=%s AND periodo=%s AND unidad=%s",
-             (CID, periodo, u))
-    print(f"(pago simulado de la unidad {u} en {periodo})")
-
-try:
-    r = cliente.post(f"/unidades/{u}/libre-deuda",
-                     data={"solicitante": "Juan <Pérez> & Cía", "destino": "Escribanía García", "validez_dias": "30"})
-    num = int(re.search(r"ld=(\d+)", r.headers["Location"]).group(1))
-    cert = db.get_libre_deuda(num)
-    print("Emitido:", {k: cert[k] for k in ("numero", "unidad", "periodo_hasta", "fecha_emision", "vence")})
-
-    r = cliente.get(f"/libre-deuda/{num}/pdf")
-    destino = os.path.join(tempfile.gettempdir(), f"libre_deuda_prueba_{num:04d}.pdf")
-    open(destino, "wb").write(r.data)
-    print("PDF:", r.status_code, r.mimetype, len(r.data), "bytes ->", destino)
-
-    publico = app.test_client()  # sin sesión
-    url = f"/libre-deuda/verificar/{CID}/{num}/{cert['codigo']}"
-    print("Verificar válido:", "auténtico y vigente" in publico.get(url).get_data(as_text=True))
-    print("Verificar código falso:", "Verificación fallida" in publico.get(
-        f"/libre-deuda/verificar/{CID}/{num}/{'0' * 32}").get_data(as_text=True))
-    print("Verificar inexistente:", "no encontrado" in publico.get(
-        f"/libre-deuda/verificar/{CID}/99999/{cert['codigo']}").get_data(as_text=True))
-
-    cliente.post(f"/libre-deuda/{num}/anular")
-    print("Verificar anulado:", "ANULADO" in publico.get(url).get_data(as_text=True))
-    ops = db._fetchall("SELECT accion, descripcion FROM audit_log WHERE tabla='libres_deuda' ORDER BY id DESC LIMIT 2")
-    print("Auditoría:", [(o["accion"], o["descripcion"]) for o in ops])
-finally:
-    if original is not None:
-        db._exec("UPDATE liquidaciones SET pagado=%s, monto_pagado=%s, tipo_pago=%s, saldo_pendiente=%s, fecha_pago=%s "
-                 "WHERE consorcio_id=%s AND periodo=%s AND unidad=%s",
-                 (original["pagado"], original["monto_pagado"], original["tipo_pago"], original["saldo_pendiente"],
-                  original["fecha_pago"], CID, periodo, u))
-        print(f"(pago de la unidad {u} restaurado)")
-    if "--limpiar" in sys.argv:
-        db._exec("DELETE FROM libres_deuda WHERE consorcio_id=%s", (CID,))
-        print("Certificados de prueba borrados.")
+    e.cliente.post("/libre-deuda/1/anular")
+    e.check("Verificación pública: anulado", True, "ANULADO" in publico.get(url).get_data(as_text=True))
+    ops = e.db._fetchall("SELECT accion FROM audit_log WHERE tabla='libres_deuda' AND consorcio_id=%s ORDER BY id",
+                         (e.cid,))
+    e.check("Auditoría: emisión y anulación", ["INSERT", "UPDATE"], [o["accion"] for o in ops])
