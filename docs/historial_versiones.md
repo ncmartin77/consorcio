@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 10.3-1111
+**Versión actual:** 10.4-1111
 
 ---
 
@@ -336,10 +336,19 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v10.x — Lineamientos jurídicos (Paraná, Entre Ríos)
 
-#### v10.3-1111 — Pruebas viejas actualizadas con escenario propio
+#### v10.4-1111 — Usar la app en una PC con base local
 
 **Lanzamiento:** 11 de noviembre
 **Versión actual**
+
+- Sin cambios en la app. Nuevo `pruebas/servidor_local.py`: levanta la app en `http://127.0.0.1:5000` contra una base **local** (solo local: rechaza consorcio-tst y producción), para usarla en el navegador sin Supabase ni Google. Como el login con Google no funciona en local, agrega la ruta `/__login_local` (entra con un usuario de la base; solo desde la misma PC y sin proxy). No es parte de la app: Render arranca `app.py` con gunicorn y nunca carga este archivo.
+- Uso: `pruebas/correr_en_docker.sh pruebas/servidor_local.py` y abrir `http://127.0.0.1:5000/__login_local`.
+
+---
+
+#### v10.3-1111 — Pruebas viejas actualizadas con escenario propio
+
+**Lanzamiento:** 11 de noviembre
 
 - Sin cambios en la app. Nuevo `pruebas/escenario.py`: consorcio temporal armado desde cero (2 UF, expensa $100.000, tasa 3 %) que se borra al terminar, con ayudas para fecha, generar, cerrar, pagar, controles y un usuario no administrador real.
 - Reescritas con la lógica v9.x/v10: `probar_pagina_error`, `probar_anular_pagos`, `probar_libre_deuda`, `probar_fecha_sistema`, `probar_switch_interes` (ahora: interés al cerrar) y `probar_saldo_a_favor`. Terminan con código 1 si algo falla.

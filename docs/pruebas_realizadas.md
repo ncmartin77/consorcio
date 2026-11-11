@@ -60,6 +60,19 @@ las demás.
 
 ---
 
+## v10.4-1111 — La app corriendo en una PC con base local (11/11/2026)
+
+`pruebas/servidor_local.py` contra `consorcio_pruebas` (copia del 03/11 en el Postgres local):
+
+| Control | Resultado |
+|---|---|
+| `/__login_local` entra como el usuario 1 (admin) y lleva a Consorcios | ✅ 302 → /consorcios |
+| Sin sesión, `/liquidacion` manda al login | ✅ 302 → /login |
+| `/__login_local` con `X-Forwarded-For` (pedido que pasa por un proxy) | ✅ 404 |
+| Navegador: elegir Peru 376 y abrir Liquidación (noviembre 2026), con la franja "MODO PRUEBAS" | ✅ (revisado en el navegador) |
+
+---
+
 ## v10.3-1111 — Las 6 pruebas viejas, actualizadas con escenario propio (11/11/2026)
 
 **Qué cambió:** las 6 pruebas que la v10.2 marcó como viejas se reescribieron con la lógica actual (v9.x/v10) y con un
