@@ -70,7 +70,7 @@ a favor, mayor resto, etc.). Siguen abiertas:
 - [x] Correr las pruebas de la v10.1 contra la base local (11/11): ninguna falla es del código. Ver `docs/pruebas_realizadas.md` (v10.2) en la rama `feat/lineamientos-v10`.
 - [x] Actualizar las 6 pruebas viejas del sistema actual (11/11, v10.3): ahora usan un escenario propio y las 16 pruebas dan OK.
 - [x] **Merge a `master` y deploy en Render** (12/11): `master` pasó de la v9.7 a la **v11.0-1211** (incluye v9.8 seguridad, v10.x lineamientos y v11.0 Storage). `SECRET_KEY` confirmada en Render por el usuario.
-  - [ ] Confirmar en la app (menú, abajo) que dice **v11.0-1211**.
+  - [x] Confirmado por el usuario en la app: dice **v11.0-1211** (12/11).
   - [ ] Limpiar el consorcio temporal "Prueba v10 lineamientos" de `consorcio-tst` (en la base local no quedó).
 - [ ] **Nunca subir ni mergear la rama `supabase-storage`.** En la PC original tiene un commit con claves (`6495413`). La migración a Storage quedó planeada para una versión mayor futura.
 
