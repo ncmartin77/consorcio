@@ -12,6 +12,23 @@ Documentos relacionados:
 
 ## 12/11/2026
 
+### Carril A: borrar comprobantes y archivos (v11.1)
+
+**Qué se hizo**
+- El usuario pidió que los comprobantes y los archivos de un consorcio eliminado se puedan borrar.
+- Rama `feat/borrar-archivos`, sacada de `master` (v11.0) y subida a GitHub, sin merge.
+- Qué cambia:
+  - En Facturas hay un botón para quitar el comprobante.
+  - Al reemplazar un comprobante o eliminar la factura, se borra el archivo.
+  - Al eliminar un consorcio, se borran todos sus archivos.
+- La prueba `probar_storage.py` pasó a 37 controles: OK en disco, en el S3 local y en `consorcio-tst`. Las 17 pruebas dan OK. También se probó en el navegador.
+
+**Decisiones**
+- **Borrado definitivo, con confirmación**, en lugar de una papelera: es lo que pidió el usuario.
+  - Consecuencia: si se revierte la operación en el Log de Movimientos, la factura vuelve a mostrar el comprobante, pero el archivo ya no existe y la app pide volver a adjuntarlo.
+- **No se borra un archivo que otra factura todavía usa.**
+- **Se corrigió el aviso al eliminar un consorcio.** Decía "Los datos NO se borran", pero siempre se borraron.
+
 ### Carril A: contraseña de producción y deploy de la v11.0
 
 **Qué se hizo**
