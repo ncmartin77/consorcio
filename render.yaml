@@ -12,3 +12,15 @@ services:
         generateValue: true
       - key: APP_ENV
         value: produccion
+      # Archivos en Supabase Storage (v11.0). Sin estas variables los archivos van al disco,
+      # que Render borra en cada deploy. Supabase → Storage → S3 Connection.
+      - key: STORAGE_S3_ENDPOINT
+        sync: false
+      - key: STORAGE_S3_REGION
+        sync: false
+      - key: STORAGE_S3_BUCKET
+        value: comprobantes
+      - key: STORAGE_S3_ACCESS_KEY_ID
+        sync: false
+      - key: STORAGE_S3_SECRET_ACCESS_KEY
+        sync: false

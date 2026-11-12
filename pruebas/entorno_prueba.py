@@ -7,6 +7,8 @@ Entorno común de las pruebas: SOLO contra una base de PRUEBA.
   Docker de `plataforma/` (copia restaurada con `scripts/restaurar_legado.sh`). Útil donde la
   red no llega a Supabase.
 - Aborta con cualquier otra base y, siempre, si aparece el proyecto de producción.
+- Lo mismo con el almacenamiento de archivos (STORAGE_S3_ENDPOINT, v11.0): solo consorcio-tst
+  o un S3 local; sin esa variable los archivos van al disco.
 - Devuelve la app Flask, el módulo de datos y un cliente de pruebas con sesión de admin
   (no hace falta el login de Google).
 
@@ -43,6 +45,17 @@ def _cargar_env():
         host = ""
     if PROYECTO_PRUEBA not in url and host not in ("127.0.0.1", "localhost", "::1"):
         sys.exit("DATABASE_URL no apunta a la base de PRUEBA (consorcio-tst o una base local): no se corre nada.")
+    # Archivos (v11.0): el almacenamiento también tiene que ser de prueba o local.
+    s3 = os.environ.get("STORAGE_S3_ENDPOINT", "")
+    if PROYECTO_PRODUCCION in s3:
+        sys.exit("STORAGE_S3_ENDPOINT apunta a PRODUCCIÓN: no se corre nada.")
+    if s3:
+        try:
+            host_s3 = (urlsplit(s3).hostname or "").lower()
+        except ValueError:
+            host_s3 = ""
+        if PROYECTO_PRUEBA not in s3 and host_s3 not in ("127.0.0.1", "localhost", "::1"):
+            sys.exit("STORAGE_S3_ENDPOINT no es de PRUEBA (consorcio-tst o un S3 local): no se corre nada.")
 
 
 def preparar(cid: str = CID):

@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 10.4-1111
+**Versión actual:** 11.0-1211
 
 ---
 
@@ -336,10 +336,26 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v10.x — Lineamientos jurídicos (Paraná, Entre Ríos)
 
+#### v11.0-1211 — Comprobantes y adjuntos en Supabase Storage
+
+**Lanzamiento:** 12 de noviembre (rama `feat/storage-v10`, sin merge a `master`)
+**Versión actual**
+
+- **Por qué:** en Render el disco se borra con cada deploy, así que los comprobantes de facturas y los adjuntos de notificaciones que se subían se perdían.
+- Nuevo `storage.py`: guarda, lee y borra archivos en un bucket S3 **privado**. En producción será Supabase Storage (Storage → S3 Connection). Variables: `STORAGE_S3_ENDPOINT`, `STORAGE_S3_REGION`, `STORAGE_S3_BUCKET` (por defecto `comprobantes`, se crea solo), `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY`. **Sin esas variables usa el disco**, como antes (instalaciones de escritorio, pruebas).
+- El navegador nunca entra al bucket: la app controla la sesión, lee el archivo y lo sirve. Cada archivo queda bajo la carpeta de su consorcio (`<consorcio_id>/facturas/...`, `<consorcio_id>/notificaciones/...`), así que un consorcio no ve los de otro.
+- Archivos subidos antes de esta versión: si no están en Storage, se buscan en el disco como antes.
+- Backup y Exportación leen los comprobantes desde Storage (a partir de las facturas que tienen comprobante). La Exportación avisa en `LEEME.txt` si algún comprobante registrado no se encontró.
+- Una imagen que no se puede leer ahora da un aviso en vez de un error 500.
+- Reemplaza el intento de la v6.0 (rama `supabase-storage`, que no se sube): mismo diseño, rehecho sobre la v10.4 y usando la conexión S3 de Supabase (librería `boto3`) en vez de la API propia.
+- Pruebas: `pruebas/probar_storage.py`, 26 controles, OK en disco, en S3 local y en Supabase Storage de `consorcio-tst` (ver `docs/pruebas_realizadas.md`). `entorno_prueba.py` también rechaza un almacenamiento de producción.
+- **Para activarlo en Render** (cuando se decida el merge): crear en Supabase de producción una clave S3 y cargar las cinco variables en Render. Sin ellas la app sigue usando el disco.
+
+---
+
 #### v10.4-1111 — Usar la app en una PC con base local
 
 **Lanzamiento:** 11 de noviembre
-**Versión actual**
 
 - Sin cambios en la app. Nuevo `pruebas/servidor_local.py`: levanta la app en `http://127.0.0.1:5000` contra una base **local** (solo local: rechaza consorcio-tst y producción), para usarla en el navegador sin Supabase ni Google. Como el login con Google no funciona en local, agrega la ruta `/__login_local` (entra con un usuario de la base; solo desde la misma PC y sin proxy). No es parte de la app: Render arranca `app.py` con gunicorn y nunca carga este archivo.
 - Uso: `pruebas/correr_en_docker.sh pruebas/servidor_local.py` y abrir `http://127.0.0.1:5000/__login_local`.

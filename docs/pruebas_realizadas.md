@@ -60,6 +60,29 @@ las demás.
 
 ---
 
+## v11.0-1211 — Archivos en Supabase Storage (12/11/2026)
+
+`pruebas/probar_storage.py` (consorcio temporal; al terminar borra sus archivos y el consorcio), corrida tres veces contra la base local `consorcio_pruebas`:
+
+| Almacenamiento | Resultado |
+|---|---|
+| Disco (sin variables `STORAGE_S3_*`) | ✅ 26/26 |
+| S3 local (SeaweedFS de `plataforma/`, bucket `pruebas-flask`) | ✅ 26/26 |
+| Supabase Storage de `consorcio-tst` (bucket `comprobantes`) | ✅ 26/26 |
+
+Qué controla: subir un PDF y una imagen (se convierte a PDF) como comprobantes, que no quede nada en el disco, verlos por la app, imagen ilegible (aviso, sin error 500), comprobante viejo en disco (se sigue viendo), comprobante registrado que no existe (aviso), Backup y Exportación con los comprobantes y aviso de faltantes, adjunto de notificación (subir, ver, rechazar `.exe`, nombre con trucos → 404), que otro consorcio no vea los archivos y que se rechacen rutas como `../x`.
+
+Además:
+
+| Control | Resultado |
+|---|---|
+| Bucket `comprobantes` de `consorcio-tst` es privado: el archivo no se puede bajar por la URL pública ni sin clave | ✅ 400 en ambas |
+| Navegador (`servidor_local.py` con Storage de `consorcio-tst`): adjuntar un PDF a la factura 31 de Perú 376 y verlo | ✅ "Comprobante adjuntado correctamente"; se sirve `application/pdf` inline con el contenido subido |
+
+> Limpieza: después de la prueba en el navegador se borró la carpeta `28693516/` del bucket y se dejó la factura 31 sin comprobante. En esa carpeta había además un archivo de una prueba anterior (`facturas/cejas_hector/2026-11-04_185932.pdf`, de la v6.0 del 04/11) que también se borró por error. Era del proyecto de prueba, no de producción.
+
+---
+
 ## v10.4-1111 — La app corriendo en una PC con base local (11/11/2026)
 
 `pruebas/servidor_local.py` contra `consorcio_pruebas` (copia del 03/11 en el Postgres local):

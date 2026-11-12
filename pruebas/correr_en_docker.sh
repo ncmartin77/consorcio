@@ -10,6 +10,12 @@
 # plataforma/ (rama feat/plataforma):
 #   DATABASE_URL=postgresql://consorcio_pruebas:pruebas-local@127.0.0.1:55433/consorcio_pruebas
 #
+# Almacenamiento de archivos (v11.0): las variables STORAGE_S3_* de esta terminal pasan al
+# contenedor (si .env.local también las tiene, gana .env.local). Por ejemplo, el S3 local de
+# plataforma/ (SeaweedFS, acepta cualquier clave):
+#   STORAGE_S3_ENDPOINT=http://127.0.0.1:59001 STORAGE_S3_ACCESS_KEY_ID=local \
+#   STORAGE_S3_SECRET_ACCESS_KEY=local pruebas/correr_en_docker.sh pruebas/probar_storage.py
+#
 # Las dependencias se instalan una vez en el volumen "consorcio-flask-venv"; si cambia
 # requirements.txt se reinstalan solas. Red del host para llegar al Postgres en 127.0.0.1.
 set -euo pipefail
@@ -21,6 +27,8 @@ HASH=$(sha256sum requirements.txt | cut -c1-16)
 docker run --rm -i --network host \
   -u "$(id -u):$(id -g)" -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONUNBUFFERED=1 \
   -e REQ_HASH="$HASH" \
+  -e STORAGE_S3_ENDPOINT -e STORAGE_S3_REGION -e STORAGE_S3_BUCKET \
+  -e STORAGE_S3_ACCESS_KEY_ID -e STORAGE_S3_SECRET_ACCESS_KEY \
   -v "$VOLUMEN":/venv -v "$PWD":/app -w /app \
   "$IMAGEN" sh -c '
     set -e
