@@ -69,25 +69,22 @@ a favor, mayor resto, etc.). Siguen abiertas:
 - [x] Base local de pruebas `consorcio_pruebas` (10/11): copia del 03/11 en el Postgres local, con usuario propio. Ver la bitácora.
 - [x] Correr las pruebas de la v10.1 contra la base local (11/11): ninguna falla es del código. Ver `docs/pruebas_realizadas.md` (v10.2) en la rama `feat/lineamientos-v10`.
 - [x] Actualizar las 6 pruebas viejas del sistema actual (11/11, v10.3): ahora usan un escenario propio y las 16 pruebas dan OK.
-- [ ] **Merge de la v10.1** (`feat/lineamientos-v10`) **a `master`**, que es hacer el deploy. Antes, lo que anotó su memoria ("DONDE QUEDAMOS"):
-  - confirmar que Render tiene `SECRET_KEY`
-  - ~~repetir `probar_v10.py` y `probar_fondo_reserva.py`~~ (hecho el 11/11 en local)
-  - ~~registrar los resultados en `pruebas_realizadas.md`~~ (hecho)
-  - ~~actualizar las 6 pruebas viejas~~ (hecho, v10.3)
-  - limpiar el consorcio temporal "Prueba v10 lineamientos" de `consorcio-tst` (en la base local no quedó)
+- [x] **Merge a `master` y deploy en Render** (12/11): `master` pasó de la v9.7 a la **v11.0-1211** (incluye v9.8 seguridad, v10.x lineamientos y v11.0 Storage). `SECRET_KEY` confirmada en Render por el usuario.
+  - [ ] Confirmar en la app (menú, abajo) que dice **v11.0-1211**.
+  - [ ] Limpiar el consorcio temporal "Prueba v10 lineamientos" de `consorcio-tst` (en la base local no quedó).
 - [ ] **Nunca subir ni mergear la rama `supabase-storage`.** En la PC original tiene un commit con claves (`6495413`). La migración a Storage quedó planeada para una versión mayor futura.
 
 - [x] **Archivos en Supabase Storage** (12/11, v11.0, rama `feat/storage-v10` en GitHub, sin merge): comprobantes y adjuntos van a un bucket privado. Las pruebas dieron OK en disco, en el S3 local y en `consorcio-tst`. Ver la bitácora.
-- [ ] **Activar Storage en producción** (al hacer el merge):
+- [ ] **Activar Storage en producción** (el código ya está en Render desde el 12/11; falta la configuración):
   - crear una clave S3 en el Supabase de producción (Storage → S3 Connection);
   - cargar en Render las cinco variables `STORAGE_S3_*` (están en `render.yaml`).
   - Sin las variables, todo sigue en el disco como hoy.
-  - Orden de merge: primero `feat/lineamientos-v10` (v10.4) y después `feat/storage-v10`, o solo esta última, que ya incluye la v10.4.
 - [ ] **Subir a Storage los comprobantes viejos** que están en el disco de Render, si es que quedó alguno (Render borra el disco en cada deploy, así que puede que no quede nada). Hay que revisarlo desde una red que llegue a la base de producción: `facturas.archivo_pdf` con ruta y sin archivo.
 - [ ] **Al borrar un consorcio, sus archivos quedan en Storage.** Falta decidir si se borran o se guardan (la ley pide conservar la documentación).
 - [ ] **Adjunto de notificación de la v6.0 en `consorcio-tst`:** `notificaciones/38f0f808d87c.pdf` (formato viejo, sin la carpeta del consorcio). Es de prueba; se puede borrar.
 - [ ] **Flask en Docker** (rama local `feat/docker-flask`, sin push): `Dockerfile`, `compose.yaml` y `ProxyFix`. Está trabado porque desde esta red no se llega a la base de Supabase.
-- [ ] **Cambiar la contraseña de la base de producción**: quedó expuesta en `gen_nov.py`, en un tar.gz viejo y en un chat. Después, actualizar `DATABASE_URL` en Render y borrar `gen_nov.py`.
+- [x] **Contraseña de la base de producción cambiada** (12/11, el usuario, en Supabase y en `DATABASE_URL` de Render). Se revisó el historial de GitHub: no tiene contraseñas reales, solo ejemplos.
+  - [ ] En la PC original: borrar `gen_nov.py` y el tar.gz viejo, y actualizar `ORIGEN_DATABASE_URL` en `.env.local` si se usa.
 - [ ] **Importes exactos** (paso A3 del plan): pasar `pg_db.py` de `float` a `Decimal`.
 - [ ] **Confirmar en Render** que el tilde "sin interés" (v5.2) responde rápido.
 - [ ] **Rama `feat/entorno-local`**: tiene el backup diario cifrado (GitHub Actions) y el entorno local. Está en GitHub, pero sin merge a `master`.

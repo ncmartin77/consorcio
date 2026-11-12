@@ -12,6 +12,17 @@ Documentos relacionados:
 
 ## 12/11/2026
 
+### Carril A: contraseña de producción y deploy de la v11.0
+
+**Qué se hizo**
+- **Contraseña de la base de producción:** la cambió el usuario en Supabase y en `DATABASE_URL` de Render. Antes revisé todo el historial de GitHub (el repo es público): no hay contraseñas reales, solo ejemplos (`<CLAVE>`, `CONTRASEÑA`). La rama `supabase-storage` de GitHub no tiene el commit con claves; ese está solo en la PC original.
+- **`SECRET_KEY`:** el usuario confirmó que está en Render (la v9.8 no arranca sin ella).
+- **Deploy:** merge directo (fast-forward) de `feat/storage-v10` a `master`: de la v9.7 a la **v11.0-1211**, 7 versiones (v9.8 seguridad, v10.0 a v10.4, v11.0 Storage). Después del deploy, Render responde normal: login 200, y sin sesión redirige al login.
+
+**Decisiones**
+- Storage en producción queda **sin activar** hasta cargar las variables `STORAGE_S3_*` en Render; mientras tanto, los archivos van al disco como antes.
+- El repo tiene además una rama `main` vieja (la de Google Drive) y es la rama por defecto de GitHub. Render despliega desde `master`. No se tocó.
+
 ### Carril A: archivos del sistema actual en Supabase Storage (v11.0)
 
 **Qué se hizo**
