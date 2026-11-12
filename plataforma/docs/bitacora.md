@@ -10,6 +10,34 @@ Documentos relacionados:
 
 ---
 
+## 12/11/2026
+
+### Carril A: archivos del sistema actual en Supabase Storage (v11.0)
+
+**Qué se hizo**
+- Rama nueva **`feat/storage-v10`**, sacada de la v10.4 (`feat/lineamientos-v10`) y subida a GitHub. No tiene merge a `master`, así que Render no cambia.
+- Los comprobantes de facturas y los adjuntos de notificaciones ahora van a un bucket privado de Supabase Storage. Hasta ahora iban al disco del servidor, y en Render ese disco se borra con cada deploy.
+- Sin las variables `STORAGE_S3_*`, la app sigue guardando en el disco como antes. Por eso hacer el merge no rompe nada aunque Render todavía no tenga las variables.
+- Los archivos viejos que están en el disco se siguen viendo.
+- Prueba nueva `probar_storage.py`, con 26 controles. Dio OK en disco, en el S3 local y en Supabase Storage de `consorcio-tst`.
+- Las 17 pruebas del sistema actual dan OK.
+- También se probó en el navegador: se adjuntó un PDF a una factura de Perú 376 y se pudo ver.
+
+**Decisiones**
+- **Se rehizo en lugar de arreglar la rama vieja `supabase-storage`** (v6.0): había quedado muy atrás. Se mantuvo su diseño:
+  - la app sirve los archivos, el navegador nunca entra al bucket;
+  - cada consorcio tiene su carpeta;
+  - si un archivo no está en Storage, se busca en el disco.
+- **Conexión S3 (`boto3`) en lugar de la API propia de Supabase:** se usan las mismas claves S3 que la plataforma nueva y se puede probar con el S3 local.
+- **Bucket `comprobantes`, privado.** Se comprobó que no se puede bajar un archivo por URL sin clave.
+
+**Un error mío al limpiar**
+- Después de la prueba en el navegador borré la carpeta `28693516/` del bucket en `consorcio-tst`.
+- Ahí también había un archivo de la prueba del 04/11 (v6.0), que se borró.
+- Era del proyecto de prueba, no de producción. Desde ahora, la limpieza borra solo los archivos que crea cada prueba.
+
+---
+
 ## 11/11/2026
 
 ### Pruebas del sistema actual (v10.1) en la base local

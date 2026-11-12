@@ -3,7 +3,7 @@
 Lo que se dejó para después, con el motivo. Actualizar al cerrar cada sesión de trabajo:
 agregar lo nuevo, tachar (borrar) lo resuelto.
 
-Última actualización: 11/11/2026.
+Última actualización: 12/11/2026.
 
 ---
 
@@ -77,9 +77,15 @@ a favor, mayor resto, etc.). Siguen abiertas:
   - limpiar el consorcio temporal "Prueba v10 lineamientos" de `consorcio-tst` (en la base local no quedó)
 - [ ] **Nunca subir ni mergear la rama `supabase-storage`.** En la PC original tiene un commit con claves (`6495413`). La migración a Storage quedó planeada para una versión mayor futura.
 
-- [ ] **Archivos en Supabase Storage**:
-  - El código está en la rama `supabase-storage`, basada en la 5.5: quedó muy atrás de la v10.1 y habría que rehacerlo sobre la versión nueva.
-  - El commit local `b231ea9` no se sube.
+- [x] **Archivos en Supabase Storage** (12/11, v11.0, rama `feat/storage-v10` en GitHub, sin merge): comprobantes y adjuntos van a un bucket privado. Las pruebas dieron OK en disco, en el S3 local y en `consorcio-tst`. Ver la bitácora.
+- [ ] **Activar Storage en producción** (al hacer el merge):
+  - crear una clave S3 en el Supabase de producción (Storage → S3 Connection);
+  - cargar en Render las cinco variables `STORAGE_S3_*` (están en `render.yaml`).
+  - Sin las variables, todo sigue en el disco como hoy.
+  - Orden de merge: primero `feat/lineamientos-v10` (v10.4) y después `feat/storage-v10`, o solo esta última, que ya incluye la v10.4.
+- [ ] **Subir a Storage los comprobantes viejos** que están en el disco de Render, si es que quedó alguno (Render borra el disco en cada deploy, así que puede que no quede nada). Hay que revisarlo desde una red que llegue a la base de producción: `facturas.archivo_pdf` con ruta y sin archivo.
+- [ ] **Al borrar un consorcio, sus archivos quedan en Storage.** Falta decidir si se borran o se guardan (la ley pide conservar la documentación).
+- [ ] **Adjunto de notificación de la v6.0 en `consorcio-tst`:** `notificaciones/38f0f808d87c.pdf` (formato viejo, sin la carpeta del consorcio). Es de prueba; se puede borrar.
 - [ ] **Flask en Docker** (rama local `feat/docker-flask`, sin push): `Dockerfile`, `compose.yaml` y `ProxyFix`. Está trabado porque desde esta red no se llega a la base de Supabase.
 - [ ] **Cambiar la contraseña de la base de producción**: quedó expuesta en `gen_nov.py`, en un tar.gz viejo y en un chat. Después, actualizar `DATABASE_URL` en Render y borrar `gen_nov.py`.
 - [ ] **Importes exactos** (paso A3 del plan): pasar `pg_db.py` de `float` a `Decimal`.
