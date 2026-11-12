@@ -12,6 +12,27 @@ Documentos relacionados:
 
 ## 12/11/2026
 
+### Carril B: etapa 3 en la base (liquidaciones y cuenta corriente)
+
+**Qué se hizo**
+- **Migración `00004_liquidaciones.sql`**, con 10 tablas nuevas y la misma protección que las anteriores (cada administración ve solo lo suyo, sin borrar: todo se anula):
+  - parámetros del consorcio y tasas de mora, con vigencia;
+  - gastos y cargos particulares;
+  - liquidaciones, sus cálculos y las condonaciones;
+  - partidas, pagos y aplicaciones.
+- **Paquetes nuevos:**
+  - `internal/liquidaciones`: carga de lo anterior y el ciclo completo de una liquidación;
+  - `internal/cuentas`: cuenta corriente, pagos, imputación y saldo a favor.
+- **Prueba `TestLiquidaciones`:** recorre todo por la API con importes calculados a mano:
+  - prorrateo con mayor resto, línea de extraordinarios, gastos pagados con el fondo (no se cobran), bonificación;
+  - deuda inicial sin interés, interés simple del 3 % al mes siguiente, imputación y saldo a favor;
+  - reabrir y volver a emitir;
+  - aislamiento entre administraciones.
+- **Resultado:** todas las pruebas de la plataforma dan OK. La primera corrida encontró un error: al volver a emitir una liquidación reabierta, el ajuste a favor repetía su referencia. Quedó corregido.
+
+**Decisiones**
+- Varias reglas de detalle las fijé yo para poder avanzar. Están en "Reglas de implementación" de `docs/decisiones-liquidaciones.md`, para que el usuario las revise.
+
 ### Carril A: borrar comprobantes y archivos (v11.1)
 
 **Qué se hizo**

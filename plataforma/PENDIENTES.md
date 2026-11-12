@@ -20,12 +20,21 @@ agregar lo nuevo, tachar (borrar) lo resuelto.
 ### Etapa 3 — Liquidaciones (en curso)
 
 - [x] Motor de expensas puro y pruebas (`internal/expensas`).
-- [ ] Guardar gastos, proveedores, liquidaciones y cuenta corriente en la base (migración `00004`).
-- [ ] API de liquidación: borrador → calculada → aprobada → emitida, con snapshot.
-- [ ] PDF de la liquidación (worker).
-- [ ] Comparar contra el sistema actual: cada diferencia tiene que explicarse con una decisión.
 - [x] Revisar las decisiones contra la última versión del sistema actual (v10.1): hecho el 10/11, ver "Revisión del 10/11" en `docs/decisiones-liquidaciones.md`.
-- [ ] En la base: tasas de mora con vigencia y fundamento, clasificación de gastos (naturaleza, habitualidad, financiación y respaldo), reapertura auditada y libro del fondo de reserva.
+- [x] **Base y API (12/11, migración `00004`)**:
+  - parámetros y tasas de mora con vigencia y fundamento;
+  - gastos con su clasificación, cargos particulares;
+  - liquidaciones: calcular, guardando cada cálculo, aprobar, emitir y reabrir;
+  - condonación de interés por unidad;
+  - cuenta corriente: deuda inicial, pagos con imputación y saldo a favor.
+  - Prueba `TestLiquidaciones` con importes calculados a mano. Reglas en "Reglas de implementación" de `docs/decisiones-liquidaciones.md`.
+- [ ] **Revisar las reglas de implementación** del 12/11 con el usuario. Las decidí yo para poder avanzar; por ejemplo, que la deuda inicial no genere interés hasta la primera emisión.
+- [ ] **PDF de la liquidación** (worker) y de los recibos.
+- [ ] **Comparar contra el sistema actual** con datos reales (base `legado`). Requiere la migración de datos (B5); cada diferencia tiene que explicarse con una decisión.
+- [ ] **Libro del fondo de reserva** (saldo: inicial + aportes cobrados + otros ingresos − pagos con el fondo). Los gastos ya distinguen `financiacion = fondo_reserva`.
+- [ ] **Proveedores y facturas**: hoy el gasto tiene solo un texto `proveedor`. Faltan el ABM de proveedores, las facturas y el comprobante adjunto (Storage).
+- [ ] **Corregir errores de carga**: no hay "editar gasto". Se anula y se carga de nuevo.
+- [ ] **Listados y resúmenes**: estado de deuda del consorcio, cobranzas por período y caja.
 
 ### Etapa 2 — Inmuebles y personas (hecha; quedó afuera)
 

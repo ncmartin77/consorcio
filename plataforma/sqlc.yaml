@@ -17,6 +17,11 @@ sql:
           auditorium: Auditoria
           unidade: Unidad
           grupos_prorrateo: GrupoProrrateo
+          aplicacione: Aplicacion
+          cargos_particulare: CargoParticular
+          liquidacione: Liquidacion
+          liquidacion_condonacione: LiquidacionCondonacion
+          tasas_mora: TasaMora
         overrides:
           - db_type: uuid
             go_type: github.com/google/uuid.UUID
@@ -28,6 +33,12 @@ sql:
               pointer: true
           - db_type: timestamptz
             go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true
           - db_type: numeric
             go_type: github.com/shopspring/decimal.Decimal
           - db_type: numeric

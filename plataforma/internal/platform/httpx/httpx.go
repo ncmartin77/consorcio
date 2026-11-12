@@ -4,6 +4,7 @@ package httpx
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 
@@ -28,6 +29,17 @@ func Leer(w http.ResponseWriter, r *http.Request, v any) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
+		Error(w, http.StatusBadRequest, "cuerpo inválido: "+err.Error())
+		return false
+	}
+	return true
+}
+
+// LeerOpcional es como Leer, pero acepta un cuerpo vacío (deja v como está).
+func LeerOpcional(w http.ResponseWriter, r *http.Request, v any) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil && !errors.Is(err, io.EOF) {
 		Error(w, http.StatusBadRequest, "cuerpo inválido: "+err.Error())
 		return false
 	}

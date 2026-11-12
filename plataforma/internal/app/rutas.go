@@ -11,6 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ncmartin77/consorcio/plataforma/internal/consorcios"
+	"github.com/ncmartin77/consorcio/plataforma/internal/cuentas"
+	"github.com/ncmartin77/consorcio/plataforma/internal/liquidaciones"
 	"github.com/ncmartin77/consorcio/plataforma/internal/personas"
 	"github.com/ncmartin77/consorcio/plataforma/internal/platform/auth"
 	"github.com/ncmartin77/consorcio/plataforma/internal/platform/config"
@@ -72,6 +74,8 @@ func Rutas(cfg config.Config, pool *pgxpool.Pool) http.Handler {
 				unidades.NuevoServicio(pool).Rutas(r)
 				personas.NuevoServicio(pool).Rutas(r)
 				prorrateo.NuevoServicio(pool).Rutas(r)
+				liquidaciones.NuevoServicio(pool).Rutas(r)
+				cuentas.NuevoServicio(pool).Rutas(r)
 			})
 		})
 	})

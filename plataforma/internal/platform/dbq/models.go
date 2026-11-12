@@ -20,6 +20,19 @@ type Administracion struct {
 	CreadoEn time.Time `json:"creado_en"`
 }
 
+type Aplicacion struct {
+	ID               uuid.UUID       `json:"id"`
+	AdministracionID uuid.UUID       `json:"administracion_id"`
+	UnidadID         uuid.UUID       `json:"unidad_id"`
+	PagoID           uuid.UUID       `json:"pago_id"`
+	PartidaID        uuid.UUID       `json:"partida_id"`
+	Importe          decimal.Decimal `json:"importe"`
+	Origen           string          `json:"origen"`
+	CreadoEn         time.Time       `json:"creado_en"`
+	AnuladoEn        *time.Time      `json:"anulado_en"`
+	AnuladoMotivo    *string         `json:"anulado_motivo"`
+}
+
 type Auditoria struct {
 	ID               int64      `json:"id"`
 	CreadoEn         time.Time  `json:"creado_en"`
@@ -28,6 +41,19 @@ type Auditoria struct {
 	Accion           string     `json:"accion"`
 	Detalle          []byte     `json:"detalle"`
 	Ip               *string    `json:"ip"`
+}
+
+type CargoParticular struct {
+	ID               uuid.UUID       `json:"id"`
+	AdministracionID uuid.UUID       `json:"administracion_id"`
+	ConsorcioID      uuid.UUID       `json:"consorcio_id"`
+	UnidadID         uuid.UUID       `json:"unidad_id"`
+	Periodo          fecha.Fecha     `json:"periodo"`
+	Concepto         string          `json:"concepto"`
+	Importe          decimal.Decimal `json:"importe"`
+	CreadoEn         time.Time       `json:"creado_en"`
+	AnuladoEn        *time.Time      `json:"anulado_en"`
+	AnuladoMotivo    *string         `json:"anulado_motivo"`
 }
 
 type Consorcio struct {
@@ -39,6 +65,24 @@ type Consorcio struct {
 	CreadoEn         time.Time `json:"creado_en"`
 }
 
+type Gasto struct {
+	ID               uuid.UUID       `json:"id"`
+	AdministracionID uuid.UUID       `json:"administracion_id"`
+	ConsorcioID      uuid.UUID       `json:"consorcio_id"`
+	Periodo          fecha.Fecha     `json:"periodo"`
+	GrupoID          uuid.UUID       `json:"grupo_id"`
+	Concepto         string          `json:"concepto"`
+	Proveedor        *string         `json:"proveedor"`
+	Importe          decimal.Decimal `json:"importe"`
+	Naturaleza       string          `json:"naturaleza"`
+	Habitualidad     string          `json:"habitualidad"`
+	Financiacion     string          `json:"financiacion"`
+	Respaldo         *string         `json:"respaldo"`
+	CreadoEn         time.Time       `json:"creado_en"`
+	AnuladoEn        *time.Time      `json:"anulado_en"`
+	AnuladoMotivo    *string         `json:"anulado_motivo"`
+}
+
 type GrupoProrrateo struct {
 	ID               uuid.UUID `json:"id"`
 	AdministracionID uuid.UUID `json:"administracion_id"`
@@ -48,11 +92,92 @@ type GrupoProrrateo struct {
 	CreadoEn         time.Time `json:"creado_en"`
 }
 
+type Liquidacion struct {
+	ID               uuid.UUID    `json:"id"`
+	AdministracionID uuid.UUID    `json:"administracion_id"`
+	ConsorcioID      uuid.UUID    `json:"consorcio_id"`
+	Periodo          fecha.Fecha  `json:"periodo"`
+	Estado           string       `json:"estado"`
+	CalculoID        *uuid.UUID   `json:"calculo_id"`
+	Vencimiento      *fecha.Fecha `json:"vencimiento"`
+	EmitidaEn        *time.Time   `json:"emitida_en"`
+	CreadoEn         time.Time    `json:"creado_en"`
+}
+
+type LiquidacionCalculo struct {
+	ID               uuid.UUID       `json:"id"`
+	AdministracionID uuid.UUID       `json:"administracion_id"`
+	ConsorcioID      uuid.UUID       `json:"consorcio_id"`
+	LiquidacionID    uuid.UUID       `json:"liquidacion_id"`
+	FechaCalculo     fecha.Fecha     `json:"fecha_calculo"`
+	TasaMensual      decimal.Decimal `json:"tasa_mensual"`
+	TasaID           *uuid.UUID      `json:"tasa_id"`
+	Entrada          []byte          `json:"entrada"`
+	Resultado        []byte          `json:"resultado"`
+	TotalCargos      decimal.Decimal `json:"total_cargos"`
+	CalculadoPor     *uuid.UUID      `json:"calculado_por"`
+	CreadoEn         time.Time       `json:"creado_en"`
+}
+
+type LiquidacionCondonacion struct {
+	AdministracionID uuid.UUID  `json:"administracion_id"`
+	ConsorcioID      uuid.UUID  `json:"consorcio_id"`
+	LiquidacionID    uuid.UUID  `json:"liquidacion_id"`
+	UnidadID         uuid.UUID  `json:"unidad_id"`
+	Motivo           string     `json:"motivo"`
+	CreadoPor        *uuid.UUID `json:"creado_por"`
+	CreadoEn         time.Time  `json:"creado_en"`
+}
+
 type Membresia struct {
 	UsuarioID        uuid.UUID `json:"usuario_id"`
 	AdministracionID uuid.UUID `json:"administracion_id"`
 	Rol              string    `json:"rol"`
 	CreadoEn         time.Time `json:"creado_en"`
+}
+
+type Pago struct {
+	ID               uuid.UUID       `json:"id"`
+	AdministracionID uuid.UUID       `json:"administracion_id"`
+	ConsorcioID      uuid.UUID       `json:"consorcio_id"`
+	UnidadID         uuid.UUID       `json:"unidad_id"`
+	Fecha            fecha.Fecha     `json:"fecha"`
+	Importe          decimal.Decimal `json:"importe"`
+	Medio            string          `json:"medio"`
+	Referencia       string          `json:"referencia"`
+	CreadoPor        *uuid.UUID      `json:"creado_por"`
+	CreadoEn         time.Time       `json:"creado_en"`
+	AnuladoEn        *time.Time      `json:"anulado_en"`
+	AnuladoMotivo    *string         `json:"anulado_motivo"`
+}
+
+type ParametrosConsorcio struct {
+	ID                  uuid.UUID       `json:"id"`
+	AdministracionID    uuid.UUID       `json:"administracion_id"`
+	ConsorcioID         uuid.UUID       `json:"consorcio_id"`
+	VigenteDesde        fecha.Fecha     `json:"vigente_desde"`
+	DiaVencimiento      int16           `json:"dia_vencimiento"`
+	FondoReservaMensual decimal.Decimal `json:"fondo_reserva_mensual"`
+	GrupoFondoID        *uuid.UUID      `json:"grupo_fondo_id"`
+	CreadoEn            time.Time       `json:"creado_en"`
+}
+
+type Partida struct {
+	ID               uuid.UUID       `json:"id"`
+	AdministracionID uuid.UUID       `json:"administracion_id"`
+	ConsorcioID      uuid.UUID       `json:"consorcio_id"`
+	UnidadID         uuid.UUID       `json:"unidad_id"`
+	LiquidacionID    *uuid.UUID      `json:"liquidacion_id"`
+	Periodo          fecha.Fecha     `json:"periodo"`
+	Tipo             string          `json:"tipo"`
+	Concepto         string          `json:"concepto"`
+	Detalle          string          `json:"detalle"`
+	Importe          decimal.Decimal `json:"importe"`
+	Vencimiento      fecha.Fecha     `json:"vencimiento"`
+	DeudaInicial     bool            `json:"deuda_inicial"`
+	CreadoEn         time.Time       `json:"creado_en"`
+	AnuladoEn        *time.Time      `json:"anulado_en"`
+	AnuladoMotivo    *string         `json:"anulado_motivo"`
 }
 
 type Persona struct {
@@ -74,6 +199,16 @@ type Sesion struct {
 	UltimoUso time.Time `json:"ultimo_uso"`
 	Ip        *string   `json:"ip"`
 	UserAgent *string   `json:"user_agent"`
+}
+
+type TasaMora struct {
+	ID               uuid.UUID       `json:"id"`
+	AdministracionID uuid.UUID       `json:"administracion_id"`
+	ConsorcioID      uuid.UUID       `json:"consorcio_id"`
+	VigenteDesde     fecha.Fecha     `json:"vigente_desde"`
+	TasaMensual      decimal.Decimal `json:"tasa_mensual"`
+	Fundamento       string          `json:"fundamento"`
+	CreadoEn         time.Time       `json:"creado_en"`
 }
 
 type Unidad struct {

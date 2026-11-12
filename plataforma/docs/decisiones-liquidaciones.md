@@ -69,3 +69,27 @@ disponible como referencia**. Comparación:
 - Se quitó la mora del mes, con sus campos `Vencimiento` y `PagosPeriodo`.
 - Se agregaron los gastos extraordinarios en una línea aparte (`Extraordinaria`).
 - El interés se documentó como "capital impago a la fecha de cierre".
+
+---
+
+## Reglas de implementación (12/11/2026, etapa 3 en la base)
+
+Al guardar las liquidaciones en la base hubo que precisar detalles que el documento no
+fijaba. Son mías (Claude); si alguna no conviene, se cambia acá con fecha y motivo.
+
+| Tema | Regla |
+|---|---|
+| Períodos | Se guardan como el día 1 del mes. La liquidación de P usa los gastos de P−1, los coeficientes vigentes el **último día de P−1**, y los cargos particulares, la tasa y los parámetros vigentes el día 1 de P. |
+| Parámetros | Vencimiento (día 1 a 28, o 0 = último día) y fondo de reserva mensual (con su grupo) **por consorcio y con vigencia**, en `parametros_consorcio`. |
+| Tasa | Se carga como fracción: `0.03` = 3 % mensual. Sin tasa vigente no se calcula (puede ser 0). |
+| Tasas y parámetros nuevos | Tienen que regir **después** del último período aprobado o emitido. |
+| Base del interés | Capital pendiente con vencimiento **anterior** a la fecha de cálculo (fecha de cierre). Esa fecha la elige quien calcula; por defecto es hoy. |
+| Deuda inicial | Se carga por unidad, solo un administrador y solo antes de la primera emisión. No genera interés mientras el consorcio no tenga ninguna liquidación emitida. |
+| Estados | borrador → calculada → aprobada → emitida. **Calcular** se puede repetir, y cada cálculo queda guardado. Si cambia un gasto, un cargo o una condonación del período, la liquidación **vuelve a borrador** y hay que recalcular. **Aprobar, emitir y reabrir:** solo el rol admin. Se aprueba y se emite **en orden**: no con una anterior sin emitir. |
+| Emitir | Cada línea positiva del cálculo pasa a ser una **partida** de la cuenta corriente (capital, o interés si es `interes_deuda`), con el vencimiento del período. Las líneas negativas (gastos negativos, bonificaciones) se juntan en un **ajuste a favor** de la unidad: un pago con medio `bonificacion` y referencia `liquidacion:…`, que no se puede anular a mano. |
+| Pagos | Se imputan al registrarlos: primero intereses, después lo más viejo. Lo que sobra es saldo a favor. |
+| Saldo a favor | Se aplica solo a las partidas nuevas: al emitir, al cargar deuda inicial o al anular otro pago. Una unidad nunca tiene a la vez saldo a favor y deuda pendiente. |
+| Referencia de pago | Única por consorcio, para no cargar dos veces el mismo pago. No se aceptan pagos con fecha futura. |
+| Reabrir una emitida | Hace falta un motivo, que **no haya pagos imputados** a sus partidas (primero se anulan esos pagos) y que la siguiente no esté aprobada ni emitida. Se anulan sus partidas, el saldo a favor que se les había aplicado y su ajuste a favor; queda en **calculada**, con todos los cálculos guardados. Reabrir una aprobada solo la devuelve a calculada. |
+| Nada se borra | Gastos, cargos, pagos, partidas y aplicaciones se **anulan** con fecha y motivo. Las condonaciones sí se pueden quitar, mientras la liquidación no esté aprobada; queda en la auditoría. |
+

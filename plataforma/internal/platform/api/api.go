@@ -98,3 +98,20 @@ func Lista[T any](v []T, err error) ([]T, error) {
 	}
 	return v, err
 }
+
+// EsAdmin: solo el rol admin aprueba, emite y reabre liquidaciones.
+func (tx Tx) EsAdmin() bool { return tx.t.Rol == "admin" }
+
+// Usuario de la sesión (para "creado_por").
+func (tx Tx) Usuario() *uuid.UUID {
+	uid, ok := auth.UsuarioID(tx.ctx)
+	if !ok {
+		return nil
+	}
+	return &uid
+}
+
+// Ctx de la transacción.
+func (tx Tx) Ctx() context.Context { return tx.ctx }
+
+func Prohibido(msg string) error { return &ErrorHTTP{Estado: http.StatusForbidden, Mensaje: msg} }

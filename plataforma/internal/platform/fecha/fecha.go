@@ -70,3 +70,39 @@ func (f *Fecha) ScanDate(d pgtype.Date) error {
 func (f Fecha) DateValue() (pgtype.Date, error) {
 	return pgtype.Date{Time: f.t, Valid: true}, nil
 }
+
+// ── Períodos (meses) ─────────────────────────────────────────────────────────
+
+// EsPrimeroDeMes: los períodos se guardan como el día 1 del mes.
+func (f Fecha) EsPrimeroDeMes() bool { return !f.EsCero() && f.t.Day() == 1 }
+
+// PrimeroDeMes devuelve el día 1 del mes de f.
+func (f Fecha) PrimeroDeMes() Fecha { return Nueva(f.t.Year(), f.t.Month(), 1) }
+
+// SumarMeses mueve un período (día 1) n meses.
+func (f Fecha) SumarMeses(n int) Fecha {
+	p := f.PrimeroDeMes()
+	return Fecha{p.t.AddDate(0, n, 0)}
+}
+
+func (f Fecha) SumarDias(n int) Fecha { return Fecha{f.t.AddDate(0, 0, n)} }
+
+// DiaDelMes devuelve el día d del mes de f; d = 0 es el último día del mes.
+func (f Fecha) DiaDelMes(d int) Fecha {
+	if d == 0 {
+		return f.SumarMeses(1).SumarDias(-1)
+	}
+	return Nueva(f.t.Year(), f.t.Month(), d)
+}
+
+// ParsePeriodo acepta "AAAA-MM" o "AAAA-MM-01".
+func ParsePeriodo(s string) (Fecha, error) {
+	if len(s) == 7 {
+		s += "-01"
+	}
+	f, err := Parse(s)
+	if err != nil || !f.EsPrimeroDeMes() {
+		return Fecha{}, fmt.Errorf("período inválido %q (formato AAAA-MM)", s)
+	}
+	return f, nil
+}
