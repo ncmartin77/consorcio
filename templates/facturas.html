@@ -112,6 +112,14 @@
                  data-ayuda="Ver el comprobante PDF adjunto de esta factura en el navegador.">
                 <i class="bi bi-file-earmark-pdf"></i>
               </a>
+              <form method="POST" action="{{ url_for('quitar_comprobante', fid=f.id) }}" class="d-inline"
+                    onsubmit="return confirm('¿Quitar el comprobante de esta factura? El archivo se borra y no se puede recuperar.')">
+                <button type="submit" class="btn btn-sm btn-outline-danger"
+                        title="Quitar comprobante"
+                        data-ayuda="Quitá el comprobante adjunto de esta factura. El archivo se borra.">
+                  <i class="bi bi-file-earmark-x"></i>
+                </button>
+              </form>
               {% endif %}
               <button class="btn btn-sm btn-outline-secondary"
                       onclick="abrirUpload({{ f.id }})"
@@ -132,7 +140,7 @@
               <form method="POST"
                     action="{{ url_for('delete_factura', fid=f.id) }}"
                     class="d-inline"
-                    onsubmit="return confirm('¿Eliminar esta factura?')">
+                    onsubmit="return confirm('¿Eliminar esta factura?{% if f.get('archivo_pdf') %} También se borra su comprobante.{% endif %}')">
                 <button class="btn btn-sm btn-outline-danger">
                   <i class="bi bi-trash"></i>
                 </button>

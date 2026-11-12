@@ -185,6 +185,7 @@ _DESC_AUDITORIA = {
     "pagar_factura": "Facturas: pagar",
     "delete_factura": "Facturas: eliminar",
     "upload_comprobante": "Facturas: adjuntar comprobante",
+    "quitar_comprobante": "Facturas: quitar comprobante",
     "save_pedido": "Presupuestos: guardar pedido",
     "delete_pedido": "Presupuestos: eliminar pedido",
     "save_cotizacion": "Presupuestos: guardar cotización",
@@ -391,6 +392,15 @@ def eliminar_consorcio(cid):
     if session.get("consorcio_id") == cid:
         session.pop("consorcio_id", None)
     flash(f"Consorcio «{c['nombre']}» eliminado con todos sus datos.", "info")
+    # Archivos del consorcio (comprobantes y adjuntos) en el almacenamiento (v11.1)
+    try:
+        n = storage.borrar_prefijo(f"{cid}/")
+        if n:
+            app.logger.info(f"[Storage] consorcio {cid} eliminado: {n} archivo(s) borrado(s)")
+    except storage.StorageError as exc:
+        app.logger.error(f"[Storage] no se pudieron borrar los archivos del consorcio {cid}: {exc}")
+        flash("Los datos se borraron, pero no se pudieron borrar todos sus archivos adjuntos. "
+              "Avisá al administrador del sistema.", "warning")
     return redirect(url_for("consorcios"))
 
 
@@ -1883,9 +1893,13 @@ def pagar_factura(fid):
 
 @app.route("/facturas/delete/<int:fid>", methods=["POST"])
 def delete_factura(fid):
+    factura = db.get_factura_by_id(fid)
+    ruta = (factura or {}).get("archivo_pdf") or ""
     ok = db.delete_factura(fid)
     if ok:
         flash("Factura eliminada.", "success")
+        if ruta and not _borrar_comprobante(ruta):
+            flash("No se pudo borrar el archivo del comprobante.", "warning")
     else:
         flash("No se puede eliminar: la factura ya fue incluida en una liquidación cerrada.", "danger")
     return redirect(url_for("facturas"))
@@ -2097,9 +2111,45 @@ def upload_comprobante(fid):
         app.logger.error(f"[Storage] comprobante de la factura {fid}: {exc}")
         flash("No se pudo guardar el comprobante. Intentá de nuevo en unos minutos.", "danger")
         return redirect(url_for("facturas"))
+    anterior = factura.get("archivo_pdf") or ""
     db.set_factura_archivo_pdf(fid, ruta)
+    if anterior and anterior != ruta:
+        _borrar_comprobante(anterior)       # reemplazo: el archivo viejo ya no se usa
     flash("Comprobante adjuntado correctamente.", "success")
     return redirect(url_for("facturas"))
+
+
+@app.route("/facturas/<int:fid>/comprobante/quitar", methods=["POST"])
+def quitar_comprobante(fid):
+    """Quita el comprobante adjunto de una factura y borra el archivo (v11.1)."""
+    factura = db.get_factura_by_id(fid)
+    if not factura or not factura.get("archivo_pdf"):
+        flash("Esta factura no tiene comprobante adjunto.", "warning")
+        return redirect(url_for("facturas"))
+    ruta = factura["archivo_pdf"]
+    db.set_factura_archivo_pdf(fid, "")
+    if _borrar_comprobante(ruta):
+        flash("Comprobante quitado.", "success")
+    else:
+        flash("Se quitó el comprobante de la factura, pero no se pudo borrar el archivo.", "warning")
+    return redirect(url_for("facturas"))
+
+
+def _borrar_comprobante(ruta: str) -> bool:
+    """Borra el archivo de un comprobante (en el almacenamiento y, si es viejo, en el disco),
+    salvo que otra factura del consorcio todavía lo use. Devuelve False si no se pudo."""
+    if ruta in db.get_rutas_comprobantes():
+        return True                          # otra factura lo sigue usando: no se borra
+    try:
+        storage.borrar(_clave_comprobante(ruta))
+        real_data = os.path.realpath(db.get_data_dir())
+        real_path = os.path.realpath(os.path.join(real_data, ruta))
+        if real_path.startswith(real_data + os.sep) and os.path.isfile(real_path):
+            os.remove(real_path)
+        return True
+    except (storage.StorageError, OSError) as exc:
+        app.logger.error(f"[Storage] no se pudo borrar el comprobante {ruta}: {exc}")
+        return False
 
 
 @app.route("/facturas/<int:fid>/comprobante")

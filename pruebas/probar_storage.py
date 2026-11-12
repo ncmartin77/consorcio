@@ -141,6 +141,77 @@ with Escenario("Prueba storage v11") as e:
                 ok = True
             e.check(f"Clave inválida rechazada: {mala!r}", True, ok, None)
 
+        # 11. Quitar, reemplazar y borrar (v11.1)
+        def subir(fid, datos=PDF):
+            cli.post(f"/facturas/{fid}/upload", data={"comprobante": (io.BytesIO(datos), "c.pdf")},
+                     content_type="multipart/form-data")
+            return db.get_factura_by_id(fid).get("archivo_pdf")
+
+        def existe(ruta):
+            return storage.leer(f"{e.cid}/{ruta}") is not None
+
+        import time
+        f5 = db.save_factura({"fecha": "2026-10-09", "proveedor_nombre": "Quitar",
+                              "descripcion": "Quitar", "importe": 1, "categoria": "EXPENSAS"})
+        r5 = subir(f5)
+        e.flashes()
+        r = cli.post(f"/facturas/{f5}/comprobante/quitar")
+        e.check("Quitar: la factura queda sin comprobante", (302, ""),
+                (r.status_code, db.get_factura_by_id(f5).get("archivo_pdf")))
+        e.check("Quitar: el archivo se borró", False, existe(r5))
+        e.check("Quitar: avisa", True, "Comprobante quitado" in e.flashes(), None)
+        e.check("Quitar sin comprobante: avisa", (302, True),
+                (cli.post(f"/facturas/{f5}/comprobante/quitar").status_code, "no tiene comprobante" in e.flashes()))
+
+        viejo_ruta = subir(f5)
+        time.sleep(1.1)                      # el nombre del archivo lleva la hora con segundos
+        nuevo_ruta = subir(f5, PDF + b"%v2")
+        e.check("Reemplazar: el archivo anterior se borró", (False, True),
+                (existe(viejo_ruta), existe(nuevo_ruta)))
+
+        r = cli.post(f"/facturas/delete/{f5}")
+        e.check("Eliminar factura: se borra su comprobante", False, existe(nuevo_ruta))
+
+        f6 = db.save_factura({"fecha": "2026-10-10", "proveedor_nombre": "Compartido",
+                              "descripcion": "A", "importe": 1, "categoria": "EXPENSAS"})
+        f7 = db.save_factura({"fecha": "2026-10-10", "proveedor_nombre": "Compartido",
+                              "descripcion": "B", "importe": 1, "categoria": "EXPENSAS"})
+        r6 = subir(f6)
+        db.set_factura_archivo_pdf(f7, r6)
+        cli.post(f"/facturas/{f6}/comprobante/quitar")
+        e.check("Archivo compartido por dos facturas: no se borra", True, existe(r6), None)
+        cli.post(f"/facturas/{f7}/comprobante/quitar")
+        e.check("Archivo compartido: se borra al quitarlo de la última", False, existe(r6))
+
+        cli.post(f"/facturas/{f3}/comprobante/quitar")
+        e.check("Quitar archivo viejo en disco: se borra del disco", False, os.path.exists(viejo))
+
+        # 12. Eliminar un consorcio borra todos sus archivos
+        otro = db.create_consorcio("Prueba storage v11 (eliminar)", "temporal")
+        try:
+            with cli.session_transaction() as s:
+                s["consorcio_id"] = otro["id"]
+            fo = None
+            cli.get("/facturas")                 # activa el otro consorcio en la capa de datos
+            fo = db.save_factura({"fecha": "2026-10-11", "proveedor_nombre": "Otro",
+                                  "descripcion": "x", "importe": 1, "categoria": "EXPENSAS"})
+            subir(fo)
+            cli.post("/notificaciones/upload", data={"archivo": (io.BytesIO(PDF), "a.pdf")},
+                     content_type="multipart/form-data")
+            antes = len(storage.listar(f"{otro['id']}/"))
+            r = cli.post(f"/consorcios/{otro['id']}/eliminar")
+            e.check("Eliminar consorcio: tenía 2 archivos y no queda ninguno", (2, []),
+                    (antes, storage.listar(f"{otro['id']}/")))
+            e.check("Eliminar consorcio: no tocó los archivos de los demás", True,
+                    existe(ruta1), None)
+        finally:
+            if db.get_consorcio(otro["id"]):
+                db.delete_consorcio(otro["id"])
+            storage.borrar_prefijo(f"{otro['id']}/")
+            with cli.session_transaction() as s:
+                s["consorcio_id"] = e.cid
+            db.set_active_consorcio(*[db.get_consorcio(e.cid)[k] for k in ("data_dir_abs", "db_path_abs")])
+
     finally:
         import shutil
         shutil.rmtree(os.path.join(db.get_data_dir(), "facturas", "viejo"), ignore_errors=True)

@@ -60,6 +60,33 @@ las demás.
 
 ---
 
+## v11.1-1211 — Borrar comprobantes y archivos (12/11/2026)
+
+`pruebas/probar_storage.py` ahora tiene 37 controles (11 nuevos), corrida contra la base local `consorcio_pruebas`:
+
+| Almacenamiento | Resultado |
+|---|---|
+| Disco | ✅ 37/37 |
+| S3 local (SeaweedFS, bucket `pruebas-flask`) | ✅ 37/37 |
+| Supabase Storage de `consorcio-tst` (bucket `comprobantes`, solo consorcios temporales de la prueba) | ✅ 37/37 |
+
+Controles nuevos:
+- quitar el comprobante (la factura queda sin comprobante, se borra el archivo y hay aviso);
+- quitar cuando no hay comprobante (aviso);
+- reemplazar (se borra el archivo anterior);
+- eliminar la factura (se borra su comprobante);
+- archivo compartido por dos facturas (se borra recién al quitarlo de la última);
+- archivo viejo en el disco (se borra);
+- eliminar un consorcio con 2 archivos (no queda ninguno y no toca los de otros consorcios).
+
+Corrida completa: las 17 pruebas dan OK.
+
+Navegador (`servidor_local.py` con el S3 local), en la factura 31 de Perú 376:
+- el botón "Quitar comprobante" aparece solo si hay comprobante;
+- al quitarlo aparece "Comprobante quitado", desaparece el botón y en el S3 local no queda ningún archivo.
+
+---
+
 ## v11.0-1211 — Archivos en Supabase Storage (12/11/2026)
 
 `pruebas/probar_storage.py` (consorcio temporal; al terminar borra sus archivos y el consorcio), corrida tres veces contra la base local `consorcio_pruebas`:

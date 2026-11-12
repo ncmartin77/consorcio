@@ -79,7 +79,7 @@
           </a>
           {% if es_admin %}
           <form method="POST" action="{{ url_for('eliminar_consorcio', cid=c.id) }}"
-                onsubmit="return confirm('¿Eliminar «{{ c.nombre }}» del índice? Los datos NO se borran.')">
+                onsubmit="return confirm('¿Eliminar «{{ c.nombre }}»? Se borran todos sus datos y sus archivos adjuntos (comprobantes y notificaciones). No se puede deshacer.')">
             <button type="submit" class="btn btn-outline-danger btn-sm">
               <i class="bi bi-trash"></i>
             </button>

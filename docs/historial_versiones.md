@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 11.0-1211
+**Versión actual:** 11.1-1211
 
 ---
 
@@ -336,10 +336,26 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 ### v10.x — Lineamientos jurídicos (Paraná, Entre Ríos)
 
+#### v11.1-1211 — Borrar comprobantes y archivos
+
+**Lanzamiento:** 12 de noviembre (rama `feat/borrar-archivos`)
+**Versión actual**
+
+- **Quitar comprobante:** nuevo botón rojo en Facturas, al lado de "ver". Pide confirmación, deja la factura sin comprobante y borra el archivo.
+- **Reemplazar comprobante:** al subir uno nuevo se borra el archivo anterior. Antes quedaba guardado sin uso.
+- **Eliminar una factura:** también borra su comprobante.
+- **Eliminar un consorcio:** también borra todos sus archivos del almacenamiento (comprobantes y adjuntos de notificaciones). Se corrigió el aviso de confirmación, que decía "Los datos NO se borran" y no era cierto: siempre se borraron.
+- **Archivo usado por dos facturas:** no se borra mientras alguna lo siga usando.
+- **Archivos viejos en el disco:** también se borran.
+- **Si el almacenamiento falla al borrar:** la factura igual queda sin comprobante y la app avisa que el archivo no se pudo borrar.
+- **Límite conocido:** "Revertir" una operación en el Log de Movimientos vuelve a poner el comprobante en la factura, pero el archivo ya no existe. Al abrirlo, la app avisa que no se encontró y que hay que volver a adjuntarlo.
+- **Pruebas:** `probar_storage.py` pasó de 26 a 37 controles. Dio OK en disco, en el S3 local y en Supabase Storage de `consorcio-tst`. Las 17 pruebas dan OK.
+
+---
+
 #### v11.0-1211 — Comprobantes y adjuntos en Supabase Storage
 
-**Lanzamiento:** 12 de noviembre (rama `feat/storage-v10`, sin merge a `master`)
-**Versión actual**
+**Lanzamiento:** 12 de noviembre (en producción el mismo día; Storage activado en Render)
 
 - **Por qué:** en Render el disco se borra con cada deploy, así que los comprobantes de facturas y los adjuntos de notificaciones que se subían se perdían.
 - Nuevo `storage.py`: guarda, lee y borra archivos en un bucket S3 **privado**. En producción será Supabase Storage (Storage → S3 Connection). Variables: `STORAGE_S3_ENDPOINT`, `STORAGE_S3_REGION`, `STORAGE_S3_BUCKET` (por defecto `comprobantes`, se crea solo), `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY`. **Sin esas variables usa el disco**, como antes (instalaciones de escritorio, pruebas).
