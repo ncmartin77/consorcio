@@ -75,10 +75,7 @@ a favor, mayor resto, etc.). Siguen abiertas:
 - [ ] **Nunca subir ni mergear la rama `supabase-storage`.** En la PC original tiene un commit con claves (`6495413`). La migración a Storage quedó planeada para una versión mayor futura.
 
 - [x] **Archivos en Supabase Storage** (12/11, v11.0, rama `feat/storage-v10` en GitHub, sin merge): comprobantes y adjuntos van a un bucket privado. Las pruebas dieron OK en disco, en el S3 local y en `consorcio-tst`. Ver la bitácora.
-- [ ] **Activar Storage en producción** (el código ya está en Render desde el 12/11; falta la configuración):
-  - crear una clave S3 en el Supabase de producción (Storage → S3 Connection);
-  - cargar en Render las cinco variables `STORAGE_S3_*` (están en `render.yaml`).
-  - Sin las variables, todo sigue en el disco como hoy.
+- [x] **Storage activo en producción** (12/11): bucket privado `comprobantes` en el Supabase de producción, clave S3 propia y las cinco variables `STORAGE_S3_*` en Render (las cargó el usuario). Se adjuntó un comprobante, se vio, y después de un deploy manual se siguió viendo.
 - [ ] **Subir a Storage los comprobantes viejos** que están en el disco de Render, si es que quedó alguno (Render borra el disco en cada deploy, así que puede que no quede nada). Hay que revisarlo desde una red que llegue a la base de producción: `facturas.archivo_pdf` con ruta y sin archivo.
 - [ ] **Al borrar un consorcio, sus archivos quedan en Storage.** Falta decidir si se borran o se guardan (la ley pide conservar la documentación).
 - [ ] **Adjunto de notificación de la v6.0 en `consorcio-tst`:** `notificaciones/38f0f808d87c.pdf` (formato viejo, sin la carpeta del consorcio). Es de prueba; se puede borrar.

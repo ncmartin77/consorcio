@@ -19,8 +19,14 @@ Documentos relacionados:
 - **`SECRET_KEY`:** el usuario confirmó que está en Render (la v9.8 no arranca sin ella).
 - **Deploy:** merge directo (fast-forward) de `feat/storage-v10` a `master`: de la v9.7 a la **v11.0-1211**, 7 versiones (v9.8 seguridad, v10.0 a v10.4, v11.0 Storage). Después del deploy, Render responde normal: login 200, y sin sesión redirige al login.
 
+- **Storage activado en producción:**
+  - el usuario creó el bucket privado `comprobantes` y una clave S3 en el Supabase de producción;
+  - cargó las cinco variables `STORAGE_S3_*` en Render;
+  - adjuntó un comprobante y se pudo ver;
+  - después de un deploy manual el comprobante **siguió ahí**: los archivos ya no se pierden con cada deploy.
+
 **Decisiones**
-- Storage en producción queda **sin activar** hasta cargar las variables `STORAGE_S3_*` en Render; mientras tanto, los archivos van al disco como antes.
+- El bucket de producción se creó a mano, como privado, en lugar de dejar que lo cree la app: así se ve en el panel que no es público.
 - El repo tiene además una rama `main` vieja (la de Google Drive) y es la rama por defecto de GitHub. Render despliega desde `master`. No se tocó.
 
 ### Carril A: archivos del sistema actual en Supabase Storage (v11.0)
