@@ -77,11 +77,10 @@ a favor, mayor resto, etc.). Siguen abiertas:
 - [x] **Archivos en Supabase Storage** (12/11, v11.0, rama `feat/storage-v10` en GitHub, sin merge): comprobantes y adjuntos van a un bucket privado. Las pruebas dieron OK en disco, en el S3 local y en `consorcio-tst`. Ver la bitácora.
 - [x] **Storage activo en producción** (12/11): bucket privado `comprobantes` en el Supabase de producción, clave S3 propia y las cinco variables `STORAGE_S3_*` en Render (las cargó el usuario). Se adjuntó un comprobante, se vio, y después de un deploy manual se siguió viendo.
 - [ ] **Subir a Storage los comprobantes viejos** que están en el disco de Render, si es que quedó alguno (Render borra el disco en cada deploy, así que puede que no quede nada). Hay que revisarlo desde una red que llegue a la base de producción: `facturas.archivo_pdf` con ruta y sin archivo.
-- [x] **Borrar archivos** (12/11, v11.1, rama `feat/borrar-archivos` en GitHub, **sin merge**). El usuario decidió que se puedan borrar:
+- [x] **Borrar archivos** (12/11, v11.1, **en producción** desde el 12/11; el usuario confirmó la versión y el botón). El usuario decidió que se puedan borrar:
   - quitar el comprobante de una factura;
   - al reemplazarlo o eliminar la factura, se borra el archivo;
   - al eliminar un consorcio, se borran todos sus archivos.
-- [ ] **Merge de la v11.1 a `master`** (= deploy), cuando el usuario lo decida.
 - [ ] **Adjunto de notificación de la v6.0 en `consorcio-tst`:** `notificaciones/38f0f808d87c.pdf` (formato viejo, sin la carpeta del consorcio). Es de prueba; se puede borrar.
 - [ ] **Flask en Docker** (rama local `feat/docker-flask`, sin push): `Dockerfile`, `compose.yaml` y `ProxyFix`. Está trabado porque desde esta red no se llega a la base de Supabase.
 - [x] **Contraseña de la base de producción cambiada** (12/11, el usuario, en Supabase y en `DATABASE_URL` de Render). Se revisó el historial de GitHub: no tiene contraseñas reales, solo ejemplos.

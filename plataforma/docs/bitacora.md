@@ -22,6 +22,7 @@ Documentos relacionados:
   - Al reemplazar un comprobante o eliminar la factura, se borra el archivo.
   - Al eliminar un consorcio, se borran todos sus archivos.
 - La prueba `probar_storage.py` pasó a 37 controles: OK en disco, en el S3 local y en `consorcio-tst`. Las 17 pruebas dan OK. También se probó en el navegador.
+- **Deploy:** merge directo a `master` el mismo día. El usuario confirmó en Render la v11.1-1211 y el botón nuevo en Facturas.
 
 **Decisiones**
 - **Borrado definitivo, con confirmación**, en lugar de una papelera: es lo que pidió el usuario.
