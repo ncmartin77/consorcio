@@ -128,7 +128,10 @@
           <tr class="fila-uf {% if tipo == 'TOTAL' %}table-success{% elif tipo == 'PARCIAL' %}table-warning{% else %}table-danger{% endif %}"
               data-tipo="{{ tipo }}">
             <td><strong>{{ r.unidad }}</strong></td>
-            <td>{{ r.inquilino or r.propietario }}</td>
+            <td>
+              {{ r.propietario or '—' }}
+              {% if r.inquilino %}<div class="text-muted" style="font-size:0.8em">Inq: {{ r.inquilino }}</div>{% endif %}
+            </td>
             <td class="text-end fw-bold">$ {{ "%.2f"|format(r.total_a_pagar)|replace(".",",") }}</td>
             <td class="text-end {% if r.monto_pagado > 0 %}text-success fw-semibold{% endif %}">
               {% if r.monto_pagado > 0 %}$ {{ "%.2f"|format(r.monto_pagado)|replace(".",",") }}{% else %}—{% endif %}

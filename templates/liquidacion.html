@@ -327,7 +327,10 @@
               data-unidad="{{ r.unidad }}" data-tipo="{{ tipo }}">
             <td><strong>{{ r.unidad }}</strong></td>
             <td>{{ r.descripcion }}</td>
-            <td>{{ r.inquilino or r.propietario }}</td>
+            <td>
+              {{ r.propietario or '—' }}
+              {% if r.inquilino %}<div class="text-muted" style="font-size:0.8em">Inq: {{ r.inquilino }}</div>{% endif %}
+            </td>
             <td class="text-center">{{ "%.3f"|format(r.pct_aplicado) }}%</td>
             <td class="text-end">$ {{ "%.2f"|format(r.expensas)|replace(".",",") }}</td>
             <td class="text-end {% if r.deuda_anterior > 0 %}text-danger fw-semibold{% elif r.deuda_anterior < 0 %}text-success fw-semibold{% endif %}">

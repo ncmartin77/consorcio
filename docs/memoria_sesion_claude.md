@@ -14,7 +14,7 @@
 | **Deploy** | https://consorcio-soo4.onrender.com (Render.com free tier, auto-deploy desde master) |
 | **Directorio local** | `/home/norberto/consorcio` |
 | **Git en WSL** | `"/mnt/c/Program Files/Git/bin/git.exe"` (siempre con ruta completa) |
-| **Version actual** | `10.1-0911` (en `version.txt`) |
+| **Version actual** | `11.1-1211` (en `version.txt`) |
 | **Supabase Project ID** | `eboskmenitazzwfobwkiq` (region: ca-central-1) |
 | **MCP Supabase config** | `~/.mcp.json` (token `sb_secret_*` en `headers.Authorization`) |
 | **Consorcio activo en DB** | `consorcio_id = '28693516'` |
@@ -93,29 +93,20 @@
 
 ---
 
-## >>> DONDE QUEDAMOS (09/11/2026) — leer primero <<<
+## >>> DONDE QUEDAMOS (15/11/2026) — leer primero <<<
 
-**Produccion (Render, rama `master`)**: v9.7 (planilla "MONTO A PAGAR"). Perú 376 reseteada el 08/11; el usuario recarga apertura y gastos desde septiembre.
+**Produccion (Render, rama `master`)**: **v11.1-1211** — confirmada en Render al 12/11. Storage activo (comprobantes en Supabase Storage). Todas las pruebas OK.
 
-**Ramas sin mergear (en GitHub):**
-1. `fix/seguridad` — v9.8 arreglos de seguridad (24/24). Incluida en la rama 2.
-2. `feat/lineamientos-v10` — **v10.0** (incluye la v9.8): puntos 1 a 5 del documento juridico + manual nuevo + diagramas + pagina Ayuda. Ver la entrada v10.0 en `docs/historial_versiones.md` y "Lineamientos juridicos (v10.0)" en `CLAUDE.md`.
-
-**Antes de mergear `feat/lineamientos-v10` a `master` (= deploy):**
-- [ ] Confirmar en Render (consorcio → Environment) que existe `SECRET_KEY`: desde la v9.8, sin ella la app NO arranca.
-- [x] **11/11: corrida completa contra una base LOCAL** (copia del 03/11; ver la entrada v10.2 de `docs/pruebas_realizadas.md` y `pruebas/correr_en_docker.sh`). Ninguna falla es del código: v10 53/53 y la regresión OK. Las **6 pruebas viejas ya están actualizadas (v10.3)** con escenario propio (`pruebas/escenario.py`): las **16 pruebas dan OK**. Lo de abajo es el estado al 09/11.
-- [ ] Pruebas — resultado al 09/11 (corridas de a una, contra la v10.0):
-  - OK: cobranzas 44/44, factura_con_fondo 14/14, factura_vinculo 16/16, pdf_planilla 15/15, seguridad 24/24; saldo_cierre, liquidacion_estados, anular_pagos y periodos_invalidos terminaron sin errores (revisar su salida completa).
-  - **Correr de nuevo** (se cortaron por falta de red en la PC, no por el codigo): `probar_v10.py` (dio 50/50 antes de agregarle los 3 controles de Ayuda) y `probar_fondo_reserva.py` (ya actualizada a la regla del libro del fondo).
-  - **Pruebas viejas a actualizar** (fallan por cambios ANTERIORES a la v10, no por la v10): `probar_fecha_sistema.py` (usa el switch "sin interes" de Liquidacion, quitado en la v9.2), `probar_libre_deuda.py` (espera emitir con la base de prueba tal cual; desde la v9.0 exige la ultima liquidacion CERRADA y la base de prueba no tiene ninguna), `probar_saldo_a_favor.py` (usa `pg_db._calcular_interes`, que no existe desde la v9.2).
-  - **Limpieza**: como `probar_v10.py` se corto a mitad, puede haber quedado en la base de prueba el consorcio temporal "Prueba v10 lineamientos": borrarlo (`db.delete_consorcio(id)` o desde la app, como admin, en la base de PRUEBA).
-- [ ] Correr las pruebas de a una (dos a la vez trabaron la base de prueba con un deadlock).
-- [ ] Registrar los resultados en `docs/pruebas_realizadas.md` (falta la entrada de la v10.0).
-- [ ] Despues del deploy: cargar en Apertura el **saldo inicial del Fondo de Reserva** (si no, el libro usa el saldo inicial de caja y lo avisa), registrar la **tasa de mora con vigencia** en Configuración → Intereses por mora y completar Configuración → Administración.
+**Estado del master (todo mergeado y en produccion):**
+- v10.0–v10.4: lineamientos juridicos (interes sin capitalizar, libro del fondo, clasificacion de gastos, exportacion, alertas, pruebas), all OK.
+- v11.0: comprobantes y adjuntos en Supabase Storage (`storage.py`, `boto3`).
+- v11.1: borrar/reemplazar comprobantes, eliminar consorcio borra sus archivos en Storage.
+- Pruebas: 16 pruebas OK (base local), `probar_storage.py` 37/37 OK.
+- `feat/plataforma`: rama separada, nueva plataforma en desarrollo (etapa 3: liquidaciones y cuenta corriente). **NO es el sistema actual.**
 
 **Pendiente del documento juridico (punto 6, no empezado):** asambleas (convocatoria, asistencia, poderes, actas, mayorias), ficha de ascensores (Ord. 8.661), libros y rubrica, locacion art. 1209 (propietario/inquilino), bancos y conciliacion, privacidad (links publicos de recibos que no vencen, aviso de privacidad, transferencia internacional Supabase/Render).
 
-**Reglas del usuario de esta sesion:** los diagramas (`docs/diagramas.md`) NO van en la pagina de Ayuda de la app; la Ayuda muestra solo `docs/manual_usuario.md`, que hay que mantener al dia con cada cambio funcional.
+**Reglas del usuario:** los diagramas (`docs/diagramas.md`) NO van en la pagina de Ayuda; la Ayuda muestra solo `docs/manual_usuario.md`. Mantener el manual al dia con cada cambio funcional.
 
 ---
 

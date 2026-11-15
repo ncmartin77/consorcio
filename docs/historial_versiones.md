@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 11.1-1211
+**Versión actual:** 11.2-1511
 
 ---
 
@@ -335,6 +335,14 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 ---
 
 ### v10.x — Lineamientos jurídicos (Paraná, Entre Ríos)
+
+#### v11.2-1511 — Propietario e inquilino en Liquidación y Cobranzas
+
+**Lanzamiento:** 15 de noviembre
+
+- En la columna "Prop./Inquilino" de las tablas de **Liquidación** y **Cobranzas**, se muestran ahora los dos cuando la unidad tiene ambos: el propietario en la línea principal y el inquilino debajo en texto más pequeño con la etiqueta "Inq:". Antes solo aparecía uno (el inquilino si existía, si no el propietario).
+
+---
 
 #### v11.1-1211 — Borrar comprobantes y archivos
 
