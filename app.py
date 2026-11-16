@@ -63,6 +63,16 @@ def fecha_ar(iso):
     return f"{s[8:10]}/{s[5:7]}/{s[:4]}" if len(s) >= 10 else s
 
 
+@app.template_filter("fmt_desc")
+def fmt_desc(desc, piso=""):
+    """'P{piso} D{desc}' si hay piso, si no solo desc."""
+    d = (desc or "").strip()
+    p = (piso or "").strip()
+    if p and d:
+        return f"P{p} D{d}"
+    return p or d or "—"
+
+
 _PUBLIC_ENDPOINTS = {"static", "login", "login_google", "auth_callback", "logout", "verificar_recibo", "recibo_publico", "recibo_publico_pdf", "verificar_libre_deuda"}
 
 
@@ -218,6 +228,8 @@ def _contexto_auditoria():
         db.ensure_factura_vinculos()
         db.ensure_liq_sin_interes()
         db.ensure_liq_fecha_cierre()
+        db.ensure_liq_piso()
+        db.ensure_obras()
     except Exception as exc:
         app.logger.warning(f"[Auditoría] No se pudo inicializar: {exc}")
     if session.get("consorcio_id"):
@@ -1992,6 +2004,172 @@ def delete_cotizacion(pres_id, pedido_id):
     db.delete_presupuesto(pres_id)
     flash("Cotización eliminada.", "success")
     return redirect(url_for("detalle_pedido", pedido_id=pedido_id))
+
+
+# ---------------------------------------------------------------------------
+# OBRAS / EXPENSAS EXTRAORDINARIAS
+# ---------------------------------------------------------------------------
+
+@app.route("/obras")
+def obras():
+    _authenticate()
+    obras_list = db.get_obras()
+    return render_template("obras.html", obras=obras_list)
+
+
+@app.route("/obras/nueva", methods=["POST"])
+def nueva_obra():
+    _authenticate()
+    desc = request.form.get("descripcion", "").strip()
+    if not desc:
+        flash("La descripción es obligatoria.", "danger")
+        return redirect(url_for("obras"))
+    db.set_contexto_auditoria(session.get("usuario_email", ""), "Nueva obra")
+    obra_id = db.save_obra({
+        "descripcion": desc,
+        "fecha": request.form.get("fecha") or str(db.fecha_sistema()),
+        "financiacion": request.form.get("financiacion", "EXPENSAS"),
+        "notas": request.form.get("notas", "").strip(),
+    })
+    flash(f"Obra «{desc}» creada.", "success")
+    return redirect(url_for("detalle_obra", obra_id=obra_id))
+
+
+@app.route("/obras/<int:obra_id>")
+def detalle_obra(obra_id):
+    _authenticate()
+    obra = db.get_obra(obra_id)
+    if not obra:
+        flash("Obra no encontrada.", "danger")
+        return redirect(url_for("obras"))
+    periodos = db.get_periodos_disponibles() if hasattr(db, "get_periodos_disponibles") else []
+    return render_template("obras.html", obra=obra, periodos=periodos, obras=None)
+
+
+@app.route("/obras/<int:obra_id>/editar", methods=["POST"])
+def editar_obra(obra_id):
+    _authenticate()
+    db.set_contexto_auditoria(session.get("usuario_email", ""), "Editar obra")
+    db.save_obra({
+        "id": obra_id,
+        "descripcion": request.form.get("descripcion", "").strip(),
+        "fecha": request.form.get("fecha", ""),
+        "estado": request.form.get("estado", "PRESUPUESTANDO"),
+        "proveedor_nombre": request.form.get("proveedor_nombre", "").strip(),
+        "importe_total": request.form.get("importe_total") or None,
+        "financiacion": request.form.get("financiacion", "EXPENSAS"),
+        "notas_asamblea": request.form.get("notas_asamblea", "").strip(),
+        "notas": request.form.get("notas", "").strip(),
+    })
+    flash("Obra actualizada.", "success")
+    return redirect(url_for("detalle_obra", obra_id=obra_id))
+
+
+@app.route("/obras/<int:obra_id>/eliminar", methods=["POST"])
+def eliminar_obra(obra_id):
+    _require_admin()
+    obra = db.get_obra(obra_id)
+    if not obra:
+        return redirect(url_for("obras"))
+    cobradas = [c for c in obra.get("cuotas", []) if c["cobrada"]]
+    if cobradas:
+        flash("No se puede eliminar: tiene cuotas ya cobradas.", "danger")
+        return redirect(url_for("detalle_obra", obra_id=obra_id))
+    db.set_contexto_auditoria(session.get("usuario_email", ""), "Eliminar obra")
+    db.delete_obra(obra_id)
+    flash("Obra eliminada.", "success")
+    return redirect(url_for("obras"))
+
+
+@app.route("/obras/<int:obra_id>/presupuestos/add", methods=["POST"])
+def add_presupuesto_obra(obra_id):
+    _authenticate()
+    prov = request.form.get("proveedor_nombre", "").strip()
+    if not prov:
+        flash("Indicá el nombre del proveedor.", "danger")
+        return redirect(url_for("detalle_obra", obra_id=obra_id))
+    pobs = db.get_presupuestos_obra(obra_id)
+    if len(pobs) >= 3:
+        flash("Ya hay 3 presupuestos (máximo permitido).", "danger")
+        return redirect(url_for("detalle_obra", obra_id=obra_id))
+    imp = _importe(request.form.get("importe", ""), minimo=0.0, cero=True)
+    db.set_contexto_auditoria(session.get("usuario_email", ""), "Agregar presupuesto de obra")
+    db.save_presupuesto_obra({
+        "obra_id": obra_id,
+        "proveedor_nombre": prov,
+        "importe": imp,
+        "notas": request.form.get("notas", "").strip(),
+    })
+    return redirect(url_for("detalle_obra", obra_id=obra_id))
+
+
+@app.route("/obras/<int:obra_id>/presupuestos/<int:pres_id>/adjudicar", methods=["POST"])
+def adjudicar_obra(obra_id, pres_id):
+    _authenticate()
+    db.set_contexto_auditoria(session.get("usuario_email", ""), "Adjudicar presupuesto de obra")
+    db.adjudicar_presupuesto_obra(pres_id, obra_id)
+    flash("Presupuesto adjudicado. Actualizá el estado y definí las cuotas.", "success")
+    return redirect(url_for("detalle_obra", obra_id=obra_id))
+
+
+@app.route("/obras/<int:obra_id>/presupuestos/<int:pres_id>/eliminar", methods=["POST"])
+def eliminar_presupuesto_obra(obra_id, pres_id):
+    _authenticate()
+    db.set_contexto_auditoria(session.get("usuario_email", ""), "Eliminar presupuesto de obra")
+    db.delete_presupuesto_obra(pres_id)
+    return redirect(url_for("detalle_obra", obra_id=obra_id))
+
+
+@app.route("/obras/<int:obra_id>/cuotas/add", methods=["POST"])
+def add_cuota_obra(obra_id):
+    _authenticate()
+    monto = _importe(request.form.get("monto", ""), minimo=0.01)
+    if monto is None:
+        flash("El monto de la cuota no es válido.", "danger")
+        return redirect(url_for("detalle_obra", obra_id=obra_id))
+    cuotas = db.get_cuotas_obra(obra_id)
+    siguiente = max((c["numero"] for c in cuotas), default=-1) + 1
+    db.set_contexto_auditoria(session.get("usuario_email", ""), "Agregar cuota de obra")
+    db.save_cuota_obra({
+        "obra_id": obra_id,
+        "numero": siguiente,
+        "descripcion_cuota": request.form.get("descripcion_cuota", "").strip() or None,
+        "monto": monto,
+        "financiacion": request.form.get("financiacion", "EXPENSAS"),
+    })
+    return redirect(url_for("detalle_obra", obra_id=obra_id))
+
+
+@app.route("/obras/<int:obra_id>/cuotas/<int:cuota_id>/cobrar", methods=["POST"])
+def cobrar_cuota_obra(obra_id, cuota_id):
+    _authenticate()
+    periodo = request.form.get("periodo", "").strip()
+    if not periodo:
+        flash("Seleccioná el período de cobro.", "danger")
+        return redirect(url_for("detalle_obra", obra_id=obra_id))
+    obra = db.get_obra(obra_id)
+    if not obra:
+        return redirect(url_for("obras"))
+    if db.liq_esta_cerrada(periodo):
+        flash(f"La liquidación de {mes_largo(periodo)} está cerrada.", "danger")
+        return redirect(url_for("detalle_obra", obra_id=obra_id))
+    try:
+        db.set_contexto_auditoria(session.get("usuario_email", ""), "Cobrar cuota de obra")
+        db.cobrar_cuota_obra(cuota_id, periodo, obra["descripcion"])
+        if db.liquidacion_existe(periodo) and not db.liq_esta_cerrada(periodo):
+            db.generar_liquidacion(periodo)
+        flash(f"Cuota cargada en Gastos de {mes_largo(periodo)}.", "success")
+    except ValueError as e:
+        flash(str(e), "danger")
+    return redirect(url_for("detalle_obra", obra_id=obra_id))
+
+
+@app.route("/obras/<int:obra_id>/cuotas/<int:cuota_id>/eliminar", methods=["POST"])
+def eliminar_cuota_obra(obra_id, cuota_id):
+    _authenticate()
+    db.set_contexto_auditoria(session.get("usuario_email", ""), "Eliminar cuota de obra")
+    db.delete_cuota_obra(cuota_id)
+    return redirect(url_for("detalle_obra", obra_id=obra_id))
 
 
 # ---------------------------------------------------------------------------

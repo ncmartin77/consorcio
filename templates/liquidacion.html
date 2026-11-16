@@ -326,7 +326,7 @@
           <tr class="{% if tipo == 'TOTAL' %}table-success{% elif tipo == 'PARCIAL' %}table-warning{% elif tipo == 'PENDIENTE' %}table-danger{% endif %}"
               data-unidad="{{ r.unidad }}" data-tipo="{{ tipo }}">
             <td><strong>{{ r.unidad }}</strong></td>
-            <td>{{ r.descripcion }}</td>
+            <td>{{ r.descripcion | fmt_desc(r.piso) }}</td>
             <td>
               {{ r.propietario or '—' }}
               {% if r.inquilino %}<div class="text-muted" style="font-size:0.8em">Inq: {{ r.inquilino }}</div>{% endif %}

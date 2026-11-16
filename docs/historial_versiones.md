@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 11.2-1511
+**Versión actual:** 11.3-1611
 
 ---
 
@@ -335,6 +335,24 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 ---
 
 ### v10.x — Lineamientos jurídicos (Paraná, Entre Ríos)
+
+#### v11.3-1611 — Formato PX DX, estado de factura en Gastos y módulo Obras
+
+**Lanzamiento:** 16 de noviembre
+
+**1. Descripción con Piso y Departamento (PX DX):** la columna Descripción en Liquidación y Unidades muestra ahora `P{piso} D{desc}` cuando la unidad tiene piso cargado (filtro `fmt_desc`). La columna "Piso" separada de Unidades se fusionó con Descripción. Se agrega la columna `piso` a la tabla `liquidaciones` para mantener el dato en las filas generadas.
+
+**2. Estado pagado/impago en Gastos Mensuales:** la tabla de gastos ordinarios muestra un badge verde "Pagado", amarillo "Impago" o gris "Sin factura" según el estado de la factura vinculada al gasto (`factura_estado`, ya disponible desde la v9.4). No requirió cambios en el backend.
+
+**3. Módulo Obras / Expensas Extraordinarias (nuevo):** `Proveedores → Obras`. Permite gestionar arreglos importantes de punta a punta:
+- **Presupuestos:** hasta 3 cotizaciones de distintos proveedores.
+- **Adjudicación:** marcá el presupuesto elegido (decisión de asamblea); actualiza automáticamente proveedor e importe total de la obra.
+- **Plan de pago en cuotas:** definí anticipo y cuotas con monto y financiación por cuota (Expensa extraordinaria = cobra a propietarios como EXTRAORDINARIO, Fondo de Reserva = se descuenta del fondo como VARIABLE_FR).
+- **Cobrar cuota:** al confirmar, crea el gasto en Gastos Mensuales del período elegido y recalcula la liquidación si está abierta.
+- **Estados:** Presupuestando → Adjudicada → En ejecución → Terminada.
+- Tablas nuevas: `obras`, `presupuestos_obra`, `cuotas_obra` (creadas automáticamente en `ensure_obras`).
+
+---
 
 #### v11.2-1511 — Propietario e inquilino en Liquidación y Cobranzas
 

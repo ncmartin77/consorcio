@@ -33,7 +33,18 @@
           <tbody>
             {% for g in gastos %}
             <tr>
-              <td>{{ g.concepto }}</td>
+              <td>
+                {{ g.concepto }}
+                {% if g.tipo != 'FONDO_RESERVA' %}
+                  {% if g.factura_id and g.factura_estado == 'PAGADA' %}
+                    <span class="badge bg-success ms-1" title="Factura pagada"><i class="bi bi-check-circle-fill"></i> Pagado</span>
+                  {% elif g.factura_id %}
+                    <span class="badge bg-warning text-dark ms-1" title="Factura sin pagar"><i class="bi bi-clock"></i> Impago</span>
+                  {% else %}
+                    <span class="badge bg-secondary ms-1" title="Sin factura cargada"><i class="bi bi-dash-circle"></i> Sin factura</span>
+                  {% endif %}
+                {% endif %}
+              </td>
               <td class="text-end fw-semibold">$ {{ "%.2f"|format(g.importe)|replace(".",",") }}</td>
               <td class="text-center">
                 {% if g.tipo == 'FONDO_RESERVA' %}

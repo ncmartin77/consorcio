@@ -99,9 +99,9 @@
 
         {# ── Proveedores ── #}
         <li class="nav-item dropdown">
-          <a class="nav-link dropdown-toggle {% if request.endpoint in ['proveedores','facturas','presupuestos','detalle_pedido'] %}active{% endif %}"
+          <a class="nav-link dropdown-toggle {% if request.endpoint in ['proveedores','facturas','presupuestos','detalle_pedido','obras','detalle_obra'] %}active{% endif %}"
              href="#" role="button" data-bs-toggle="dropdown"
-             data-ayuda="Proveedores: directorio, facturas recibidas y pedidos de presupuesto.">
+             data-ayuda="Proveedores: directorio, facturas recibidas, presupuestos y obras.">
             <i class="bi bi-truck"></i> Proveedores
           </a>
           <ul class="dropdown-menu">
@@ -119,6 +119,12 @@
                    href="{{ url_for('presupuestos') }}"
                    data-ayuda="Presupuestos: pedidos de cotización a proveedores para trabajos del consorcio. Comparás ofertas y registrás el elegido.">
               <i class="bi bi-clipboard2-check"></i> Presupuestos
+            </a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item {% if request.endpoint in ['obras','detalle_obra'] %}active{% endif %}"
+                   href="{{ url_for('obras') }}"
+                   data-ayuda="Obras: gestioná arreglos importantes con presupuestos de hasta 3 proveedores, decisión de asamblea y plan de pago en cuotas.">
+              <i class="bi bi-wrench-adjustable-circle"></i> Obras
             </a></li>
           </ul>
         </li>

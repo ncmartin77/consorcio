@@ -731,6 +731,7 @@ def _liq_row(r) -> dict:
         # v10.0: parte de la deuda anterior que son intereses impagos (no generan nuevo interés)
         "deuda_interes": float(r.get("deuda_interes") or 0),
         "tasa_aplicada": float(r["tasa_aplicada"]) if r.get("tasa_aplicada") is not None else None,
+        "piso": r.get("piso") or "",
     }
 
 
@@ -910,19 +911,20 @@ def generar_liquidacion(periodo: str):
             None, None, None, None,
             extras_unidad if extras_unidad else None,
             sin_interes, deuda_interes,
+            u.get("piso", "") or None,
         ))
 
-    def _clave(numero, desc, prop, inq, pct, exp, deuda, interes, total, extras, sin_int, deuda_int):
+    def _clave(numero, desc, prop, inq, pct, exp, deuda, interes, total, extras, sin_int, deuda_int, piso=""):
         return (str(numero), desc or "", prop or "", inq or "", round(float(pct or 0), 4),
                 round(float(exp or 0), 2), round(float(deuda or 0), 2), round(float(interes or 0), 2),
                 round(float(total or 0), 2), round(float(extras or 0), 2), bool(sin_int),
-                round(float(deuda_int or 0), 2))
+                round(float(deuda_int or 0), 2), piso or "")
 
-    nuevas = {_clave(r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[16], r[17], r[18])
+    nuevas = {_clave(r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[16], r[17], r[18], r[19])
               for r in new_rows}
     actuales = {_clave(r["unidad"], r["descripcion"], r["propietario"], r["inquilino"], r["pct_aplicado"],
                        r["expensas"], r["deuda_anterior"], r["interes"], r["total_a_pagar"], r["extras"],
-                       r["sin_interes"], r["deuda_interes"]) for r in existentes.values()}
+                       r["sin_interes"], r["deuda_interes"], r.get("piso") or "") for r in existentes.values()}
     if nuevas != actuales or len(new_rows) != len(existentes):
         with _conn() as c:
             with c.cursor() as cur:
@@ -932,8 +934,8 @@ def generar_liquidacion(periodo: str):
                       (consorcio_id, periodo, unidad, descripcion, propietario, inquilino,
                        pct_aplicado, expensas, deuda_anterior, interes, total_a_pagar, pagado,
                        monto_pagado, tipo_pago, saldo_pendiente, fecha_pago, extras, sin_interes,
-                       deuda_interes)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       deuda_interes, piso)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """, new_rows)
 
     if get_liq_estado(periodo) != "ABIERTA":
@@ -3162,6 +3164,256 @@ ESTADOS_REGISTRO = {
     "PENDIENTE_VERIFICACION": "Pendiente de verificación",
     "NO_INSCRIPTO": "No inscripto",
 }
+
+
+def ensure_liq_piso():
+    """v11.3: columna piso en liquidaciones para mostrar formato 'PX DX'."""
+    _ensure_columna("liquidaciones.piso",
+                    "ALTER TABLE liquidaciones ADD COLUMN IF NOT EXISTS piso TEXT")
+
+
+def ensure_obras():
+    """v11.3: tablas para el módulo de expensas extraordinarias / obras."""
+    _ensure_columna("tabla.obras", """
+        CREATE TABLE IF NOT EXISTS obras (
+            id               SERIAL PRIMARY KEY,
+            consorcio_id     TEXT NOT NULL REFERENCES consorcios(id) ON DELETE CASCADE,
+            descripcion      TEXT NOT NULL,
+            fecha            DATE NOT NULL,
+            estado           VARCHAR(20) NOT NULL DEFAULT 'PRESUPUESTANDO',
+            proveedor_nombre TEXT,
+            importe_total    NUMERIC(14,2),
+            financiacion     VARCHAR(20) NOT NULL DEFAULT 'EXPENSAS',
+            notas_asamblea   TEXT,
+            notas            TEXT
+        );
+        CREATE INDEX IF NOT EXISTS obras_consorcio ON obras (consorcio_id, fecha DESC)
+    """)
+    _ensure_columna("tabla.presupuestos_obra", """
+        CREATE TABLE IF NOT EXISTS presupuestos_obra (
+            id               SERIAL PRIMARY KEY,
+            consorcio_id     TEXT NOT NULL REFERENCES consorcios(id) ON DELETE CASCADE,
+            obra_id          INTEGER NOT NULL REFERENCES obras(id) ON DELETE CASCADE,
+            proveedor_nombre TEXT NOT NULL,
+            importe          NUMERIC(14,2),
+            notas            TEXT,
+            seleccionado     BOOLEAN NOT NULL DEFAULT FALSE
+        )
+    """)
+    _ensure_columna("tabla.cuotas_obra", """
+        CREATE TABLE IF NOT EXISTS cuotas_obra (
+            id               SERIAL PRIMARY KEY,
+            consorcio_id     TEXT NOT NULL REFERENCES consorcios(id) ON DELETE CASCADE,
+            obra_id          INTEGER NOT NULL REFERENCES obras(id) ON DELETE CASCADE,
+            numero           INTEGER NOT NULL,
+            descripcion_cuota TEXT,
+            monto            NUMERIC(14,2) NOT NULL,
+            financiacion     VARCHAR(20) NOT NULL DEFAULT 'EXPENSAS',
+            gasto_id         INTEGER
+        )
+    """)
+
+
+# ── Obras CRUD ────────────────────────────────────────────────────────────────
+
+_ESTADOS_OBRA = ("PRESUPUESTANDO", "ADJUDICADA", "EN_EJECUCION", "TERMINADA")
+
+
+def _obra_row(r) -> dict:
+    return {
+        "id": r["id"],
+        "descripcion": r["descripcion"] or "",
+        "fecha": r["fecha"].strftime("%Y-%m-%d") if r["fecha"] else "",
+        "estado": r["estado"] or "PRESUPUESTANDO",
+        "proveedor_nombre": r["proveedor_nombre"] or "",
+        "importe_total": float(r["importe_total"]) if r["importe_total"] else None,
+        "financiacion": r["financiacion"] or "EXPENSAS",
+        "notas_asamblea": r["notas_asamblea"] or "",
+        "notas": r["notas"] or "",
+    }
+
+
+def get_obras() -> list:
+    rows = _fetchall(
+        "SELECT * FROM obras WHERE consorcio_id=%s ORDER BY fecha DESC, id DESC",
+        (_cid(),)
+    )
+    obras = [_obra_row(r) for r in rows]
+    for obra in obras:
+        obra["cuotas"] = get_cuotas_obra(obra["id"])
+        obra["presupuestos"] = get_presupuestos_obra(obra["id"])
+    return obras
+
+
+def get_obra(obra_id: int) -> dict | None:
+    r = _fetchone("SELECT * FROM obras WHERE id=%s AND consorcio_id=%s", (obra_id, _cid()))
+    if not r:
+        return None
+    obra = _obra_row(r)
+    obra["cuotas"] = get_cuotas_obra(obra_id)
+    obra["presupuestos"] = get_presupuestos_obra(obra_id)
+    return obra
+
+
+def save_obra(data: dict) -> int:
+    v = data.get("fecha")
+    if isinstance(v, str):
+        try:
+            fecha = datetime.strptime(v, "%Y-%m-%d").date()
+        except ValueError:
+            fecha = fecha_sistema()
+    else:
+        fecha = v or fecha_sistema()
+    imp = data.get("importe_total")
+    imp = float(imp) if imp not in (None, "", "0") else None
+    estado = data.get("estado", "PRESUPUESTANDO")
+    if estado not in _ESTADOS_OBRA:
+        estado = "PRESUPUESTANDO"
+    fin = data.get("financiacion", "EXPENSAS")
+    if fin not in ("EXPENSAS", "FONDO_RESERVA", "MIXTO"):
+        fin = "EXPENSAS"
+    oid = data.get("id")
+    if oid:
+        _exec("""UPDATE obras SET descripcion=%s, fecha=%s, estado=%s, proveedor_nombre=%s,
+                 importe_total=%s, financiacion=%s, notas_asamblea=%s, notas=%s
+                 WHERE id=%s AND consorcio_id=%s""",
+              (data.get("descripcion", "").strip(), fecha, estado,
+               data.get("proveedor_nombre", "").strip() or None,
+               imp, fin,
+               data.get("notas_asamblea", "").strip() or None,
+               data.get("notas", "").strip() or None,
+               oid, _cid()))
+        return int(oid)
+    return _insert_returning("""
+        INSERT INTO obras (consorcio_id, descripcion, fecha, estado, proveedor_nombre,
+            importe_total, financiacion, notas_asamblea, notas)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
+    """, (_cid(), data.get("descripcion", "").strip(), fecha, estado,
+          data.get("proveedor_nombre", "").strip() or None,
+          imp, fin,
+          data.get("notas_asamblea", "").strip() or None,
+          data.get("notas", "").strip() or None))
+
+
+def delete_obra(obra_id: int):
+    _exec("DELETE FROM cuotas_obra WHERE obra_id=%s AND consorcio_id=%s", (obra_id, _cid()))
+    _exec("DELETE FROM presupuestos_obra WHERE obra_id=%s AND consorcio_id=%s", (obra_id, _cid()))
+    _exec("DELETE FROM obras WHERE id=%s AND consorcio_id=%s", (obra_id, _cid()))
+
+
+# ── Presupuestos de obra ──────────────────────────────────────────────────────
+
+def get_presupuestos_obra(obra_id: int) -> list:
+    rows = _fetchall(
+        "SELECT * FROM presupuestos_obra WHERE obra_id=%s AND consorcio_id=%s ORDER BY id",
+        (obra_id, _cid())
+    )
+    return [{
+        "id": r["id"],
+        "proveedor_nombre": r["proveedor_nombre"] or "",
+        "importe": float(r["importe"]) if r["importe"] else None,
+        "notas": r["notas"] or "",
+        "seleccionado": bool(r["seleccionado"]),
+    } for r in rows]
+
+
+def save_presupuesto_obra(data: dict) -> int:
+    imp = data.get("importe")
+    imp = float(imp) if imp not in (None, "") else None
+    pid = data.get("id")
+    if pid:
+        _exec("""UPDATE presupuestos_obra SET proveedor_nombre=%s, importe=%s, notas=%s
+                 WHERE id=%s AND consorcio_id=%s""",
+              (data.get("proveedor_nombre", "").strip(), imp,
+               data.get("notas", "").strip() or None, pid, _cid()))
+        return int(pid)
+    return _insert_returning("""
+        INSERT INTO presupuestos_obra (consorcio_id, obra_id, proveedor_nombre, importe, notas)
+        VALUES (%s,%s,%s,%s,%s) RETURNING id
+    """, (_cid(), data.get("obra_id"), data.get("proveedor_nombre", "").strip(),
+          imp, data.get("notas", "").strip() or None))
+
+
+def adjudicar_presupuesto_obra(pres_id: int, obra_id: int):
+    pres = _fetchone("SELECT * FROM presupuestos_obra WHERE id=%s AND consorcio_id=%s",
+                     (pres_id, _cid()))
+    if not pres:
+        return
+    _exec("UPDATE presupuestos_obra SET seleccionado=(id=%s) WHERE obra_id=%s AND consorcio_id=%s",
+          (pres_id, obra_id, _cid()))
+    _exec("""UPDATE obras SET proveedor_nombre=%s, importe_total=%s, estado='ADJUDICADA'
+             WHERE id=%s AND consorcio_id=%s""",
+          (pres["proveedor_nombre"], pres["importe"], obra_id, _cid()))
+
+
+def delete_presupuesto_obra(pres_id: int):
+    _exec("DELETE FROM presupuestos_obra WHERE id=%s AND consorcio_id=%s", (pres_id, _cid()))
+
+
+# ── Cuotas de obra ────────────────────────────────────────────────────────────
+
+def get_cuotas_obra(obra_id: int) -> list:
+    rows = _fetchall(
+        "SELECT * FROM cuotas_obra WHERE obra_id=%s AND consorcio_id=%s ORDER BY numero",
+        (obra_id, _cid())
+    )
+    return [{
+        "id": r["id"],
+        "obra_id": r["obra_id"],
+        "numero": r["numero"],
+        "descripcion_cuota": r["descripcion_cuota"] or "",
+        "monto": float(r["monto"]),
+        "financiacion": r["financiacion"] or "EXPENSAS",
+        "gasto_id": r["gasto_id"],
+        "cobrada": r["gasto_id"] is not None,
+    } for r in rows]
+
+
+def save_cuota_obra(data: dict) -> int:
+    monto = float(data.get("monto") or 0)
+    fin = data.get("financiacion", "EXPENSAS")
+    if fin not in ("EXPENSAS", "FONDO_RESERVA"):
+        fin = "EXPENSAS"
+    cid_val = data.get("id")
+    if cid_val:
+        _exec("""UPDATE cuotas_obra SET descripcion_cuota=%s, monto=%s, financiacion=%s
+                 WHERE id=%s AND consorcio_id=%s""",
+              (data.get("descripcion_cuota", "").strip() or None, monto, fin, cid_val, _cid()))
+        return int(cid_val)
+    return _insert_returning("""
+        INSERT INTO cuotas_obra (consorcio_id, obra_id, numero, descripcion_cuota, monto, financiacion)
+        VALUES (%s,%s,%s,%s,%s,%s) RETURNING id
+    """, (_cid(), data.get("obra_id"), int(data.get("numero", 1)),
+          data.get("descripcion_cuota", "").strip() or None, monto, fin))
+
+
+def cobrar_cuota_obra(cuota_id: int, periodo: str, obra_descripcion: str) -> int:
+    """Crea un gasto en `periodo` para la cuota y guarda el gasto_id en la cuota."""
+    cuota = _fetchone("SELECT * FROM cuotas_obra WHERE id=%s AND consorcio_id=%s",
+                      (cuota_id, _cid()))
+    if not cuota or cuota["gasto_id"]:
+        raise ValueError("Cuota no encontrada o ya cobrada")
+    label = cuota["descripcion_cuota"] or f"Cuota {cuota['numero']}"
+    concepto = f"{obra_descripcion} — {label}"
+    fin = cuota["financiacion"] or "EXPENSAS"
+    tipo = "VARIABLE_FR" if fin == "FONDO_RESERVA" else "EXTRAORDINARIO"
+    naturaleza = "EXTRAORDINARIA"
+    habitualidad = "NO_RECURRENTE"
+    financiacion_field = fin
+    gasto_id = _insert_returning("""
+        INSERT INTO gastos (consorcio_id, periodo, concepto, importe, tipo,
+            naturaleza, habitualidad, financiacion)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
+    """, (_cid(), periodo, concepto, cuota["monto"], tipo,
+          naturaleza, habitualidad, financiacion_field))
+    _exec("UPDATE cuotas_obra SET gasto_id=%s WHERE id=%s AND consorcio_id=%s",
+          (gasto_id, cuota_id, _cid()))
+    return gasto_id
+
+
+def delete_cuota_obra(cuota_id: int):
+    _exec("DELETE FROM cuotas_obra WHERE id=%s AND consorcio_id=%s AND gasto_id IS NULL",
+          (cuota_id, _cid()))
 
 
 def ensure_vencimientos():

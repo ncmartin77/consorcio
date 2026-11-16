@@ -1,0 +1,481 @@
+{% extends "base.html" %}
+{% block title %}Obras{% endblock %}
+{% block content %}
+
+{% if obra %}
+{# ── Detalle de una obra ── #}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4>
+    <a href="{{ url_for('obras') }}" class="text-decoration-none text-secondary me-2"><i class="bi bi-arrow-left"></i></a>
+    <i class="bi bi-wrench-adjustable-circle"></i>
+    {{ obra.descripcion }}
+  </h4>
+  <div class="d-flex gap-2">
+    <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#modalEditarObra">
+      <i class="bi bi-pencil"></i> Editar
+    </button>
+    {% if es_admin %}
+    <form method="POST" action="{{ url_for('eliminar_obra', obra_id=obra.id) }}"
+          onsubmit="return confirm('¿Eliminar esta obra y todos sus datos?')">
+      <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i> Eliminar</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{# Estado badge #}
+{% set color_estado = {'PRESUPUESTANDO':'secondary','ADJUDICADA':'info','EN_EJECUCION':'warning','TERMINADA':'success'} %}
+{% set label_estado = {'PRESUPUESTANDO':'Presupuestando','ADJUDICADA':'Adjudicada','EN_EJECUCION':'En ejecución','TERMINADA':'Terminada'} %}
+<div class="mb-3 d-flex flex-wrap gap-3 align-items-center">
+  <span class="badge bg-{{ color_estado.get(obra.estado,'secondary') }} fs-6">
+    {{ label_estado.get(obra.estado, obra.estado) }}
+  </span>
+  {% if obra.proveedor_nombre %}
+  <span class="text-muted"><i class="bi bi-person-workspace"></i> {{ obra.proveedor_nombre }}</span>
+  {% endif %}
+  {% if obra.importe_total %}
+  <span class="fw-semibold text-primary"><i class="bi bi-currency-dollar"></i> Total: $ {{ "%.2f"|format(obra.importe_total)|replace(".",",") }}</span>
+  {% endif %}
+  <span class="text-muted small"><i class="bi bi-calendar3"></i> {{ obra.fecha | fecha_ar }}</span>
+  {% if obra.financiacion == 'FONDO_RESERVA' %}
+    <span class="badge bg-info text-dark"><i class="bi bi-piggy-bank"></i> Con el fondo</span>
+  {% elif obra.financiacion == 'MIXTO' %}
+    <span class="badge bg-primary"><i class="bi bi-layers"></i> Mixto</span>
+  {% else %}
+    <span class="badge bg-danger"><i class="bi bi-people"></i> Expensa extraordinaria</span>
+  {% endif %}
+</div>
+
+{% if obra.notas_asamblea %}
+<div class="alert alert-light border mb-3">
+  <strong><i class="bi bi-people-fill"></i> Resolución de asamblea:</strong> {{ obra.notas_asamblea }}
+</div>
+{% endif %}
+{% if obra.notas %}
+<div class="text-muted small mb-3"><i class="bi bi-sticky"></i> {{ obra.notas }}</div>
+{% endif %}
+
+<div class="row g-4">
+
+  {# ── Presupuestos ── #}
+  <div class="col-lg-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-clipboard2-check"></i> Presupuestos</span>
+        {% if obra.presupuestos|length < 3 %}
+        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalPresupuesto">
+          <i class="bi bi-plus"></i> Agregar
+        </button>
+        {% endif %}
+      </div>
+      <div class="card-body p-0">
+        {% if obra.presupuestos %}
+        <table class="table table-hover mb-0 small">
+          <thead class="table-light">
+            <tr>
+              <th>Proveedor</th>
+              <th class="text-end">Importe</th>
+              <th class="text-center">Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in obra.presupuestos %}
+            <tr class="{% if p.seleccionado %}table-success{% endif %}">
+              <td>
+                {{ p.proveedor_nombre }}
+                {% if p.notas %}<div class="text-muted" style="font-size:0.8em">{{ p.notas }}</div>{% endif %}
+              </td>
+              <td class="text-end fw-semibold">
+                {% if p.importe %}$ {{ "%.2f"|format(p.importe)|replace(".",",") }}{% else %}—{% endif %}
+              </td>
+              <td class="text-center">
+                {% if p.seleccionado %}
+                  <span class="badge bg-success"><i class="bi bi-trophy-fill"></i> Adjudicado</span>
+                {% else %}
+                  <span class="badge bg-secondary">Cotización</span>
+                {% endif %}
+              </td>
+              <td class="text-nowrap">
+                {% if not p.seleccionado and obra.estado in ('PRESUPUESTANDO', 'ADJUDICADA') %}
+                <form method="POST" action="{{ url_for('adjudicar_obra', obra_id=obra.id, pres_id=p.id) }}" class="d-inline">
+                  <button class="btn btn-sm btn-outline-success" title="Adjudicar a este proveedor">
+                    <i class="bi bi-trophy"></i>
+                  </button>
+                </form>
+                {% endif %}
+                {% if not p.seleccionado %}
+                <form method="POST" action="{{ url_for('eliminar_presupuesto_obra', obra_id=obra.id, pres_id=p.id) }}" class="d-inline">
+                  <button class="btn btn-sm btn-outline-danger" title="Eliminar cotización">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted text-center py-3 small">Sin presupuestos cargados.<br>Podés agregar hasta 3.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── Cuotas ── #}
+  <div class="col-lg-7">
+    <div class="card shadow-sm h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-calendar2-week"></i> Plan de pago</span>
+        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalCuota">
+          <i class="bi bi-plus"></i> Agregar cuota
+        </button>
+      </div>
+      <div class="card-body p-0">
+        {% if obra.cuotas %}
+        <table class="table table-hover mb-0 small">
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th>Descripción</th>
+              <th class="text-end">Monto</th>
+              <th class="text-center">Financia</th>
+              <th class="text-center">Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in obra.cuotas %}
+            <tr class="{% if c.cobrada %}table-success{% endif %}">
+              <td class="fw-bold text-center">
+                {% if c.numero == 0 %}A{% else %}{{ c.numero }}{% endif %}
+              </td>
+              <td>{{ c.descripcion_cuota or ('Anticipo' if c.numero == 0 else 'Cuota ' ~ c.numero) }}</td>
+              <td class="text-end fw-semibold">$ {{ "%.2f"|format(c.monto)|replace(".",",") }}</td>
+              <td class="text-center">
+                {% if c.financiacion == 'FONDO_RESERVA' %}
+                  <span class="badge bg-info text-dark"><i class="bi bi-piggy-bank"></i> Fondo</span>
+                {% else %}
+                  <span class="badge bg-danger"><i class="bi bi-people"></i> Expensa</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                {% if c.cobrada %}
+                  <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Cobrada</span>
+                {% else %}
+                  <span class="badge bg-secondary">Pendiente</span>
+                {% endif %}
+              </td>
+              <td class="text-nowrap">
+                {% if not c.cobrada %}
+                <button class="btn btn-sm btn-outline-success"
+                        data-bs-toggle="modal" data-bs-target="#modalCobrar"
+                        onclick="setCobrarCuota({{ c.id }}, '{{ c.descripcion_cuota or ('Anticipo' if c.numero == 0 else 'Cuota ' ~ c.numero) }}', {{ c.monto }})">
+                  <i class="bi bi-cash-coin"></i> Cobrar
+                </button>
+                <form method="POST" action="{{ url_for('eliminar_cuota_obra', obra_id=obra.id, cuota_id=c.id) }}"
+                      class="d-inline" onsubmit="return confirm('¿Eliminar esta cuota?')">
+                  <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot class="table-light fw-bold">
+            <tr>
+              <td colspan="2">TOTAL</td>
+              <td class="text-end">$ {{ "%.2f"|format(obra.cuotas|sum(attribute='monto'))|replace(".",",") }}</td>
+              <td colspan="3"></td>
+            </tr>
+          </tfoot>
+        </table>
+        {% else %}
+        <p class="text-muted text-center py-3 small">Sin cuotas definidas.<br>Agregá el anticipo y las cuotas del plan de pago.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{# ── Modal Editar Obra ── #}
+<div class="modal fade" id="modalEditarObra" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('editar_obra', obra_id=obra.id) }}">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-pencil"></i> Editar obra</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Descripción *</label>
+            <input type="text" class="form-control" name="descripcion" value="{{ obra.descripcion }}" required>
+          </div>
+          <div class="row g-3">
+            <div class="col-6">
+              <label class="form-label">Fecha</label>
+              <input type="date" class="form-control" name="fecha" value="{{ obra.fecha }}">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Estado</label>
+              <select class="form-select" name="estado">
+                {% for e, lbl in [('PRESUPUESTANDO','Presupuestando'),('ADJUDICADA','Adjudicada'),('EN_EJECUCION','En ejecución'),('TERMINADA','Terminada')] %}
+                <option value="{{ e }}" {% if obra.estado == e %}selected{% endif %}>{{ lbl }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-7">
+              <label class="form-label">Proveedor adjudicado</label>
+              <input type="text" class="form-control" name="proveedor_nombre" value="{{ obra.proveedor_nombre }}">
+            </div>
+            <div class="col-5">
+              <label class="form-label">Importe total</label>
+              <input type="number" class="form-control" name="importe_total" step="0.01" min="0"
+                     value="{{ '%.2f'|format(obra.importe_total) if obra.importe_total else '' }}">
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="form-label">Financiación general</label>
+            <select class="form-select" name="financiacion">
+              <option value="EXPENSAS" {% if obra.financiacion == 'EXPENSAS' %}selected{% endif %}>Expensa extraordinaria (pagan propietarios)</option>
+              <option value="FONDO_RESERVA" {% if obra.financiacion == 'FONDO_RESERVA' %}selected{% endif %}>Sale del Fondo de Reserva</option>
+              <option value="MIXTO" {% if obra.financiacion == 'MIXTO' %}selected{% endif %}>Mixto</option>
+            </select>
+          </div>
+          <div class="mt-3">
+            <label class="form-label">Resolución de asamblea / acta</label>
+            <textarea class="form-control" name="notas_asamblea" rows="2">{{ obra.notas_asamblea }}</textarea>
+          </div>
+          <div class="mt-3">
+            <label class="form-label">Notas internas</label>
+            <textarea class="form-control" name="notas" rows="2">{{ obra.notas }}</textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── Modal Agregar Presupuesto ── #}
+<div class="modal fade" id="modalPresupuesto" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('add_presupuesto_obra', obra_id=obra.id) }}">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-clipboard2-plus"></i> Agregar cotización</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Proveedor *</label>
+            <input type="text" class="form-control" name="proveedor_nombre" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Importe cotizado</label>
+            <input type="number" class="form-control" name="importe" step="0.01" min="0">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Notas (plazo, condiciones, etc.)</label>
+            <textarea class="form-control" name="notas" rows="2"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Agregar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── Modal Agregar Cuota ── #}
+<div class="modal fade" id="modalCuota" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('add_cuota_obra', obra_id=obra.id) }}">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Agregar cuota / anticipo</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Descripción (ej: Anticipo, Cuota 1, Saldo final)</label>
+            <input type="text" class="form-control" name="descripcion_cuota"
+                   placeholder="Anticipo / Cuota 1 / Saldo...">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Monto *</label>
+            <input type="number" class="form-control" name="monto" step="0.01" min="0.01" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Cómo se paga</label>
+            <select class="form-select" name="financiacion">
+              <option value="EXPENSAS">Expensa extraordinaria — lo pagan los propietarios</option>
+              <option value="FONDO_RESERVA">Sale del Fondo de Reserva — no se cobra</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Agregar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── Modal Cobrar Cuota ── #}
+<div class="modal fade" id="modalCobrar" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" id="formCobrar">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-cash-coin"></i> Cobrar cuota</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p id="txtCobrarDesc" class="fw-semibold mb-1"></p>
+          <p id="txtCobrarMonto" class="text-primary fs-5 mb-3"></p>
+          <div class="alert alert-info small mb-3">
+            Al confirmar se cargará un gasto en <strong>Gastos Mensuales</strong> del período elegido
+            y se recalculará la liquidación si está abierta.
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Período en que entra el gasto *</label>
+            <input type="month" class="form-control" name="periodo" value="{{ hoy_sistema[:7] }}" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success"><i class="bi bi-check-circle"></i> Cobrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function setCobrarCuota(id, desc, monto) {
+  document.getElementById('formCobrar').action = '/obras/{{ obra.id }}/cuotas/' + id + '/cobrar';
+  document.getElementById('txtCobrarDesc').textContent = desc;
+  document.getElementById('txtCobrarMonto').textContent = '$ ' + monto.toLocaleString('es-AR', {minimumFractionDigits:2});
+}
+</script>
+
+{% else %}
+{# ── Lista de obras ── #}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-wrench-adjustable-circle"></i> Obras / Expensas Extraordinarias</h4>
+  <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalNuevaObra">
+    <i class="bi bi-plus-circle"></i> Nueva obra
+  </button>
+</div>
+
+{% if obras %}
+<div class="row g-3">
+  {% for o in obras %}
+  {% set color = {'PRESUPUESTANDO':'secondary','ADJUDICADA':'info','EN_EJECUCION':'warning','TERMINADA':'success'} %}
+  {% set label = {'PRESUPUESTANDO':'Presupuestando','ADJUDICADA':'Adjudicada','EN_EJECUCION':'En ejecución','TERMINADA':'Terminada'} %}
+  <div class="col-md-6 col-xl-4">
+    <div class="card shadow-sm h-100 border-{{ color.get(o.estado,'secondary') }}">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <h6 class="card-title mb-0">{{ o.descripcion }}</h6>
+          <span class="badge bg-{{ color.get(o.estado,'secondary') }} ms-2 flex-shrink-0">
+            {{ label.get(o.estado, o.estado) }}
+          </span>
+        </div>
+        {% if o.proveedor_nombre %}
+        <p class="text-muted small mb-1"><i class="bi bi-person-workspace"></i> {{ o.proveedor_nombre }}</p>
+        {% endif %}
+        <p class="text-muted small mb-2"><i class="bi bi-calendar3"></i> {{ o.fecha | fecha_ar }}</p>
+        {% if o.importe_total %}
+        <p class="fw-semibold mb-2">$ {{ "%.2f"|format(o.importe_total)|replace(".",",") }}</p>
+        {% endif %}
+
+        {% set cobradas = o.cuotas | selectattr('cobrada') | list %}
+        {% set pendientes = o.cuotas | rejectattr('cobrada') | list %}
+        {% if o.cuotas %}
+        <div class="small text-muted mb-2">
+          {{ o.cuotas|length }} cuota{{ 's' if o.cuotas|length != 1 }}
+          {% if cobradas %} · <span class="text-success">{{ cobradas|length }} cobrada{{ 's' if cobradas|length != 1 }}</span>{% endif %}
+          {% if pendientes %} · <span class="text-danger">{{ pendientes|length }} pendiente{{ 's' if pendientes|length != 1 }}</span>{% endif %}
+        </div>
+        {% endif %}
+
+        <a href="{{ url_for('detalle_obra', obra_id=o.id) }}" class="btn btn-sm btn-outline-primary w-100">
+          <i class="bi bi-eye"></i> Ver detalle
+        </a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card shadow-sm">
+  <div class="card-body text-center text-muted py-5">
+    <i class="bi bi-wrench-adjustable-circle" style="font-size:3rem"></i>
+    <p class="mt-3">No hay obras registradas.<br>Creá una para gestionar presupuestos, asamblea y cuotas de pago.</p>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalNuevaObra">
+      <i class="bi bi-plus-circle"></i> Nueva obra
+    </button>
+  </div>
+</div>
+{% endif %}
+
+{# ── Modal Nueva Obra ── #}
+<div class="modal fade" id="modalNuevaObra" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('nueva_obra') }}">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Nueva obra</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Descripción *</label>
+            <input type="text" class="form-control" name="descripcion"
+                   placeholder="ej: Reparación del ascensor, Pintura de fachada..." required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Fecha de inicio del trámite</label>
+            <input type="date" class="form-control" name="fecha" value="{{ hoy_sistema }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Financiación prevista</label>
+            <select class="form-select" name="financiacion">
+              <option value="EXPENSAS">Expensa extraordinaria — lo pagan los propietarios</option>
+              <option value="FONDO_RESERVA">Sale del Fondo de Reserva — no se cobra</option>
+              <option value="MIXTO">Mixto (parte del fondo, parte expensa)</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Notas</label>
+            <textarea class="form-control" name="notas" rows="2"
+                      placeholder="Descripción del trabajo, urgencia, contexto..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Crear obra</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endif %}
+
+{% endblock %}

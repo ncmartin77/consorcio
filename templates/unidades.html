@@ -20,7 +20,6 @@
           <tr>
             <th>N°</th>
             <th>Descripción</th>
-            <th>Piso</th>
             <th>Propietario</th>
             <th>Inquilino</th>
             {% for cat in categorias %}
@@ -36,8 +35,7 @@
           {% for u in unidades %}
           <tr>
             <td><strong>{{ u.numero }}</strong></td>
-            <td>{{ u.descripcion }}</td>
-            <td class="text-center">{{ u.get('piso','') }}</td>
+            <td>{{ u.descripcion | fmt_desc(u.get('piso','')) }}</td>
             <td>{{ u.propietario }}</td>
             <td class="text-muted">{{ u.inquilino }}</td>
             {% for cat in categorias %}
