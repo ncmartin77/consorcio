@@ -12,9 +12,9 @@
 | **Stack** | Flask + PostgreSQL (Supabase) + Jinja2 + Bootstrap 5 |
 | **Repo** | https://github.com/ncmartin77/consorcio (rama: `master`) |
 | **Deploy** | https://consorcio-soo4.onrender.com (Render.com free tier, auto-deploy desde master) |
-| **Directorio local** | `/home/norberto/consorcio` |
+| **Directorio local** | `/home/norberto/consorcio` (PC original) · `/home/20258944020/consorcio` (PC del Senado, git nativo de Linux) |
 | **Git en WSL** | `"/mnt/c/Program Files/Git/bin/git.exe"` (siempre con ruta completa) |
-| **Version actual** | `11.1-1211` (en `version.txt`) |
+| **Version actual** | `11.4-1711` (en `version.txt`) |
 | **Supabase Project ID** | `eboskmenitazzwfobwkiq` (region: ca-central-1) |
 | **MCP Supabase config** | `~/.mcp.json` (token `sb_secret_*` en `headers.Authorization`) |
 | **Consorcio activo en DB** | `consorcio_id = '28693516'` |
@@ -93,16 +93,23 @@
 
 ---
 
-## >>> DONDE QUEDAMOS (15/11/2026) — leer primero <<<
+## >>> DONDE QUEDAMOS (17/11/2026) — leer primero <<<
 
-**Produccion (Render, rama `master`)**: **v11.1-1211** — confirmada en Render al 12/11. Storage activo (comprobantes en Supabase Storage). Todas las pruebas OK.
+**Produccion (Render, rama `master`)**: **v11.3-1611**, verificada el 17/11 en la pagina publica `/verificar` de https://consorcio-soo4.onrender.com (la version solo se ve en paginas que usan `base.html`; `/login` no la muestra). Storage activo (comprobantes en Supabase Storage).
 
 **Estado del master (todo mergeado y en produccion):**
 - v10.0–v10.4: lineamientos juridicos (interes sin capitalizar, libro del fondo, clasificacion de gastos, exportacion, alertas, pruebas), all OK.
 - v11.0: comprobantes y adjuntos en Supabase Storage (`storage.py`, `boto3`).
 - v11.1: borrar/reemplazar comprobantes, eliminar consorcio borra sus archivos en Storage.
-- Pruebas: 16 pruebas OK (base local), `probar_storage.py` 37/37 OK.
-- `feat/plataforma`: rama separada, nueva plataforma en desarrollo (etapa 3: liquidaciones y cuenta corriente). **NO es el sistema actual.**
+- v11.2: Liquidacion y Cobranzas muestran propietario e inquilino juntos ("Inq:" debajo).
+- v11.3: descripcion `P{piso} D{depto}` (filtro `fmt_desc`, columna `liquidaciones.piso`); badge Pagado/Impago/Sin factura en Gastos Mensuales; **modulo Obras / Expensas extraordinarias** (`Proveedores → Obras`; tablas `obras`, `presupuestos_obra`, `cuotas_obra` en `ensure_obras`; cobrar una cuota crea el gasto EXTRAORDINARIO o VARIABLE_FR y recalcula la liquidacion abierta).
+- Pruebas: 16 pruebas OK (base local), `probar_storage.py` 37/37 OK. **v11.2 y v11.3 sin pruebas registradas** en `docs/pruebas_realizadas.md`.
+- `feat/plataforma`: rama separada, nueva plataforma en desarrollo (etapa 3: liquidaciones y cuenta corriente; ultimo commit 12/11, le faltan los ultimos commits de master). **NO es el sistema actual.**
+
+**Pendientes inmediatos (17/11):**
+- Pruebas del modulo Obras (presupuestos, adjudicacion, cuotas, cobro como EXTRAORDINARIO y VARIABLE_FR, bloqueo si la liquidacion esta cerrada) y de v11.2/v11.3, contra `consorcio-tst`.
+- Ramas ya incluidas en master, se pueden borrar: `feat/storage-v10`, `feat/borrar-archivos` (worktree `~/consorcio-v10` en la PC del Senado), `feat/lineamientos-v10`, `migracion`. `main` es la version vieja (Excel), sin uso.
+- Ramas con trabajo propio sin unir: `supabase-storage` (1 commit local sin subir en la PC del Senado) y `feat/docker-flask` (solo local en la PC del Senado, sin remoto). Decidir si se suben o se descartan.
 
 **Pendiente del documento juridico (punto 6, no empezado):** asambleas (convocatoria, asistencia, poderes, actas, mayorias), ficha de ascensores (Ord. 8.661), libros y rubrica, locacion art. 1209 (propietario/inquilino), bancos y conciliacion, privacidad (links publicos de recibos que no vencen, aviso de privacidad, transferencia internacional Supabase/Render).
 
