@@ -338,7 +338,7 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 
 #### v11.5-1811 — Seguridad: Data API de Supabase cerrada (RLS)
 
-**Lanzamiento:** 18 de noviembre
+**Lanzamiento:** 18 de noviembre · Detalle completo del incidente: [`seguridad_rls_supabase.md`](seguridad_rls_supabase.md)
 
 - **Vulnerabilidad corregida:** las tablas de `public` no tenían RLS y los roles `anon`/`authenticated` tenían permisos completos. Con la clave publicable de Supabase (que no es secreta) cualquiera podía leer y modificar toda la base por la API REST/GraphQL (confirmado: `GET /rest/v1/usuarios` respondía 200).
 - `pg_db.ensure_rls()` (llamada al final de `before_request`, en su propio `try`): activa RLS sin políticas en toda tabla de `public` que no lo tenga (también las que se creen después, p. ej. las de Obras) y, si existen los roles de Supabase, revoca a `anon`/`authenticated` los permisos sobre tablas, secuencias y funciones, incluidos los permisos por defecto. La app no se ve afectada: se conecta como `postgres` (dueño de las tablas, `BYPASSRLS`).
