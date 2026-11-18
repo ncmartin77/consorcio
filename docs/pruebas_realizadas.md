@@ -24,7 +24,7 @@ Las más recientes van primero. Los scripts para repetirlas están en [`pruebas/
 
 ## v11.5-1811 — Seguridad: RLS en Supabase (18/11/2026)
 
-Arreglo aplicado por SQL en **`consorcio-tst`** (el mismo que hace `ensure_rls()`) y verificado desde fuera y desde el rol de la app. Producción todavía sin tocar al registrar esta prueba.
+Arreglo aplicado por SQL en **`consorcio-tst`** (el mismo que hace `ensure_rls()`) y verificado desde fuera y desde el rol de la app. El mismo SQL se aplicó después en **producción** (18/11) con idéntico resultado: 25/25 con RLS, API → 401, Security Advisor sin errores, app en Render respondiendo 200.
 
 | Caso | Esperado | Resultado |
 |---|---|---|
