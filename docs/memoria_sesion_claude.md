@@ -106,6 +106,8 @@
 - Pruebas: 16 pruebas OK (base local), `probar_storage.py` 37/37 OK. **v11.2 y v11.3 sin pruebas registradas** en `docs/pruebas_realizadas.md`.
 - `feat/plataforma`: rama separada, nueva plataforma en desarrollo (etapa 3: liquidaciones y cuenta corriente; ultimo commit 12/11, le faltan los ultimos commits de master). **NO es el sistema actual.**
 
+**Seguridad v11.5 (18/11, rama `seguridad/rls-supabase`):** la Data API de Supabase estaba abierta (sin RLS, `anon` con permisos totales). Arreglado y verificado en `consorcio-tst` (ver `pruebas_realizadas.md`). **Pendiente:** correr la suite de `pruebas/` contra tst, mergear a `master` y aplicar en producción (el deploy lo aplica solo vía `ensure_rls()` en el primer request; verificar después con el Security Advisor y un `GET /rest/v1/usuarios` con la clave publicable → 401). Opcional: desactivar la Data API en el dashboard (la app no la usa). Ojo: las tablas de Obras (`obras`, `presupuestos_obra`, `cuotas_obra`) no existían ni en tst ni en producción al 18/11: revisar si `ensure_obras()` está fallando.
+
 **Pendientes inmediatos (17/11):**
 - Pruebas del modulo Obras (presupuestos, adjudicacion, cuotas, cobro como EXTRAORDINARIO y VARIABLE_FR, bloqueo si la liquidacion esta cerrada) y de v11.2/v11.3, contra `consorcio-tst`.
 - Ramas ya incluidas en master, se pueden borrar: `feat/storage-v10`, `feat/borrar-archivos` (worktree `~/consorcio-v10` en la PC del Senado), `feat/lineamientos-v10`, `migracion`. `main` es la version vieja (Excel), sin uso.

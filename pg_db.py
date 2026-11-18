@@ -2934,7 +2934,7 @@ def ensure_auditoria():
                     CREATE INDEX IF NOT EXISTS audit_log_fecha_idx ON audit_log (fecha);
 
                     CREATE OR REPLACE FUNCTION audit_registrar() RETURNS trigger
-                    LANGUAGE plpgsql AS $$
+                    LANGUAGE plpgsql SET search_path = public, pg_temp AS $$
                     DECLARE
                         v_antes   JSONB := CASE WHEN TG_OP <> 'INSERT' THEN to_jsonb(OLD) END;
                         v_despues JSONB := CASE WHEN TG_OP <> 'DELETE' THEN to_jsonb(NEW) END;
@@ -3170,6 +3170,41 @@ def ensure_liq_piso():
     """v11.3: columna piso en liquidaciones para mostrar formato 'PX DX'."""
     _ensure_columna("liquidaciones.piso",
                     "ALTER TABLE liquidaciones ADD COLUMN IF NOT EXISTS piso TEXT")
+
+
+def ensure_rls():
+    """v11.5 (seguridad): cierra la Data API de Supabase (REST/GraphQL) sobre el esquema public.
+
+    La app se conecta como `postgres` (dueño de las tablas, con BYPASSRLS), así que RLS no la
+    afecta. Pero Supabase expone `public` por la API con la clave publicable (que no es secreta):
+    sin RLS, cualquiera con esa clave podía leer y modificar todas las tablas.
+    - Activa RLS (sin políticas = nadie entra por la API) en toda tabla de public que no lo tenga,
+      incluidas las que se creen después (se llama al final de los ensure_* de before_request).
+    - Si existen los roles de Supabase (anon/authenticated), les quita los permisos sobre tablas,
+      secuencias y funciones, también los permisos por defecto de las tablas futuras.
+      En un Postgres local sin esos roles, esa parte se saltea.
+    Idempotente; una vez por proceso. Sin '%' en el SQL (psycopg2 lo interpretaría).
+    """
+    _ensure_columna("seguridad.rls", """
+        DO $$
+        DECLARE t record;
+        BEGIN
+            FOR t IN SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                     WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relrowsecurity
+            LOOP
+                EXECUTE 'ALTER TABLE public.' || quote_ident(t.relname) || ' ENABLE ROW LEVEL SECURITY';
+            END LOOP;
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon')
+               AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+                REVOKE ALL ON ALL TABLES    IN SCHEMA public FROM anon, authenticated;
+                REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated;
+                REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM anon, authenticated, PUBLIC;
+                ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES    FROM anon, authenticated;
+                ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon, authenticated;
+                ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM anon, authenticated, PUBLIC;
+            END IF;
+        END $$
+    """)
 
 
 def ensure_obras():

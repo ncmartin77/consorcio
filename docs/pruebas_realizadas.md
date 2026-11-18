@@ -22,6 +22,25 @@ Las más recientes van primero. Los scripts para repetirlas están en [`pruebas/
 
 ---
 
+## v11.5-1811 — Seguridad: RLS en Supabase (18/11/2026)
+
+Arreglo aplicado por SQL en **`consorcio-tst`** (el mismo que hace `ensure_rls()`) y verificado desde fuera y desde el rol de la app. Producción todavía sin tocar al registrar esta prueba.
+
+| Caso | Esperado | Resultado |
+|---|---|---|
+| Tablas de `public` con RLS | 25/25 | ✅ 25/25 (antes 0/25) |
+| Tablas accesibles por `anon` / `authenticated` | 0 | ✅ 0 (antes 25) |
+| `GET /rest/v1/usuarios`, `config`, `pagos` con la clave publicable | 401 | ✅ 401 `permission denied` (antes 200) |
+| `POST /rest/v1/config` con la clave publicable | 401 | ✅ 401 `permission denied` |
+| Security Advisor | sin ERROR/WARN | ✅ solo INFO "RLS sin políticas" (buscado) |
+| Rol `postgres` (el de la app): leer las 25 tablas | 25 | ✅ 25 |
+| Rol `postgres`: insert/update/delete en `tareas`, con rollback | OK, update 1 fila | ✅ OK, update_filas=1 |
+| Trigger de auditoría con RLS activo | 3 registros en `audit_log` | ✅ 3 |
+
+**Falta:** correr la suite de `pruebas/` con el código v11.5 contra `consorcio-tst` (no hay `.env.local` en la PC donde se hizo el cambio).
+
+---
+
 ## v10.0-0911 — Lineamientos jurídicos (09/11/2026) — EN CURSO
 
 `pruebas/probar_v10.py` contra la base de prueba (consorcio temporal "Prueba v10", 2 UF al 50 %, expensa $100.000,

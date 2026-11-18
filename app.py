@@ -232,6 +232,10 @@ def _contexto_auditoria():
         db.ensure_obras()
     except Exception as exc:
         app.logger.warning(f"[Auditoría] No se pudo inicializar: {exc}")
+    try:
+        db.ensure_rls()           # al final: cubre también las tablas creadas arriba
+    except Exception as exc:
+        app.logger.warning(f"[Seguridad] No se pudo activar RLS: {exc}")
     if session.get("consorcio_id"):
         try:
             db.set_contexto_auditoria(session.get("usuario_email", ""),
