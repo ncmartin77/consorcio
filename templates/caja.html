@@ -92,11 +92,14 @@
         <strong><i class="bi bi-calendar3"></i> {{ periodo_ant | mes_largo }}</strong>
         {% if liq_cerrada_ant %}<span class="badge bg-danger"><i class="bi bi-lock-fill"></i> Cerrado</span>{% endif %}
       </div>
-      <div class="d-flex gap-3 px-3 py-1 border-bottom bg-light" style="font-size:0.8rem">
+      <div class="d-flex flex-wrap gap-3 px-3 py-1 border-bottom bg-light" style="font-size:0.8rem">
         <span class="text-danger"><strong>DEBE</strong> ${{ "%.2f"|format(salidas_ant)|replace(".",",") }}</span>
         <span class="text-success"><strong>HABER</strong> ${{ "%.2f"|format(entradas_ant)|replace(".",",") }}</span>
         <span class="{% if saldo_mes_ant >= 0 %}text-primary{% else %}text-warning{% endif %}">
-          <strong>Saldo</strong> ${{ "%.2f"|format(saldo_mes_ant)|replace(".",",") }}
+          <strong>Neto mes</strong> ${{ "%.2f"|format(saldo_mes_ant)|replace(".",",") }}
+        </span>
+        <span class="border-start ps-3 {% if saldo_anterior >= 0 %}text-primary{% else %}text-danger{% endif %} fw-bold">
+          <i class="bi bi-safe2"></i> En caja ${{ "%.2f"|format(saldo_anterior)|replace(".",",") }}
         </span>
       </div>
       <div class="card-body p-0">
@@ -167,11 +170,14 @@
         <strong><i class="bi bi-calendar3-fill"></i> {{ periodo | mes_largo }}</strong>
         {% if liq_cerrada %}<span class="badge bg-danger"><i class="bi bi-lock-fill"></i> Cerrado</span>{% endif %}
       </div>
-      <div class="d-flex gap-3 px-3 py-1 border-bottom bg-light" style="font-size:0.8rem">
+      <div class="d-flex flex-wrap gap-3 px-3 py-1 border-bottom bg-light" style="font-size:0.8rem">
         <span class="text-danger"><strong>DEBE</strong> ${{ "%.2f"|format(salidas)|replace(".",",") }}</span>
         <span class="text-success"><strong>HABER</strong> ${{ "%.2f"|format(entradas)|replace(".",",") }}</span>
         <span class="{% if saldo >= 0 %}text-primary{% else %}text-warning{% endif %}">
-          <strong>Saldo</strong> ${{ "%.2f"|format(saldo)|replace(".",",") }}
+          <strong>Neto mes</strong> ${{ "%.2f"|format(saldo)|replace(".",",") }}
+        </span>
+        <span class="border-start ps-3 {% if saldo_acumulado >= 0 %}text-primary{% else %}text-danger{% endif %} fw-bold">
+          <i class="bi bi-safe2"></i> En caja ${{ "%.2f"|format(saldo_acumulado)|replace(".",",") }}
         </span>
       </div>
       <div class="card-body p-0">
