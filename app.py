@@ -1194,15 +1194,31 @@ def caja(periodo=None):
         saldo_pagina += m["importe"] if m["tipo"] == "ENTRADA" else -m["importe"]
     saldo_pagina = round(saldo_pagina, 2)
     ultimo_movimiento = db.get_ultimo_movimiento_caja()
+    # Mes anterior para vista comparativa
+    y_p, m_p = int(periodo[:4]), int(periodo[5:7])
+    periodo_ant = f"{y_p-1}-12" if m_p == 1 else f"{y_p}-{m_p-1:02d}"
+    liq_cerrada_ant = db.caja_mes_bloqueado(periodo_ant)
+    movimientos_ant, _ = db.get_caja(periodo_ant, page=1, per_page=10000)
+    entradas_ant = sum(x["importe"] for x in movimientos_ant if x["tipo"] == "ENTRADA")
+    salidas_ant  = sum(x["importe"] for x in movimientos_ant if x["tipo"] == "SALIDA")
+    saldo_mes_ant = round(entradas_ant - salidas_ant, 2)
+    saldo_ant_ant = round(saldo_anterior - saldo_mes_ant, 2)
     return render_template("caja.html",
-                           movimientos=movimientos,
+                           movimientos=todos,
                            periodo=periodo,
+                           periodo_ant=periodo_ant,
+                           movimientos_ant=movimientos_ant,
+                           entradas_ant=entradas_ant,
+                           salidas_ant=salidas_ant,
+                           saldo_mes_ant=saldo_mes_ant,
+                           saldo_ant_ant=saldo_ant_ant,
+                           liq_cerrada_ant=liq_cerrada_ant,
                            entradas=entradas,
                            salidas=salidas,
                            saldo=saldo_mes,
                            saldo_anterior=saldo_anterior,
                            saldo_acumulado=saldo_acumulado,
-                           saldo_pagina=saldo_pagina,
+                           saldo_pagina=saldo_anterior,
                            liq_cerrada=liq_cerrada,
                            ultimo_movimiento=ultimo_movimiento,
                            page=page, total_pages=total_pages, total=total)

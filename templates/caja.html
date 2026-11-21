@@ -81,77 +81,160 @@
 </div>
 
 
-<div class="card shadow-sm">
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table id="tablaCaja" class="table table-striped table-hover mb-0">
-        <thead class="table-primary">
-          <tr>
-            <th>Fecha</th>
-            <th>Descripción</th>
-            <th>Categoría</th>
-            <th class="text-end text-danger">DEBE</th>
-            <th class="text-end text-success">HABER</th>
-            <th class="text-end">Saldo</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% set ns = namespace(saldo=saldo_pagina) %}
-          {% for m in movimientos %}
-          {% if m.tipo == 'ENTRADA' %}{% set ns.saldo = ns.saldo + m.importe %}{% else %}{% set ns.saldo = ns.saldo - m.importe %}{% endif %}
-          <tr class="fila-caja" style="cursor:pointer"
-              data-saldo="{{ '%.2f'|format(ns.saldo) }}"
-              data-fecha="{{ m.fecha[8:10] }}/{{ m.fecha[5:7] }}/{{ m.fecha[:4] }}">
-            <td>{{ m.fecha[8:10] }}/{{ m.fecha[5:7] }}/{{ m.fecha[:4] }}</td>
-            <td>
-              {{ m.descripcion }}
-              {% if m.factura_id %}
-              <span class="badge bg-info text-dark ms-1" title="Movimiento vinculado a factura #{{ m.factura_id }}">
-                <i class="bi bi-receipt-cutoff"></i> Fac.
-              </span>
-              {% endif %}
-            </td>
-            <td class="text-muted small">{{ m.categoria }}</td>
-            <td class="text-end fw-semibold text-danger">
-              {% if m.tipo == 'SALIDA' %}$ {{ "%.2f"|format(m.importe)|replace(".",",") }}{% endif %}
-            </td>
-            <td class="text-end fw-semibold text-success">
-              {% if m.tipo == 'ENTRADA' %}$ {{ "%.2f"|format(m.importe)|replace(".",",") }}{% endif %}
-            </td>
-            <td class="text-end small {% if ns.saldo >= 0 %}text-primary{% else %}text-danger{% endif %}">
-              $ {{ "%.2f"|format(ns.saldo)|replace(".",",") }}
-            </td>
-            <td class="text-nowrap">
-              {% if not liq_cerrada %}
-              <button class="btn btn-sm btn-outline-secondary me-1"
-                      onclick='event.stopPropagation(); editarMov({{ m|tojson }})'>
-                <i class="bi bi-pencil"></i>
-              </button>
-              <form method="POST"
-                    action="{{ url_for('delete_movimiento', row_num=m.row, periodo=periodo) }}"
-                    class="d-inline"
-                    onsubmit="event.stopPropagation(); {% if m.factura_id %}return confirm('Este movimiento está vinculado a una factura. Al eliminarlo, la factura volverá a estado PENDIENTE.\n\n¿Confirmar?'){% else %}return confirm('¿Eliminar este movimiento?'){% endif %}">
-                <button class="btn btn-sm btn-outline-danger">
-                  <i class="bi bi-trash"></i>
-                </button>
-              </form>
+<!-- Dos meses en paralelo -->
+<div class="row g-3">
+
+  {# Macro inline: tabla de movimientos de un mes #}
+  {# Mes anterior #}
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center py-2">
+        <strong><i class="bi bi-calendar3"></i> {{ periodo_ant | mes_largo }}</strong>
+        {% if liq_cerrada_ant %}<span class="badge bg-danger"><i class="bi bi-lock-fill"></i> Cerrado</span>{% endif %}
+      </div>
+      <div class="d-flex gap-3 px-3 py-1 border-bottom bg-light" style="font-size:0.8rem">
+        <span class="text-danger"><strong>DEBE</strong> ${{ "%.2f"|format(salidas_ant)|replace(".",",") }}</span>
+        <span class="text-success"><strong>HABER</strong> ${{ "%.2f"|format(entradas_ant)|replace(".",",") }}</span>
+        <span class="{% if saldo_mes_ant >= 0 %}text-primary{% else %}text-warning{% endif %}">
+          <strong>Saldo</strong> ${{ "%.2f"|format(saldo_mes_ant)|replace(".",",") }}
+        </span>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm table-striped table-hover mb-0">
+            <thead class="table-secondary">
+              <tr>
+                <th>Fecha</th>
+                <th>Descripción</th>
+                <th class="text-end text-danger">DEBE</th>
+                <th class="text-end text-success">HABER</th>
+                <th class="text-end">Saldo</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% set ns = namespace(saldo=saldo_ant_ant) %}
+              {% for m in movimientos_ant %}
+              {% if m.tipo == 'ENTRADA' %}{% set ns.saldo = ns.saldo + m.importe %}{% else %}{% set ns.saldo = ns.saldo - m.importe %}{% endif %}
+              <tr class="fila-caja" style="cursor:pointer"
+                  data-saldo="{{ '%.2f'|format(ns.saldo) }}"
+                  data-fecha="{{ m.fecha[8:10] }}/{{ m.fecha[5:7] }}/{{ m.fecha[:4] }}">
+                <td class="small text-nowrap">{{ m.fecha[8:10] }}/{{ m.fecha[5:7] }}</td>
+                <td class="small">
+                  {{ m.descripcion }}
+                  {% if m.factura_id %}<span class="badge bg-info text-dark ms-1" title="Vinculado a factura"><i class="bi bi-receipt-cutoff"></i></span>{% endif %}
+                </td>
+                <td class="text-end fw-semibold text-danger small">
+                  {% if m.tipo == 'SALIDA' %}${{ "%.2f"|format(m.importe)|replace(".",",") }}{% endif %}
+                </td>
+                <td class="text-end fw-semibold text-success small">
+                  {% if m.tipo == 'ENTRADA' %}${{ "%.2f"|format(m.importe)|replace(".",",") }}{% endif %}
+                </td>
+                <td class="text-end small {% if ns.saldo >= 0 %}text-primary{% else %}text-danger{% endif %}">
+                  ${{ "%.2f"|format(ns.saldo)|replace(".",",") }}
+                </td>
+                <td class="text-nowrap">
+                  {% if not liq_cerrada_ant %}
+                  <button class="btn btn-sm btn-outline-secondary me-1"
+                          onclick='event.stopPropagation(); editarMov({{ m|tojson }}, "{{ periodo_ant }}")'>
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                  <form method="POST"
+                        action="{{ url_for('delete_movimiento', row_num=m.row, periodo=periodo_ant) }}"
+                        class="d-inline"
+                        onsubmit="event.stopPropagation(); {% if m.factura_id %}return confirm('Este movimiento está vinculado a una factura. Al eliminarlo, la factura volverá a estado PENDIENTE.\n\n¿Confirmar?'){% else %}return confirm('¿Eliminar este movimiento?'){% endif %}">
+                    <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                  </form>
+                  {% else %}
+                  <i class="bi bi-lock-fill text-muted"></i>
+                  {% endif %}
+                </td>
+              </tr>
               {% else %}
-              <i class="bi bi-lock-fill text-muted"></i>
-              {% endif %}
-            </td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="7" class="text-center text-muted py-4">
-              No hay movimientos para {{ periodo }}.
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+              <tr><td colspan="6" class="text-center text-muted py-4 small">Sin movimientos para {{ periodo_ant }}.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
+
+  {# Mes actual #}
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-2">
+        <strong><i class="bi bi-calendar3-fill"></i> {{ periodo | mes_largo }}</strong>
+        {% if liq_cerrada %}<span class="badge bg-danger"><i class="bi bi-lock-fill"></i> Cerrado</span>{% endif %}
+      </div>
+      <div class="d-flex gap-3 px-3 py-1 border-bottom bg-light" style="font-size:0.8rem">
+        <span class="text-danger"><strong>DEBE</strong> ${{ "%.2f"|format(salidas)|replace(".",",") }}</span>
+        <span class="text-success"><strong>HABER</strong> ${{ "%.2f"|format(entradas)|replace(".",",") }}</span>
+        <span class="{% if saldo >= 0 %}text-primary{% else %}text-warning{% endif %}">
+          <strong>Saldo</strong> ${{ "%.2f"|format(saldo)|replace(".",",") }}
+        </span>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table id="tablaCaja" class="table table-sm table-striped table-hover mb-0">
+            <thead class="table-primary">
+              <tr>
+                <th>Fecha</th>
+                <th>Descripción</th>
+                <th class="text-end text-danger">DEBE</th>
+                <th class="text-end text-success">HABER</th>
+                <th class="text-end">Saldo</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% set ns = namespace(saldo=saldo_anterior) %}
+              {% for m in movimientos %}
+              {% if m.tipo == 'ENTRADA' %}{% set ns.saldo = ns.saldo + m.importe %}{% else %}{% set ns.saldo = ns.saldo - m.importe %}{% endif %}
+              <tr class="fila-caja" style="cursor:pointer"
+                  data-saldo="{{ '%.2f'|format(ns.saldo) }}"
+                  data-fecha="{{ m.fecha[8:10] }}/{{ m.fecha[5:7] }}/{{ m.fecha[:4] }}">
+                <td class="small text-nowrap">{{ m.fecha[8:10] }}/{{ m.fecha[5:7] }}</td>
+                <td class="small">
+                  {{ m.descripcion }}
+                  {% if m.factura_id %}<span class="badge bg-info text-dark ms-1" title="Vinculado a factura"><i class="bi bi-receipt-cutoff"></i></span>{% endif %}
+                </td>
+                <td class="text-end fw-semibold text-danger small">
+                  {% if m.tipo == 'SALIDA' %}${{ "%.2f"|format(m.importe)|replace(".",",") }}{% endif %}
+                </td>
+                <td class="text-end fw-semibold text-success small">
+                  {% if m.tipo == 'ENTRADA' %}${{ "%.2f"|format(m.importe)|replace(".",",") }}{% endif %}
+                </td>
+                <td class="text-end small {% if ns.saldo >= 0 %}text-primary{% else %}text-danger{% endif %}">
+                  ${{ "%.2f"|format(ns.saldo)|replace(".",",") }}
+                </td>
+                <td class="text-nowrap">
+                  {% if not liq_cerrada %}
+                  <button class="btn btn-sm btn-outline-secondary me-1"
+                          onclick='event.stopPropagation(); editarMov({{ m|tojson }}, "{{ periodo }}")'>
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                  <form method="POST"
+                        action="{{ url_for('delete_movimiento', row_num=m.row, periodo=periodo) }}"
+                        class="d-inline"
+                        onsubmit="event.stopPropagation(); {% if m.factura_id %}return confirm('Este movimiento está vinculado a una factura. Al eliminarlo, la factura volverá a estado PENDIENTE.\n\n¿Confirmar?'){% else %}return confirm('¿Eliminar este movimiento?'){% endif %}">
+                    <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                  </form>
+                  {% else %}
+                  <i class="bi bi-lock-fill text-muted"></i>
+                  {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="6" class="text-center text-muted py-4 small">No hay movimientos para {{ periodo }}.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- Barra de corte -->
@@ -163,38 +246,12 @@
   </button>
 </div>
 
-<!-- Paginación -->
-{% if total_pages > 1 %}
-<nav class="mt-3 d-flex justify-content-between align-items-center">
-  <small class="text-muted">
-    Mostrando {{ (page-1)*50+1 }}–{{ [page*50, total]|min }} de {{ total }} movimientos
-  </small>
-  <ul class="pagination pagination-sm mb-0">
-    <li class="page-item {% if page <= 1 %}disabled{% endif %}">
-      <a class="page-link" href="{{ url_for('caja', periodo=periodo) }}?page={{ page-1 }}"><i class="bi bi-chevron-left"></i></a>
-    </li>
-    {% for p in range(1, total_pages+1) %}
-    {% if p == 1 or p == total_pages or (p >= page-2 and p <= page+2) %}
-    <li class="page-item {% if p == page %}active{% endif %}">
-      <a class="page-link" href="{{ url_for('caja', periodo=periodo) }}?page={{ p }}">{{ p }}</a>
-    </li>
-    {% elif p == page-3 or p == page+3 %}
-    <li class="page-item disabled"><span class="page-link">…</span></li>
-    {% endif %}
-    {% endfor %}
-    <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
-      <a class="page-link" href="{{ url_for('caja', periodo=periodo) }}?page={{ page+1 }}"><i class="bi bi-chevron-right"></i></a>
-    </li>
-  </ul>
-</nav>
-{% endif %}
-
 <!-- Modal Movimiento -->
 <div class="modal fade" id="modalMov" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
       <form method="POST" action="{{ url_for('save_movimiento') }}">
-        <input type="hidden" name="periodo" value="{{ periodo }}">
+        <input type="hidden" name="periodo" id="mov_periodo" value="{{ periodo }}">
         <input type="hidden" name="row_num" id="mov_row_num">
         <div class="modal-header bg-primary text-white">
           <h5 class="modal-title" id="modalMovTitulo">
@@ -273,14 +330,15 @@ document.querySelectorAll('.fila-caja').forEach(function(tr) {
 const today = '{{ hoy_sistema }}';
 document.getElementById('mov_fecha').value = today;
 
-function editarMov(m) {
+function editarMov(m, period) {
   document.getElementById('modalMovTitulo').innerHTML =
     '<i class="bi bi-pencil"></i> Editar Movimiento';
   document.getElementById('mov_row_num').value = m.row;
+  document.getElementById('mov_periodo').value = period || '{{ periodo }}';
   document.getElementById('mov_fecha').value = m.fecha;
   document.getElementById('mov_tipo').value = m.tipo;
   document.getElementById('mov_descripcion').value = m.descripcion;
-  document.getElementById('mov_categoria').value = m.categoria;
+  document.getElementById('mov_categoria').value = m.categoria || '';
   document.getElementById('mov_importe').value = m.importe;
   new bootstrap.Modal(document.getElementById('modalMov')).show();
 }
@@ -289,6 +347,7 @@ document.getElementById('modalMov').addEventListener('hidden.bs.modal', function
   document.getElementById('modalMovTitulo').innerHTML =
     '<i class="bi bi-plus-circle"></i> Agregar Movimiento';
   document.getElementById('mov_row_num').value = '';
+  document.getElementById('mov_periodo').value = '{{ periodo }}';
   document.getElementById('mov_fecha').value = today;
   document.getElementById('mov_tipo').value = 'ENTRADA';
   document.getElementById('mov_descripcion').value = '';
