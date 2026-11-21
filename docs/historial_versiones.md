@@ -3,7 +3,7 @@
 **Proyecto:** App Flask + PostgreSQL (Supabase) para administración de consorcios  
 **Repositorio:** github.com/ncmartin77/consorcio  
 **Deploy:** Render.com  
-**Versión actual:** 11.3-1611
+**Versión actual:** 11.4-1711
 
 ---
 
@@ -335,6 +335,14 @@ Hasta la v3.x, el Fondo de Reserva se sumaba junto con los gastos ordinarios en 
 ---
 
 ### v10.x — Lineamientos jurídicos (Paraná, Entre Ríos)
+
+#### v11.4-1711 — Memoria de sesión al día
+
+**Lanzamiento:** 17 de noviembre
+
+- Solo documentación: `docs/memoria_sesion_claude.md` registra v11.2 y v11.3, la verificación de producción (v11.3 en Render) y los pendientes (pruebas del módulo Obras, ramas viejas). Sin cambios en la app.
+
+---
 
 #### v11.3-1611 — Formato PX DX, estado de factura en Gastos y módulo Obras
 
