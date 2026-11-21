@@ -17,12 +17,12 @@
     {% endif %}
     {% if ultimo_movimiento %}
     <form method="POST" action="{{ url_for('eliminar_ultimo_movimiento') }}"
-          onsubmit="return confirm('¿Eliminar el último movimiento?\n\n{{ ultimo_movimiento.tipo }}: {{ ultimo_movimiento.descripcion }} (${{ '%.2f'|format(ultimo_movimiento.importe) }})\nFecha: {{ ultimo_movimiento.fecha[8:10] }}/{{ ultimo_movimiento.fecha[5:7] }}/{{ ultimo_movimiento.fecha[:4] }}')"
+          onsubmit="return confirm('¿Eliminar el último movimiento?\n\n{{ 'Haber' if ultimo_movimiento.tipo == 'ENTRADA' else 'Debe' }}: {{ ultimo_movimiento.descripcion }} (${{ '%.2f'|format(ultimo_movimiento.importe) }})\nFecha: {{ ultimo_movimiento.fecha[8:10] }}/{{ ultimo_movimiento.fecha[5:7] }}/{{ ultimo_movimiento.fecha[:4] }}')"
           class="d-inline">
       <input type="hidden" name="periodo" value="{{ periodo }}">
       <button type="submit" class="btn btn-outline-danger btn-sm"
-              title="Último: {{ ultimo_movimiento.descripcion }} ({{ ultimo_movimiento.tipo }})"
-              data-ayuda="Eliminá el último movimiento registrado en la caja: {{ ultimo_movimiento.descripcion }} — {{ ultimo_movimiento.tipo }} ${{ '%.2f'|format(ultimo_movimiento.importe) }} del {{ ultimo_movimiento.fecha[8:10] }}/{{ ultimo_movimiento.fecha[5:7] }}/{{ ultimo_movimiento.fecha[:4] }}">
+              title="Último: {{ ultimo_movimiento.descripcion }} ({{ 'Haber' if ultimo_movimiento.tipo == 'ENTRADA' else 'Debe' }})"
+              data-ayuda="Eliminá el último movimiento registrado en la caja: {{ ultimo_movimiento.descripcion }} — {{ 'Haber' if ultimo_movimiento.tipo == 'ENTRADA' else 'Debe' }} ${{ '%.2f'|format(ultimo_movimiento.importe) }} del {{ ultimo_movimiento.fecha[8:10] }}/{{ ultimo_movimiento.fecha[5:7] }}/{{ ultimo_movimiento.fecha[:4] }}">
         <i class="bi bi-arrow-counterclockwise"></i> Deshacer último
       </button>
     </form>
@@ -51,7 +51,7 @@
   <div class="col-md-3">
     <div class="card border-success text-center">
       <div class="card-body py-2">
-        <div class="text-success fw-bold" style="font-size:0.8rem">ENTRADAS MES</div>
+        <div class="text-success fw-bold" style="font-size:0.8rem">HABER MES</div>
         <div class="fw-bold fs-6 text-success">
           $ {{ "%.2f"|format(entradas)|replace(".",",") }}
         </div>
@@ -61,7 +61,7 @@
   <div class="col-md-3">
     <div class="card border-danger text-center">
       <div class="card-body py-2">
-        <div class="text-danger fw-bold" style="font-size:0.8rem">SALIDAS MES</div>
+        <div class="text-danger fw-bold" style="font-size:0.8rem">DEBE MES</div>
         <div class="fw-bold fs-6 text-danger">
           $ {{ "%.2f"|format(salidas)|replace(".",",") }}
         </div>
@@ -89,9 +89,9 @@
           <tr>
             <th>Fecha</th>
             <th>Descripción</th>
-            <th class="text-center">Tipo</th>
             <th>Categoría</th>
-            <th class="text-end">Importe</th>
+            <th class="text-end text-danger">DEBE</th>
+            <th class="text-end text-success">HABER</th>
             <th class="text-end">Saldo</th>
             <th></th>
           </tr>
@@ -112,16 +112,12 @@
               </span>
               {% endif %}
             </td>
-            <td class="text-center">
-              {% if m.tipo == 'ENTRADA' %}
-                <span class="badge bg-success">Entrada</span>
-              {% else %}
-                <span class="badge bg-danger">Salida</span>
-              {% endif %}
+            <td class="text-muted small">{{ m.categoria }}</td>
+            <td class="text-end fw-semibold text-danger">
+              {% if m.tipo == 'SALIDA' %}$ {{ "%.2f"|format(m.importe)|replace(".",",") }}{% endif %}
             </td>
-            <td class="text-muted">{{ m.categoria }}</td>
-            <td class="text-end fw-semibold {% if m.tipo == 'ENTRADA' %}text-success{% else %}text-danger{% endif %}">
-              {% if m.tipo == 'SALIDA' %}-{% endif %}$ {{ "%.2f"|format(m.importe)|replace(".",",") }}
+            <td class="text-end fw-semibold text-success">
+              {% if m.tipo == 'ENTRADA' %}$ {{ "%.2f"|format(m.importe)|replace(".",",") }}{% endif %}
             </td>
             <td class="text-end small {% if ns.saldo >= 0 %}text-primary{% else %}text-danger{% endif %}">
               $ {{ "%.2f"|format(ns.saldo)|replace(".",",") }}
@@ -215,8 +211,8 @@
             <div class="col-md-6">
               <label class="form-label fw-semibold">Tipo *</label>
               <select class="form-select" id="mov_tipo" name="tipo">
-                <option value="ENTRADA">Entrada</option>
-                <option value="SALIDA">Salida</option>
+                <option value="ENTRADA">Haber (ingreso)</option>
+                <option value="SALIDA">Debe (egreso)</option>
               </select>
             </div>
             <div class="col-12">
