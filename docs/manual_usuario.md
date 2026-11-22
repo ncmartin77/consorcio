@@ -112,6 +112,7 @@ Los porcentajes de todas las unidades deben sumar 100 %. Si los centavos no cier
 | **Frecuencia** | Recurrente / No recurrente | Si se repite todos los meses |
 | **¿Con qué se paga?** | Se cobra en las expensas / Con el Fondo de Reserva | Cómo se financia |
 | **Respaldo** (opcional) | Texto libre | Acta de asamblea, autorización del consejo, etc. |
+| **Observación de pago** (opcional) | Texto libre | Nota que se pre-carga en el modal de pago de la factura (CBU, referencia de transferencia, etc.) |
 
 Estos tres datos son **independientes**:
 
@@ -155,6 +156,7 @@ Una factura está **Pendiente** o **Pagada**.
   **Pagar con Fondo de Reserva**:
   - **Sin el switch:** se registra la salida en Caja y el gasto se cobra en las expensas.
   - **Con el switch:** la salida va contra el fondo y el gasto **no** se cobra en las expensas. El modal muestra cuánto hay disponible en el fondo.
+  - Si el gasto fue cargado como **"Con el Fondo de Reserva"**, el switch aparece ya tildado y bloqueado: no se puede cambiar. La observación del gasto se pre-carga automáticamente.
 - Una factura **pagada** no se puede editar. Si la borrás, también se borra su movimiento de Caja; el gasto
   queda sin vínculo y se puede volver a emitir su factura desde Gastos.
 - Una factura pendiente marcada para el fondo figura como **compromiso** en el libro del Fondo de Reserva.
@@ -258,13 +260,20 @@ respaldo jurídico: la ley admite la capitalización en casos puntuales.
 
 ## 10. Caja Diaria
 
-- **Movimientos:** Entrada o Salida, con categoría. Los pagos de expensas y de facturas generan sus movimientos solos.
-- **Saldos:** cuatro cuadros, saldo anterior, entradas y salidas del mes y saldo acumulado (incluye el saldo
-  inicial de Apertura).
-- **Fechas:** se muestran como DD/MM/AAAA.
-- **Mes bloqueado:** la Caja de un mes se bloquea cuando se cierra la liquidación del mes siguiente. Desde
-  ahí no se agregan, editan ni borran movimientos de ese mes.
+La pantalla muestra **dos meses en paralelo**: el mes anterior a la izquierda y el mes seleccionado a la derecha. En pantallas chicas se apilan uno debajo del otro.
+
+Cada columna tiene:
+- **Encabezado** con el nombre del mes e indicador de cerrado si corresponde.
+- **Barra de resumen:** DEBE (egresos del mes) · HABER (ingresos del mes) · Neto mes · **En caja** (saldo acumulado real al cierre de ese mes).
+- **Tabla** con columnas **DEBE** y **HABER** en paralelo: cada fila muestra el importe solo en la columna que le corresponde.
+
+> **DEBE** = salidas de dinero · **HABER** = entradas de dinero.
+
+Otros puntos:
+- Los pagos de expensas y de facturas generan sus movimientos solos.
+- **Mes bloqueado:** la Caja de un mes se bloquea cuando se cierra la liquidación del mes siguiente. Desde ahí no se agregan, editan ni borran movimientos.
 - **Movimientos del fondo:** un movimiento con categoría **FONDO_RESERVA** cuenta en el libro del fondo. Si es una entrada, es otro ingreso al fondo; si es una salida, es un pago con el fondo.
+- **Saldo al corte:** hacé clic en cualquier fila para ver el saldo acumulado hasta ese momento.
 
 ---
 
