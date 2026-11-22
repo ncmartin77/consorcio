@@ -123,6 +123,8 @@ def _proteccion_csrf():
         abort(403)
 
 
+_TIMEOUT_SESION_HORAS = 2
+
 @app.before_request
 def _authenticate():
     if request.endpoint in _PUBLIC_ENDPOINTS or request.endpoint is None:
@@ -130,6 +132,15 @@ def _authenticate():
     uid = session.get("usuario_id")
     if not uid:
         return redirect(url_for("login"))
+    # Expiración por inactividad
+    ultima = session.get("last_activity")
+    if ultima:
+        inactivo = (datetime.utcnow() - datetime.fromisoformat(ultima)).total_seconds()
+        if inactivo > _TIMEOUT_SESION_HORAS * 3600:
+            session.clear()
+            flash("Tu sesión expiró por inactividad. Volvé a ingresar.", "info")
+            return redirect(url_for("login"))
+    session["last_activity"] = datetime.utcnow().isoformat()
     u = db.get_usuario(uid)
     if not u or not u["activo"]:
         session.clear()
