@@ -347,6 +347,8 @@ def ensure_factura_vinculos():
                     "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS factura_id INTEGER")
     _ensure_columna("facturas.observacion",
                     "ALTER TABLE facturas ADD COLUMN IF NOT EXISTS observacion TEXT")
+    _ensure_columna("gastos.observacion",
+                    "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS observacion TEXT")
 
 
 def ensure_liq_sin_interes():
@@ -525,7 +527,7 @@ def get_gastos(periodo: str) -> list:
         "f.estado AS factura_estado, "
         f"COALESCE(g.naturaleza, {_SQL_NAT_DESDE_TIPO}) AS naturaleza, "
         f"COALESCE(g.habitualidad, {_SQL_HAB_DESDE_TIPO}) AS habitualidad, "
-        f"COALESCE(g.financiacion, {_SQL_FIN_DESDE_TIPO}) AS financiacion, g.respaldo "
+        f"COALESCE(g.financiacion, {_SQL_FIN_DESDE_TIPO}) AS financiacion, g.respaldo, g.observacion "
         "FROM gastos g "
         "LEFT JOIN facturas f ON f.id = g.factura_id AND f.consorcio_id = g.consorcio_id "
         "WHERE g.consorcio_id=%s AND g.periodo=%s ORDER BY g.id",
@@ -543,13 +545,15 @@ def get_gastos(periodo: str) -> list:
         "habitualidad": r["habitualidad"] or "",
         "financiacion": r["financiacion"] or "",
         "respaldo": r["respaldo"] or "",
+        "observacion": r["observacion"] or "",
     } for r in rows]
 
 
 def save_gasto(periodo: str, concepto: str, importe: float, tipo: str, row_num: int = None,
-               clasificacion: dict = None):
+               clasificacion: dict = None, observacion=None):
     """Guarda un gasto. `clasificacion` (v10.0): naturaleza / habitualidad / financiacion / respaldo;
-    si no viene, se deduce del tipo. Si viene, el tipo se deduce de ella."""
+    si no viene, se deduce del tipo. Si viene, el tipo se deduce de ella.
+    `observacion`: nota de pago; None = mantener existente en UPDATE."""
     if clasificacion:
         tipo = tipo_desde_clasificacion(clasificacion.get("naturaleza"), clasificacion.get("habitualidad"),
                                         clasificacion.get("financiacion"))
@@ -559,10 +563,9 @@ def save_gasto(periodo: str, concepto: str, importe: float, tipo: str, row_num: 
         cl = clasificacion_desde_tipo(tipo)
         respaldo = None
     if row_num:
-        existing = _fetchone("SELECT tipo, respaldo FROM gastos WHERE id=%s AND consorcio_id=%s",
+        existing = _fetchone("SELECT tipo, respaldo, observacion FROM gastos WHERE id=%s AND consorcio_id=%s",
                              (row_num, _cid()))
         if existing and existing["tipo"] == "FONDO_RESERVA":
-            # Solo permite cambiar el importe; tipo y concepto quedan fijos
             _exec(
                 "UPDATE gastos SET importe=%s WHERE id=%s AND consorcio_id=%s",
                 (importe, row_num, _cid())
@@ -570,18 +573,20 @@ def save_gasto(periodo: str, concepto: str, importe: float, tipo: str, row_num: 
             return
         if not clasificacion and existing:
             respaldo = existing["respaldo"]
+        obs = observacion if observacion is not None else (existing.get("observacion") if existing else None)
         _exec(
             "UPDATE gastos SET periodo=%s, concepto=%s, importe=%s, tipo=%s, naturaleza=%s, habitualidad=%s, "
-            "financiacion=%s, respaldo=%s WHERE id=%s AND consorcio_id=%s",
+            "financiacion=%s, respaldo=%s, observacion=%s WHERE id=%s AND consorcio_id=%s",
             (periodo, concepto, importe, tipo, cl["naturaleza"], cl["habitualidad"], cl["financiacion"],
-             respaldo, row_num, _cid())
+             respaldo, obs, row_num, _cid())
         )
     else:
+        obs = observacion if observacion is not None else None
         _exec(
             "INSERT INTO gastos (consorcio_id, periodo, concepto, importe, tipo, naturaleza, habitualidad, "
-            "financiacion, respaldo) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            "financiacion, respaldo, observacion) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (_cid(), periodo, concepto, importe, tipo, cl["naturaleza"], cl["habitualidad"],
-             cl["financiacion"], respaldo)
+             cl["financiacion"], respaldo, obs)
         )
 
 
@@ -1542,6 +1547,7 @@ def _fac_dict(r) -> dict:
         "extraordinario": bool(r["extraordinario"]),
         "archivo_pdf": r["archivo_pdf"] or "",
         "observacion": r.get("observacion") or "",
+        "gasto_observacion": r.get("gasto_observacion") or "",
     }
 
 
@@ -1560,7 +1566,9 @@ def get_facturas(estado=None, mes=None, page=1, per_page=25):
     total = (_fetchone(f"SELECT COUNT(*) AS n FROM facturas WHERE {where}", params) or {}).get("n", 0)
     offset = (page - 1) * per_page
     rows = _fetchall(
-        f"SELECT * FROM facturas WHERE {where} ORDER BY {order} LIMIT %s OFFSET %s",
+        f"SELECT f.*, (SELECT g.observacion FROM gastos g WHERE g.factura_id = f.id "
+        f"AND g.consorcio_id = f.consorcio_id LIMIT 1) AS gasto_observacion "
+        f"FROM facturas f WHERE {where} ORDER BY {order} LIMIT %s OFFSET %s",
         params + [per_page, offset]
     )
     return [_fac_dict(r) for r in rows], int(total)

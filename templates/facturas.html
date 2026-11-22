@@ -131,7 +131,7 @@
             <td class="text-nowrap">
               {% if f.estado == 'PENDIENTE' %}
               <button class="btn btn-sm btn-success me-1"
-                      onclick="pagarFactura({{ f.id }}, '{{ f.proveedor_nombre }}', {{ f.importe }}, '{{ f.fecha }}')"
+                      onclick="pagarFactura({{ f.id }}, '{{ f.proveedor_nombre }}', {{ f.importe }}, '{{ f.fecha }}', {{ 'true' if f.categoria == 'FONDO_RESERVA' else 'false' }}, {{ f.gasto_observacion|tojson }})"
                       title="Marcar como pagada"
                       data-ayuda="Marcá esta factura como pagada: registrá la fecha de pago y generá el movimiento de salida en Caja Diaria.">
                 <i class="bi bi-check-circle"></i> Pagar
@@ -307,6 +307,9 @@
               No genera gasto para la liquidación: se descuenta del fondo
               {% if saldo_fondo is not none %}(disponible: <strong>$ {{ "{:,.2f}".format(saldo_fondo).replace(",", "X").replace(".", ",").replace("X", ".") }}</strong>){% endif %}.
             </div>
+            <div class="small text-info mt-1 d-none" id="pagar_fondo_bloqueado">
+              <i class="bi bi-lock-fill"></i> Este gasto fue cargado como pago con Fondo de Reserva.
+            </div>
             <div class="small text-danger d-none" id="pagar_fondo_aviso">
               <i class="bi bi-exclamation-triangle"></i> El importe supera el saldo del fondo.
             </div>
@@ -377,7 +380,7 @@ function abrirUpload(fid) {
   input.click();
 }
 
-function pagarFactura(fid, proveedor, importe, fechaEmision) {
+function pagarFactura(fid, proveedor, importe, fechaEmision, conFondo, observacion) {
   document.getElementById('pagar_prov').textContent = proveedor;
   document.getElementById('pagar_importe').textContent =
     '$ ' + importe.toLocaleString('es-AR', {minimumFractionDigits: 2});
@@ -388,13 +391,24 @@ function pagarFactura(fid, proveedor, importe, fechaEmision) {
   const chkFondo = document.getElementById('pagar_con_fondo');
   const avisoFondo = document.getElementById('pagar_fondo_aviso');
   const saldoFondo = {{ saldo_fondo if saldo_fondo is not none else 'null' }};
-  chkFondo.checked = false;
-  document.getElementById('pagar_obs').value = '';
-  avisoFondo.classList.add('d-none');
+  // Pre-cargar según tipo de gasto vinculado
+  chkFondo.checked = !!conFondo;
+  chkFondo.disabled = !!conFondo;
+  document.getElementById('pagar_fondo_bloqueado').classList.toggle('d-none', !conFondo);
+  document.getElementById('pagar_obs').value = observacion || '';
+  avisoFondo.classList.toggle('d-none', !(chkFondo.checked && saldoFondo !== null && importe > saldoFondo));
   chkFondo.onchange = function() {
     avisoFondo.classList.toggle('d-none', !(chkFondo.checked && saldoFondo !== null && importe > saldoFondo));
   };
   new bootstrap.Modal(document.getElementById('modalPagar')).show();
 }
+
+document.getElementById('modalPagar').addEventListener('hidden.bs.modal', function() {
+  const chkFondo = document.getElementById('pagar_con_fondo');
+  chkFondo.checked = false;
+  chkFondo.disabled = false;
+  document.getElementById('pagar_fondo_bloqueado').classList.add('d-none');
+  document.getElementById('pagar_obs').value = '';
+});
 </script>
 {% endblock %}

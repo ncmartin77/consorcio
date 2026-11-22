@@ -1105,8 +1105,9 @@ def save_gasto():
     elif usar_fondo_reserva and tipo == "VARIABLE":  # compatibilidad con el form anterior
         tipo = "VARIABLE_FR"
 
+    observacion = request.form.get("observacion", "").strip() or None
     db.save_gasto(periodo, concepto, importe, tipo, int(row_num) if row_num else None,
-                  clasificacion=clasificacion)
+                  clasificacion=clasificacion, observacion=observacion)
     _recalcular_liq_si_posible(periodo)
     return redirect(url_for("gastos", periodo=periodo))
 

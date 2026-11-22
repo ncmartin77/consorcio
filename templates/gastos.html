@@ -489,6 +489,12 @@
                    placeholder="Ej: Acta de asamblea 15/03/2026 · Autorización del consejo">
             <div class="form-text">Recomendado para gastos extraordinarios y usos del fondo (CCyC 2048 y 2064).</div>
           </div>
+          <div class="mb-1 mt-2">
+            <label class="form-label fw-semibold">Observación de pago <span class="text-muted fw-normal">(opcional)</span></label>
+            <textarea class="form-control" id="gasto_observacion" name="observacion" rows="2" maxlength="500"
+                      placeholder="Ej: Pagar por transferencia — CBU 123456 · Ref: Limpieza oct."></textarea>
+            <div class="form-text">Se pre-carga en el modal de pago de la factura asociada.</div>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -735,6 +741,7 @@ function editarGasto(g) {
   document.getElementById('gasto_row_num').value = g.row;
   document.getElementById('gasto_concepto').value = g.concepto;
   document.getElementById('gasto_importe').value = g.importe;
+  document.getElementById('gasto_observacion').value = g.observacion || '';
   _setClasificacion(g.naturaleza, g.habitualidad, g.financiacion, g.respaldo);
   new bootstrap.Modal(document.getElementById('modalGasto')).show();
 }
@@ -745,6 +752,7 @@ document.getElementById('modalGasto').addEventListener('hidden.bs.modal', functi
   document.getElementById('gasto_row_num').value = '';
   document.getElementById('gasto_concepto').value = '';
   document.getElementById('gasto_importe').value = '';
+  document.getElementById('gasto_observacion').value = '';
   _setClasificacion('ORDINARIA', 'RECURRENTE', 'EXPENSAS', '');
 });
 
