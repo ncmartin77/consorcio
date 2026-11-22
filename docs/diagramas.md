@@ -207,6 +207,7 @@ erDiagram
         varchar habitualidad "RECURRENTE NO_RECURRENTE (v10)"
         varchar financiacion "EXPENSAS FONDO_RESERVA (v10)"
         text respaldo "acta o autorización (v10)"
+        text observacion "nota de pago (v11.8); se pre-carga en el modal de pago"
         int factura_id
     }
     liquidaciones {
@@ -438,9 +439,11 @@ stateDiagram-v2
     PagadaCaja --> [*]
     PagadaFondo --> [*]
     note right of Pendiente
-        Si está marcada para el fondo,
-        figura como compromiso en el
-        libro del Fondo de Reserva.
+        Si categoría == FONDO_RESERVA (gasto VARIABLE_FR),
+        el modal de pago pre-tilda y bloquea
+        "Pagar con Fondo de Reserva" (v11.8).
+        La observación del gasto se pre-carga
+        en el campo Observación del pago.
     end note
 ```
 
@@ -664,8 +667,11 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor A as Usuario
+    participant UI as facturas.html
     participant F as app.py (/facturas)
     participant D as pg_db
+    Note over UI: Si factura.categoria == FONDO_RESERVA:<br/>switch pre-tildado y bloqueado (v11.8)<br/>pagar_obs pre-cargado con gasto.observacion
+    A->>UI: clic Pagar
     A->>F: POST pagar (fecha, con_fondo=1, observación)
     F->>F: valida fecha, Caja no bloqueada, no pagada antes
     F->>D: pagar_factura(fid, fecha, con_fondo=True, observacion)

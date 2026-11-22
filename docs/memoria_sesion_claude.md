@@ -14,7 +14,7 @@
 | **Deploy** | https://consorcio-soo4.onrender.com (Render.com free tier, auto-deploy desde master) |
 | **Directorio local** | `/home/norberto/consorcio` (PC original) · `/home/20258944020/consorcio` (PC del Senado, git nativo de Linux) |
 | **Git en WSL** | `"/mnt/c/Program Files/Git/bin/git.exe"` (siempre con ruta completa) |
-| **Version actual** | `11.4-1711` (en `version.txt`) |
+| **Version actual** | `11.8-2211` (en `version.txt`) |
 | **Supabase Project ID** | `eboskmenitazzwfobwkiq` (region: ca-central-1) |
 | **MCP Supabase config** | `~/.mcp.json` (token `sb_secret_*` en `headers.Authorization`) |
 | **Consorcio activo en DB** | `consorcio_id = '28693516'` |
@@ -93,21 +93,24 @@
 
 ---
 
-## >>> DONDE QUEDAMOS (17/11/2026) — leer primero <<<
+## >>> DONDE QUEDAMOS (22/11/2026) — leer primero <<<
 
-**Produccion (Render, rama `master`)**: **v11.3-1611**, verificada el 17/11 en la pagina publica `/verificar` de https://consorcio-soo4.onrender.com (la version solo se ve en paginas que usan `base.html`; `/login` no la muestra). Storage activo (comprobantes en Supabase Storage).
+**Produccion (Render, rama `master`)**: **v11.8-2211** — pusheado el 22/11. Storage activo.
 
 **Estado del master (todo mergeado y en produccion):**
-- v10.0–v10.4: lineamientos juridicos (interes sin capitalizar, libro del fondo, clasificacion de gastos, exportacion, alertas, pruebas), all OK.
-- v11.0: comprobantes y adjuntos en Supabase Storage (`storage.py`, `boto3`).
-- v11.1: borrar/reemplazar comprobantes, eliminar consorcio borra sus archivos en Storage.
-- v11.2: Liquidacion y Cobranzas muestran propietario e inquilino juntos ("Inq:" debajo).
-- v11.3: descripcion `P{piso} D{depto}` (filtro `fmt_desc`, columna `liquidaciones.piso`); badge Pagado/Impago/Sin factura en Gastos Mensuales; **modulo Obras / Expensas extraordinarias** (`Proveedores → Obras`; tablas `obras`, `presupuestos_obra`, `cuotas_obra` en `ensure_obras`; cobrar una cuota crea el gasto EXTRAORDINARIO o VARIABLE_FR y recalcula la liquidacion abierta).
-- Pruebas: 16 pruebas OK (base local), `probar_storage.py` 37/37 OK. **v11.2 y v11.3 sin pruebas registradas** en `docs/pruebas_realizadas.md`.
-- `feat/plataforma`: rama separada, nueva plataforma en desarrollo (etapa 3: liquidaciones y cuenta corriente; ultimo commit 12/11, le faltan los ultimos commits de master). **NO es el sistema actual.**
+- v10.0–v10.4: lineamientos juridicos, all OK.
+- v11.0: comprobantes en Supabase Storage. v11.1: borrar/reemplazar comprobantes.
+- v11.2: propietario e inquilino en Liquidacion y Cobranzas.
+- v11.3: formato P{piso}D{depto}, badge estado factura en Gastos, modulo Obras (tablas `obras`, `presupuestos_obra`, `cuotas_obra`).
+- v11.4: Caja — ENTRADA/SALIDA renombrados a HABER/DEBE en la UI (BD sin cambios).
+- v11.5: Caja — vista comparativa dos meses en paralelo (mes anterior + mes actual, `col-lg-6`); saldo en caja al cierre de cada mes en la barra de cada columna. Datos del mes anterior: `periodo_ant`, `movimientos_ant`, `entradas_ant`, `salidas_ant`, `saldo_mes_ant`, `saldo_ant_ant` pasados al template desde la ruta `/caja`.
+- v11.8: `gastos.observacion` (nueva columna via `ensure_factura_vinculos`): se carga al crear/editar el gasto; fluye al modal de pago via subquery en `get_facturas` (`gasto_observacion`). Cuando la factura tiene `categoria == FONDO_RESERVA` (gasto VARIABLE_FR), el switch "Pagar con Fondo de Reserva" se pre-tilda y **bloquea** (disabled) en el modal. Se desbloquea al cerrar el modal.
+- Pruebas: 16 pruebas OK (base local). **v11.2, v11.3, v11.4-v11.8 sin pruebas registradas.**
+- `feat/plataforma`: rama separada, NO es el sistema actual.
 
-**Pendientes inmediatos (17/11):**
-- Pruebas del modulo Obras (presupuestos, adjudicacion, cuotas, cobro como EXTRAORDINARIO y VARIABLE_FR, bloqueo si la liquidacion esta cerrada) y de v11.2/v11.3, contra `consorcio-tst`.
+**Pendientes:**
+- Pruebas del modulo Obras y de v11.2–v11.8 contra `consorcio-tst`.
+- Documento juridico punto 6 (asambleas, ascensores, libros, bancos, privacidad) — no empezado.
 - Ramas ya incluidas en master, se pueden borrar: `feat/storage-v10`, `feat/borrar-archivos` (worktree `~/consorcio-v10` en la PC del Senado), `feat/lineamientos-v10`, `migracion`. `main` es la version vieja (Excel), sin uso.
 - Ramas con trabajo propio sin unir: `supabase-storage` (1 commit local sin subir en la PC del Senado) y `feat/docker-flask` (solo local en la PC del Senado, sin remoto). Decidir si se suben o se descartan.
 
