@@ -60,6 +60,51 @@ las demás.
 
 ---
 
+## v11.4–v11.11 — Caja DEBE/HABER, dos meses, observación en gasto, timeout de sesión (22/11/2026)
+
+Sin script automatizado. Verificación visual en Render y revisión de código.
+
+### Caja Diaria (v11.4–v11.7)
+
+| Caso | Esperado | Resultado |
+|---|---|---|
+| Columnas renombradas ENTRADA→HABER / SALIDA→DEBE | Tabla con dos columnas separadas, importes en la columna correcta | ✅ revisado en código |
+| Modal de carga: opciones del select | "Haber (ingreso)" y "Debe (egreso)" | ✅ revisado en código |
+| Cards de resumen: "ENTRADAS MES" / "SALIDAS MES" | Renombradas a "HABER MES" / "DEBE MES" | ✅ revisado en código |
+| Vista dos meses en paralelo: col-lg-6 | Mes anterior (gris) a la izquierda, mes actual (azul) a la derecha | ✅ revisado en código |
+| Barra de resumen de cada columna | Muestra DEBE / HABER / Neto mes / **En caja** | ✅ revisado en código |
+| "En caja" mes anterior | `saldo_anterior` = saldo al cierre de ese mes | ✅ revisado en lógica de ruta |
+| "En caja" mes actual | `saldo_acumulado` = saldo corriente | ✅ revisado en lógica de ruta |
+| Editar movimiento del mes anterior desde la tabla | Modal abre con periodo_ant correcto (hidden input actualizado por JS) | ✅ revisado en código |
+| Render levantó sin errores tras el deploy | Login page responde 200 | ✅ verificado con WebFetch |
+
+### Observación en gasto y pre-check fondo (v11.8)
+
+| Caso | Esperado | Resultado |
+|---|---|---|
+| Columna `gastos.observacion` creada en la BD | `ensure_factura_vinculos` agrega la columna con IF NOT EXISTS | ✅ idempotente por diseño |
+| Campo "Observación de pago" aparece en modalGasto | Textarea entre Respaldo y el footer | ✅ revisado en código |
+| Editar gasto existente: observacion se pre-llena | `editarGasto()` setea `gasto_observacion` | ✅ revisado en código |
+| `get_facturas()` trae `gasto_observacion` vía subquery | La factura expone la observación del gasto vinculado | ✅ revisado en código |
+| Factura PENDIENTE de gasto VARIABLE_FR (categoria FONDO_RESERVA) | Switch "Pagar con Fondo de Reserva" pre-tildado y deshabilitado | ✅ revisado en código |
+| Factura PENDIENTE sin gasto VARIABLE_FR | Switch libre, sin pre-check | ✅ revisado en código |
+| Observación del gasto se pre-carga en pagar_obs | `pagarFactura()` setea el textarea | ✅ revisado en código |
+| Al cerrar el modal de pago | Switch se destilda, se reactiva y se limpia observación | ✅ revisado en código |
+| Render levantó con nueva columna | Login page responde 200 | ✅ verificado con WebFetch |
+| **Pendiente** | Prueba contra `consorcio-tst`: cargar gasto VARIABLE_FR con observación, crear factura, verificar modal | ⚠️ pendiente |
+
+### Timeout de sesión (v11.11)
+
+| Caso | Esperado | Resultado |
+|---|---|---|
+| `last_activity` se actualiza en cada request | Campo en session con timestamp UTC | ✅ revisado en código |
+| Sesión activa (inactividad < 2 horas) | Acceso normal sin redirigir | ✅ revisado en lógica |
+| Sesión vencida (inactividad > 2 horas) | `session.clear()` + flash "Tu sesión expiró..." + redirect a login | ✅ revisado en lógica |
+| Endpoints públicos (`/login`, `/oauth`) | No evalúan timeout (están en `_PUBLIC_ENDPOINTS`) | ✅ revisado en código |
+| **Pendiente** | Verificación real en Render esperando 2 horas de inactividad | ⚠️ pendiente |
+
+---
+
 ## v11.1-1211 — Borrar comprobantes y archivos (12/11/2026)
 
 `pruebas/probar_storage.py` ahora tiene 37 controles (11 nuevos), corrida contra la base local `consorcio_pruebas`:
